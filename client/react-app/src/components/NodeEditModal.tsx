@@ -1,8 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Modal, Form, Select, Input, message } from 'antd';
+import React, { useEffect } from 'react';
+import { Modal, Form, Select, message } from 'antd';
 import { WorkflowNodeData, ModelType } from '../types';
-
-const { TextArea } = Input;
 
 interface NodeEditModalProps {
   visible: boolean;
@@ -23,8 +21,7 @@ const NodeEditModal: React.FC<NodeEditModalProps> = ({
     if (nodeData && visible) {
       console.log('모달에서 받은 노드 데이터:', nodeData); // 디버깅용
       form.setFieldsValue({
-        model_type: nodeData.model_type,
-        prompt: nodeData.prompt
+        model_type: nodeData.model_type
       });
     }
   }, [nodeData, visible, form]);
@@ -36,7 +33,6 @@ const NodeEditModal: React.FC<NodeEditModalProps> = ({
       
       onSave({
         model_type: values.model_type,
-        prompt: values.prompt,
         label: getModelLabel(values.model_type)
       });
       
@@ -73,7 +69,7 @@ const NodeEditModal: React.FC<NodeEditModalProps> = ({
       open={visible}
       onOk={handleSave}
       onCancel={handleCancel}
-      width={800}
+      width={500}
       destroyOnClose={true} // 모달이 닫힐 때 완전히 제거
     >
       {nodeData && (
@@ -97,18 +93,6 @@ const NodeEditModal: React.FC<NodeEditModalProps> = ({
                 OpenAI GPT-3.5 (Coming Soon)
               </Select.Option>
             </Select>
-          </Form.Item>
-          
-          <Form.Item
-            name="prompt"
-            label="프롬프트"
-            rules={[{ required: true, message: '프롬프트를 입력해주세요.' }]}
-          >
-            <TextArea
-              rows={15}
-              placeholder="프롬프트를 입력하세요..."
-              style={{ fontFamily: 'monospace' }}
-            />
           </Form.Item>
         </Form>
       )}

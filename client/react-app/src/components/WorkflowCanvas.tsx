@@ -2,7 +2,6 @@ import React, { useCallback, useState, useRef } from 'react';
 import {
   ReactFlow,
   Background,
-  Controls,
   MiniMap,
   useNodesState,
   useEdgesState,
@@ -12,10 +11,8 @@ import {
   Edge,
   MarkerType,
   ReactFlowProvider,
-  useReactFlow,
   ReactFlowInstance,
   OnInit,
-  Node,
   Viewport
 } from '@xyflow/react';
 import { Space, Typography, Divider } from 'antd';
@@ -57,7 +54,6 @@ const MiniMapNode = (props: any) => {
 const WorkflowCanvasContent: React.FC = () => {
   const { 
     nodes, 
-    addNode, 
     updateNode,
     currentViewport,
     setCurrentViewport
@@ -76,7 +72,7 @@ const WorkflowCanvasContent: React.FC = () => {
     [setEdges]
   );
 
-  const handleNodeClick = useCallback((event: React.MouseEvent, node: AnyWorkflowNode) => {
+  const handleNodeClick = useCallback((_event: React.MouseEvent, node: AnyWorkflowNode) => {
     console.log('노드 클릭 이벤트:', node.type, node.id);
     
     if (node.type === 'placeholderNode') {
@@ -133,6 +129,18 @@ const WorkflowCanvasContent: React.FC = () => {
 
   // ✅ useImperativeHandle 타입 에러 해결 - 제거
   // React.useImperativeHandle을 제거하고 뷰포트 복원은 store에서 직접 처리
+
+  // ✅ 뷰포트 복원을 위한 useEffect 추가
+  React.useEffect(() => {
+    if (currentViewport && reactFlowInstance.current) {
+      console.log('뷰포트 변경 감지, 복원 중:', currentViewport);
+      isRestoringViewport.current = true;
+      reactFlowInstance.current.setViewport(currentViewport);
+      setTimeout(() => {
+        isRestoringViewport.current = false;
+      }, 150);
+    }
+  }, [currentViewport]);
 
   // Sync with store
   React.useEffect(() => {

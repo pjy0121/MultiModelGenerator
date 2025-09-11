@@ -88,12 +88,88 @@ python admin_tool.py delete <kb_name>
 python admin_tool.py status <kb_name>
 ```
 
-## API 문서
+## API 엔드포인트
 
-서버 실행 후 다음 URL에서 API 문서 확인:
+### 1. **새로운 단계별 워크플로우 API** (권장)
 
-- Swagger UI: <http://localhost:8000/docs>
-- ReDoc: <http://localhost:8000/redoc>
+#### 컨텍스트 검색
+```http
+POST /search-context
+```
+- 지식베이스에서 관련 청크 검색
+- 프론트엔드에서 워크플로우 시작 시 사용
+
+#### 단일 노드 실행
+```http
+POST /execute-node
+```
+- Generation Layer 노드 개별 실행
+- 각 모델별로 별도 호출 가능
+
+#### 앙상블 실행
+```http
+POST /execute-ensemble
+```
+- 여러 Generation 결과를 통합
+- 모든 Generation 완료 후 호출
+
+#### 검증 실행
+```http
+POST /execute-validation
+```
+- Validation Layer 노드 개별 실행
+- 변경사항 추적 기능 포함
+
+### 2. **기존 통합 워크플로우 API** (레거시)
+
+#### 전체 워크플로우 실행
+```http
+POST /execute-workflow
+```
+- 전체 워크플로우를 한 번에 실행
+- 기존 방식 (사용자 피드백 제한)
+
+### 3. **지식베이스 관리 API**
+
+#### 지식베이스 목록
+```http
+GET /knowledge-bases
+```
+
+#### 지식베이스 상태
+```http
+GET /knowledge-bases/{kb_name}/status
+```
+
+### 4. **모델 및 설정 API**
+
+#### 사용 가능한 모델 목록
+```http
+GET /available-models
+```
+
+#### 기본 프롬프트 템플릿
+```http
+GET /default-prompts
+```
+
+## 새로운 워크플로우 실행 방식
+
+### 프론트엔드에서의 실행 흐름:
+
+1. **컨텍스트 검색**: `/search-context`로 관련 청크 획득
+2. **Generation Layer**: 각 노드별로 `/execute-node` 호출
+3. **실시간 피드백**: 각 Generation 결과를 사용자에게 표시
+4. **Ensemble**: 모든 Generation 완료 후 `/execute-ensemble` 호출
+5. **Validation**: 각 Validation 노드별로 `/execute-validation` 호출
+6. **변경사항 표시**: 각 Validation 단계에서 어떤 요구사항이 변경되었는지 표시
+
+### 장점:
+- ✅ 실시간 진행 상황 표시
+- ✅ 각 단계별 결과 확인 가능
+- ✅ 사용자 경험 향상
+- ✅ 중간 단계에서 중단/수정 가능
+- ✅ 변경사항 추적 및 표시
 
 ## 개발 노트
 
