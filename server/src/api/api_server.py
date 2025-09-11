@@ -4,13 +4,13 @@ from fastapi.responses import JSONResponse
 import uvicorn
 from datetime import datetime
 import logging
-from workflow_engine import WorkflowEngine
-from prompts import get_default_prompt
+from ..core.workflow_engine import WorkflowEngine
+from ..core.prompts import get_default_prompt
 
-from config import Config
-from vector_store import VectorStore
-from perplexity_client import PerplexityClient
-from models import (
+from ..core.config import Config
+from ..services.vector_store import VectorStore
+from ..services.perplexity_client import PerplexityClient
+from ..core.models import (
     RequirementRequest, 
     RequirementResponse, 
     ErrorResponse, 
@@ -124,7 +124,22 @@ class RequirementGenerator:
 
 # 서비스 인스턴스
 requirement_generator = RequirementGenerator()
-workflow_engine = WorkflowEngine()
+workflow_engine = None
+
+def get_workflow_engine():
+    """WorkflowEngine 지연 로딩"""
+    global workflow_engine
+    if workflow_engine is None:
+        try:
+            workflow_engine = WorkflowEngine()
+            logger.info("WorkflowEngine 초기화 완료")
+        except Exception as e:
+            logger.error(f"WorkflowEngine 초기화 실패: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=f"워크플로우 엔진 초기화 실패: {str(e)}"
+            )
+    return workflow_engine
 
 @app.get("/", tags=["Health Check"])
 async def root():
@@ -273,14 +288,45 @@ async def general_exception_handler(request, exc):
 @app.get("/available-models", tags=["Models"])
 async def get_available_models():
     """사용 가능한 모델 목록 조회"""
-    return {
-        "models": [
-            {"value": "perplexity-sonar-pro", "label": "Perplexity Sonar Pro"},
-            {"value": "perplexity-sonar-medium", "label": "Perplexity Sonar Medium"},
-            {"value": "openai-gpt-4", "label": "OpenAI GPT-4 (Coming Soon)", "disabled": True},
-            {"value": "openai-gpt-3.5-turbo", "label": "OpenAI GPT-3.5 (Coming Soon)", "disabled": True}
+    try:
+        # Perplexity Client를 통해 실제 모델 목록 조회
+        perplexity_client = PerplexityClient()
+        available_models = perplexity_client.get_available_models()
+        
+        # 기본 모델 목록에 실제 Perplexity 모델들 추가
+        models = [
+            {"value": "sonar-pro", "label": "Perplexity Sonar Pro", "provider": "perplexity"},
+            {"value": "sonar-medium", "label": "Perplexity Sonar Medium", "provider": "perplexity"},
         ]
-    }
+        
+        # 실제 API에서 가져온 모델들 추가
+        for model in available_models:
+            if model not in [m["value"] for m in models]:
+                models.append({
+                    "value": model,
+                    "label": f"Perplexity {model.replace('-', ' ').title()}",
+                    "provider": "perplexity"
+                })
+        
+        # 향후 확장용 모델들
+        models.extend([
+            {"value": "gpt-4", "label": "OpenAI GPT-4 (Coming Soon)", "provider": "openai", "disabled": True},
+            {"value": "gpt-3.5-turbo", "label": "OpenAI GPT-3.5 (Coming Soon)", "provider": "openai", "disabled": True}
+        ])
+        
+        return {"models": models}
+        
+    except Exception as e:
+        logger.warning(f"모델 목록 조회 실패: {e}")
+        # 오류 시 기본 모델 목록 반환
+        return {
+            "models": [
+                {"value": "sonar-pro", "label": "Perplexity Sonar Pro", "provider": "perplexity"},
+                {"value": "sonar-medium", "label": "Perplexity Sonar Medium", "provider": "perplexity"},
+                {"value": "gpt-4", "label": "OpenAI GPT-4 (Coming Soon)", "provider": "openai", "disabled": True},
+                {"value": "gpt-3.5-turbo", "label": "OpenAI GPT-3.5 (Coming Soon)", "provider": "openai", "disabled": True}
+            ]
+        }
 
 @app.get("/default-prompts", tags=["Prompts"])
 async def get_default_prompts():
@@ -303,13 +349,20 @@ async def execute_workflow(request: WorkflowRequest):
         
         if not status['exists'] or status['count'] == 0:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=404,
                 detail=f"지식베이스 '{request.knowledge_base}'를 찾을 수 없습니다."
             )
         
         relevant_chunks = vector_store.search_similar_chunks(request.keyword)
         
+        if not relevant_chunks:
+            raise HTTPException(
+                status_code=404,
+                detail=f"키워드 '{request.keyword}'와 관련된 문서를 찾을 수 없습니다."
+            )
+        
         # 워크플로우 실행
+        workflow_engine = get_workflow_engine()
         result = workflow_engine.execute_workflow(
             request.workflow_config,
             request.keyword,
@@ -331,7 +384,7 @@ async def execute_workflow(request: WorkflowRequest):
     except Exception as e:
         logger.error(f"워크플로우 실행 중 오류: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=f"워크플로우 실행 중 오류가 발생했습니다: {str(e)}"
         )
 

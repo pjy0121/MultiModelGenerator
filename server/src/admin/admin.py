@@ -1,9 +1,10 @@
 import os
 import sys
 import shutil
-from config import Config
-from document_processor import DocumentProcessor
-from vector_store import VectorStore
+from typing import Dict, Any
+from ..core.config import Config
+from ..services.document_processor import DocumentProcessor
+from ..services.vector_store import VectorStore
 
 class KnowledgeBaseAdmin:
     def __init__(self):
@@ -124,6 +125,37 @@ class KnowledgeBaseAdmin:
             print(f"⚠️ 검색 테스트 중 오류: {e}")
         
         return True
+    
+    def get_knowledge_base_status(self, kb_name: str) -> Dict[str, Any]:
+        """지식 베이스 상태 정보 반환 (admin_tool.py 호환용)"""
+        try:
+            vector_store = VectorStore(kb_name)
+            status = vector_store.get_status()
+            
+            if not status['exists']:
+                return None
+            
+            # 파일 크기 계산
+            kb_path = Config.get_kb_path(kb_name)
+            size_bytes = 0
+            if os.path.exists(kb_path):
+                for dirpath, dirnames, filenames in os.walk(kb_path):
+                    for filename in filenames:
+                        filepath = os.path.join(dirpath, filename)
+                        size_bytes += os.path.getsize(filepath)
+            
+            size_mb = round(size_bytes / (1024 * 1024), 2)
+            
+            return {
+                'path': status['path'],
+                'chunk_count': status['count'],
+                'size_mb': size_mb,
+                'exists': True
+            }
+            
+        except Exception as e:
+            print(f"⚠️ 상태 조회 중 오류: {e}")
+            return None
     
     def delete_knowledge_base(self, kb_name: str):
         """지식 베이스 삭제"""

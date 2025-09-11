@@ -1,7 +1,7 @@
 import chromadb
 import os
 from typing import List, Dict
-from config import Config
+from ..core.config import Config
 
 class VectorStore:
     def __init__(self, kb_name: str):
@@ -50,21 +50,49 @@ class VectorStore:
         
         print(f"✅ 지식베이스 '{self.kb_name}' 저장 완료!")
     
-    def search_similar_chunks(self, query: str, top_k: int = Config.SEARCH_TOP_K) -> List[str]:
+    def search_similar_chunks(self, query: str, top_k: int = None) -> List[str]:
         """유사한 청크 검색"""
+        if top_k is None:
+            top_k = Config.SEARCH_TOP_K
+            
         print(f"🔍 지식베이스 '{self.kb_name}'에서 키워드 '{query}' 검색 중...")
         
-        results = self.collection.query(
-            query_texts=[query],
-            n_results=top_k
-        )
-        
-        if results['documents'] and results['documents'][0]:
-            chunks = results['documents'][0]
-            print(f"📚 {len(chunks)}개 관련 청크 발견")
-            return chunks
-        else:
-            print("❌ 관련 문서를 찾지 못했습니다.")
+        try:
+            # 컬렉션이 비어있는지 확인
+            collection_count = self.collection.count()
+            if collection_count == 0:
+                print("❌ 지식베이스가 비어있습니다.")
+                return []
+            
+            # 실제 검색할 결과 수 조정 (전체 청크 수보다 많을 수 없음)
+            actual_top_k = min(top_k, collection_count)
+            
+            results = self.collection.query(
+                query_texts=[query],
+                n_results=actual_top_k,
+                include=['documents', 'distances', 'metadatas']
+            )
+            
+            if results['documents'] and results['documents'][0]:
+                chunks = results['documents'][0]
+                distances = results['distances'][0] if results['distances'] else []
+                
+                # 유사도 점수 기반 필터링 (거리 0.8 이하만 반환)
+                filtered_chunks = []
+                for i, (chunk, distance) in enumerate(zip(chunks, distances)):
+                    if distance <= 0.8:  # 유사도 임계값
+                        filtered_chunks.append(chunk)
+                    else:
+                        break  # 이미 거리순으로 정렬되어 있으므로 중단
+                
+                print(f"📚 {len(filtered_chunks)}개 관련 청크 발견 (총 {len(chunks)}개 중)")
+                return filtered_chunks
+            else:
+                print("❌ 관련 문서를 찾지 못했습니다.")
+                return []
+                
+        except Exception as e:
+            print(f"⚠️ 검색 중 오류 발생: {e}")
             return []
     
     def get_status(self) -> dict:

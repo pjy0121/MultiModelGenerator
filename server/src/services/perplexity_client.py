@@ -1,6 +1,6 @@
 from openai import OpenAI
 from typing import List
-from config import Config
+from ..core.config import Config
 
 class PerplexityClient:
     def __init__(self):
@@ -155,3 +155,21 @@ class PerplexityClient:
         print(f"🎉 {validation_rounds}회 검증 완료!")
         
         return current_requirements
+    
+    def get_available_models(self) -> List[str]:
+        """사용 가능한 Perplexity 모델 목록 조회"""
+        try:
+            # Perplexity API는 현재 models 엔드포인트를 제공하지 않으므로
+            # 알려진 모델 목록을 반환
+            return [
+                "sonar-pro",
+                "sonar-medium", 
+                "sonar-small",
+                "llama-3.1-sonar-small-128k-online",
+                "llama-3.1-sonar-large-128k-online",
+                "llama-3.1-sonar-huge-128k-online"
+            ]
+        except Exception as e:
+            print(f"⚠️ 모델 목록 조회 실패: {e}")
+            # 기본 모델 목록 반환
+            return ["sonar-pro", "sonar-medium"]

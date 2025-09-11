@@ -1,17 +1,25 @@
 import time
 from typing import List, Dict, Any
 from openai import OpenAI
-from config import Config
-from models import WorkflowConfig, NodeConfig, NodeOutput, ModelType, LayerType
+from .config import Config
+from .models import WorkflowConfig, NodeConfig, NodeOutput, ModelType, LayerType
 
 class WorkflowEngine:
     """워크플로우 실행 엔진"""
     
     def __init__(self):
-        self.perplexity_client = OpenAI(
-            api_key=Config.PERPLEXITY_API_KEY,
-            base_url=Config.PERPLEXITY_BASE_URL
-        )
+        try:
+            self.perplexity_client = OpenAI(
+                api_key=Config.PERPLEXITY_API_KEY,
+                base_url=Config.PERPLEXITY_BASE_URL
+            )
+            # API 키 유효성 검증
+            if not Config.PERPLEXITY_API_KEY:
+                raise ValueError("PERPLEXITY_API_KEY가 설정되지 않았습니다.")
+        except Exception as e:
+            print(f"⚠️ WorkflowEngine 초기화 실패: {e}")
+            print("💡 .env 파일에 PERPLEXITY_API_KEY가 올바르게 설정되어 있는지 확인하세요.")
+            raise
     
     def execute_node(self, node: NodeConfig, input_data: str, context_chunks: List[str]) -> NodeOutput:
         """개별 노드 실행"""

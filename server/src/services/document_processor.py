@@ -3,12 +3,18 @@ import re
 from typing import List, Dict
 from sentence_transformers import SentenceTransformer
 import numpy as np
+from ..core.config import Config
 
 class DocumentProcessor:
-    def __init__(self, chunk_size: int = 6000, chunk_overlap: int = 100):
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
-        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+    def __init__(self, chunk_size: int = None, chunk_overlap: int = None):
+        self.chunk_size = chunk_size or Config.CHUNK_SIZE
+        self.chunk_overlap = chunk_overlap or Config.CHUNK_OVERLAP
+        try:
+            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+        except Exception as e:
+            print(f"⚠️ 임베딩 모델 로드 실패: {e}")
+            print("💡 sentence-transformers 라이브러리가 설치되어 있는지 확인하세요.")
+            raise
     
     def extract_text_from_pdf(self, pdf_path: str) -> str:
         """PDF에서 텍스트 추출"""
