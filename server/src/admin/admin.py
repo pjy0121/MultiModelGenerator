@@ -8,14 +8,15 @@ from ..services.vector_store import VectorStore
 
 class KnowledgeBaseAdmin:
     def __init__(self):
-        self.doc_processor = DocumentProcessor()
         # 루트 디렉토리 생성
         os.makedirs(Config.VECTOR_DB_ROOT, exist_ok=True)
     
-    def build_knowledge_base(self, kb_name: str, pdf_path: str) -> bool:
+    def build_knowledge_base(self, kb_name: str, pdf_path: str, chunk_size: int = 8000, chunk_overlap: int = 200) -> bool:
         """지식 베이스 구축"""
         print("=" * 60)
-        print(f"📚 지식베이스 '{kb_name}' 구축 중...")
+        print(f"📚 지식 베이스 '{kb_name}' 구축 중...")
+        print(f"📏 청크 크기: {chunk_size:,} 문자")
+        print(f"🔄 청크 오버랩: {chunk_overlap} 문자")
         print("=" * 60)
         
         if not os.path.exists(pdf_path):
@@ -23,14 +24,17 @@ class KnowledgeBaseAdmin:
             return False
         
         print(f"📄 처리할 PDF: {pdf_path}")
-        print(f"🏷️ 지식베이스 이름: {kb_name}")
+        print(f"🏷️ 지식 베이스 이름: {kb_name}")
+        
+        # 사용자 지정 청크 크기로 DocumentProcessor 초기화
+        doc_processor = DocumentProcessor(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
         
         # VectorStore 초기화
         vector_store = VectorStore(kb_name)
         
         # 1. PDF 텍스트 추출
         print("\n🔍 1단계: PDF 텍스트 추출 중...")
-        text = self.doc_processor.extract_text_from_pdf(pdf_path)
+        text = doc_processor.extract_text_from_pdf(pdf_path)
         if not text.strip():
             print("❌ PDF에서 텍스트를 추출할 수 없습니다.")
             return False
@@ -39,7 +43,7 @@ class KnowledgeBaseAdmin:
         
         # 2. 청킹
         print("\n📝 2단계: 문서 청킹 중...")
-        chunks = self.doc_processor.semantic_chunking(text)
+        chunks = doc_processor.semantic_chunking(text)
         print(f"✅ 총 {len(chunks)}개 청크 생성")
         
         # 청크 정보 출력
@@ -47,10 +51,11 @@ class KnowledgeBaseAdmin:
         avg_chunk_size = total_chars // len(chunks) if chunks else 0
         print(f"   - 평균 청크 크기: {avg_chunk_size:,} 문자")
         print(f"   - 최대 청크 크기: {max(len(chunk['content']) for chunk in chunks):,} 문자")
+        print(f"   - 최소 청크 크기: {min(len(chunk['content']) for chunk in chunks):,} 문자")
         
         # 3. 임베딩 생성
         print("\n🧠 3단계: 임베딩 생성 중...")
-        chunks_with_embeddings = self.doc_processor.generate_embeddings(chunks)
+        chunks_with_embeddings = doc_processor.generate_embeddings(chunks)
         print("✅ 임베딩 생성 완료")
         
         # 4. 벡터 DB 저장
@@ -58,7 +63,7 @@ class KnowledgeBaseAdmin:
         vector_store.store_chunks(chunks_with_embeddings)
         
         print("\n" + "=" * 60)
-        print(f"🎉 지식베이스 '{kb_name}' 구축이 완료되었습니다!")
+        print(f"🎉 지식 베이스 '{kb_name}' 구축이 완료되었습니다!")
         print(f"📍 저장 위치: {Config.get_kb_path(kb_name)}")
         print(f"📊 처리된 청크 수: {len(chunks)}")
         print("=" * 60)
@@ -66,15 +71,15 @@ class KnowledgeBaseAdmin:
         return True
     
     def list_knowledge_bases(self):
-        """지식베이스 목록 출력"""
+        """지식 베이스 목록 출력"""
         print("=" * 60)
-        print("📋 지식베이스 목록")
+        print("📋 지식 베이스 목록")
         print("=" * 60)
         
         kb_list = Config.get_kb_list()
         
         if not kb_list:
-            print("❌ 등록된 지식베이스가 없습니다.")
+            print("❌ 등록된 지식 베이스가 없습니다.")
             return
         
         for i, kb_name in enumerate(kb_list, 1):
@@ -94,17 +99,17 @@ class KnowledgeBaseAdmin:
             return
         
         print("=" * 60)
-        print(f"📊 지식베이스 '{kb_name}' 상태 확인")
+        print(f"📊 지식 베이스 '{kb_name}' 상태 확인")
         print("=" * 60)
         
         vector_store = VectorStore(kb_name)
         status = vector_store.get_status()
         
         if not status['exists'] or status['count'] == 0:
-            print(f"❌ 지식베이스 '{kb_name}'이 존재하지 않거나 비어있습니다.")
+            print(f"❌ 지식 베이스 '{kb_name}'이 존재하지 않거나 비어있습니다.")
             return False
         
-        print(f"✅ 지식베이스가 존재합니다.")
+        print(f"✅ 지식 베이스가 존재합니다.")
         print(f"📊 저장된 청크 수: {status['count']:,}개")
         print(f"📍 저장 위치: {status['path']}")
         
@@ -160,18 +165,18 @@ class KnowledgeBaseAdmin:
     def delete_knowledge_base(self, kb_name: str):
         """지식 베이스 삭제"""
         print("=" * 60)
-        print(f"🗑️ 지식베이스 '{kb_name}' 삭제")
+        print(f"🗑️ 지식 베이스 '{kb_name}' 삭제")
         print("=" * 60)
         
         kb_path = Config.get_kb_path(kb_name)
         
         if not os.path.exists(kb_path):
-            print(f"❌ 지식베이스 '{kb_name}'이 존재하지 않습니다.")
+            print(f"❌ 지식 베이스 '{kb_name}'이 존재하지 않습니다.")
             return
         
-        print(f"⚠️ 삭제할 지식베이스: {kb_name}")
+        print(f"⚠️ 삭제할 지식 베이스: {kb_name}")
         print(f"⚠️ 경로: {kb_path}")
-        confirm = input("⚠️ 정말로 이 지식베이스를 삭제하시겠습니까? (yes/no): ").strip().lower()
+        confirm = input("⚠️ 정말로 이 지식 베이스를 삭제하시겠습니까? (yes/no): ").strip().lower()
         
         if confirm != 'yes':
             print("❌ 삭제가 취소되었습니다.")
@@ -179,17 +184,17 @@ class KnowledgeBaseAdmin:
         
         try:
             shutil.rmtree(kb_path)
-            print(f"✅ 지식베이스 '{kb_name}'이 성공적으로 삭제되었습니다.")
+            print(f"✅ 지식 베이스 '{kb_name}'이 성공적으로 삭제되었습니다.")
         except Exception as e:
             print(f"❌ 삭제 중 오류 발생: {e}")
     
     def get_valid_kb_name(self) -> str:
-        """유효한 지식베이스 이름 입력받기"""
+        """유효한 지식 베이스 이름 입력받기"""
         while True:
-            kb_name = input("📝 지식베이스 이름을 입력하세요: ").strip()
+            kb_name = input("📝 지식 베이스 이름을 입력하세요: ").strip()
             
             if not kb_name:
-                print("❌ 지식베이스 이름을 입력해주세요.")
+                print("❌ 지식 베이스 이름을 입력해주세요.")
                 continue
             
             # 파일명으로 사용할 수 없는 문자 제거
@@ -197,29 +202,80 @@ class KnowledgeBaseAdmin:
             safe_name = safe_name.replace(' ', '_')
             
             if not safe_name:
-                print("❌ 올바른 지식베이스 이름을 입력해주세요.")
+                print("❌ 올바른 지식 베이스 이름을 입력해주세요.")
                 continue
             
             if safe_name != kb_name:
-                print(f"📝 지식베이스 이름이 '{safe_name}'으로 변경됩니다.")
+                print(f"📝 지식 베이스 이름이 '{safe_name}'으로 변경됩니다.")
                 confirm = input("계속하시겠습니까? (Y/n): ").strip().lower()
                 if confirm == 'n':
                     continue
             
             return safe_name
+    
+    def get_chunk_settings(self) -> tuple[int, int]:
+        """청크 크기 설정 입력받기"""
+        print("\n📏 청크 크기 설정")
+        print("💡 청크 크기가 클수록 더 많은 컨텍스트를 유지하지만, 검색 정확도가 떨어질 수 있습니다.")
+        print("💡 권장 설정:")
+        print("   - 기본 (6,000자): 균형잡힌 성능")
+        print("   - 작은 청크 (4,000자): 정확한 검색, 많은 청크 수")
+        print("   - 큰 청크 (8,000-10,000자): 풍부한 컨텍스트, 적은 청크 수")
+        print("   - 매우 큰 청크 (12,000-15,000자): 최대 컨텍스트, 매우 적은 청크 수")
+        
+        # 청크 크기 입력
+        while True:
+            chunk_input = input(f"\n📏 청크 크기를 입력하세요 (기본값: 8000): ").strip()
+            if not chunk_input:
+                chunk_size = 8000  # 개선된 기본값
+                break
+            
+            try:
+                chunk_size = int(chunk_input)
+                if chunk_size < 1000:
+                    print("❌ 청크 크기는 최소 1,000자 이상이어야 합니다.")
+                    continue
+                elif chunk_size > 20000:
+                    print("❌ 청크 크기는 최대 20,000자까지 권장됩니다.")
+                    continue
+                break
+            except ValueError:
+                print("❌ 올바른 숫자를 입력해주세요.")
+        
+        # 청크 오버랩 입력
+        while True:
+            overlap_input = input(f"🔄 청크 오버랩을 입력하세요 (기본값: {min(200, chunk_size // 40)}): ").strip()
+            if not overlap_input:
+                chunk_overlap = min(200, chunk_size // 40)  # 청크 크기의 2.5% 또는 200자 중 작은 값
+                break
+            
+            try:
+                chunk_overlap = int(overlap_input)
+                if chunk_overlap < 0:
+                    print("❌ 오버랩은 0 이상이어야 합니다.")
+                    continue
+                elif chunk_overlap >= chunk_size // 2:
+                    print(f"❌ 오버랩은 청크 크기의 절반({chunk_size // 2}자) 미만이어야 합니다.")
+                    continue
+                break
+            except ValueError:
+                print("❌ 올바른 숫자를 입력해주세요.")
+        
+        print(f"\n✅ 청크 설정: 크기 {chunk_size:,}자, 오버랩 {chunk_overlap}자")
+        return chunk_size, chunk_overlap
 
 def main():
-    print("🔧 Spec 문서 지식베이스 관리자")
+    print("🔧 Spec 문서 지식 베이스 관리자")
     print("=" * 60)
     
     admin = KnowledgeBaseAdmin()
     
     while True:
         print("\n📋 메뉴:")
-        print("1. 새 지식베이스 구축")
-        print("2. 지식베이스 목록 보기")
-        print("3. 지식베이스 상태 확인")
-        print("4. 지식베이스 삭제")
+        print("1. 새 지식 베이스 구축 (청크 크기 설정 가능)")
+        print("2. 지식 베이스 목록 보기")
+        print("3. 지식 베이스 상태 확인")
+        print("4. 지식 베이스 삭제")
         print("5. 종료")
         
         choice = input("\n선택하세요 (1-5): ").strip()
@@ -229,14 +285,17 @@ def main():
             pdf_path = input("📄 Spec PDF 파일 경로를 입력하세요: ").strip()
             
             if pdf_path:
-                # 기존 지식베이스 덮어쓰기 확인
+                # 청크 크기 설정 받기
+                chunk_size, chunk_overlap = admin.get_chunk_settings()
+                
+                # 기존 지식 베이스 덮어쓰기 확인
                 if kb_name in Config.get_kb_list():
-                    overwrite = input(f"⚠️ '{kb_name}' 지식베이스가 이미 존재합니다. 덮어쓰시겠습니까? (y/N): ").strip().lower()
+                    overwrite = input(f"⚠️ '{kb_name}' 지식 베이스가 이미 존재합니다. 덮어쓰시겠습니까? (y/N): ").strip().lower()
                     if overwrite != 'y':
                         print("❌ 구축이 취소되었습니다.")
                         continue
                 
-                admin.build_knowledge_base(kb_name, pdf_path)
+                admin.build_knowledge_base(kb_name, pdf_path, chunk_size, chunk_overlap)
             else:
                 print("❌ 파일 경로를 입력해주세요.")
         
@@ -246,14 +305,14 @@ def main():
         elif choice == '3':
             kb_list = Config.get_kb_list()
             if not kb_list:
-                print("❌ 등록된 지식베이스가 없습니다.")
+                print("❌ 등록된 지식 베이스가 없습니다.")
                 continue
             
-            print("\n사용 가능한 지식베이스:")
+            print("\n사용 가능한 지식 베이스:")
             for i, kb_name in enumerate(kb_list, 1):
                 print(f"{i}. {kb_name}")
             
-            choice_kb = input("\n확인할 지식베이스 번호 (전체: Enter): ").strip()
+            choice_kb = input("\n확인할 지식 베이스 번호 (전체: Enter): ").strip()
             if choice_kb:
                 try:
                     kb_index = int(choice_kb) - 1
@@ -269,14 +328,14 @@ def main():
         elif choice == '4':
             kb_list = Config.get_kb_list()
             if not kb_list:
-                print("❌ 삭제할 지식베이스가 없습니다.")
+                print("❌ 삭제할 지식 베이스가 없습니다.")
                 continue
             
-            print("\n사용 가능한 지식베이스:")
+            print("\n사용 가능한 지식 베이스:")
             for i, kb_name in enumerate(kb_list, 1):
                 print(f"{i}. {kb_name}")
             
-            choice_kb = input("\n삭제할 지식베이스 번호: ").strip()
+            choice_kb = input("\n삭제할 지식 베이스 번호: ").strip()
             try:
                 kb_index = int(choice_kb) - 1
                 if 0 <= kb_index < len(kb_list):

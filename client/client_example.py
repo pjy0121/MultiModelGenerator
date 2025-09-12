@@ -9,7 +9,7 @@ class RequirementAPIClient:
         self.base_url = base_url
     
     def get_knowledge_bases(self) -> dict:
-        """지식베이스 목록 조회"""
+        """지식 베이스 목록 조회"""
         try:
             response = requests.get(f"{self.base_url}/knowledge-bases")
             response.raise_for_status()
@@ -18,7 +18,7 @@ class RequirementAPIClient:
             return {"error": str(e)}
     
     def get_knowledge_base_status(self, kb_name: str) -> dict:
-        """특정 지식베이스 상태 조회"""
+        """특정 지식 베이스 상태 조회"""
         try:
             response = requests.get(f"{self.base_url}/knowledge-bases/{kb_name}/status")
             response.raise_for_status()
@@ -64,10 +64,10 @@ def main():
         return
     
     print("✅ 서버 연결 성공!")
-    print(f"📊 지식베이스 수: {health['knowledge_bases_count']}")
+    print(f"📊 지식 베이스 수: {health['knowledge_bases_count']}")
     
-    # 2. 지식베이스 목록 조회
-    print("\n2. 지식베이스 목록 조회...")
+    # 2. 지식 베이스 목록 조회
+    print("\n2. 지식 베이스 목록 조회...")
     kb_list = client.get_knowledge_bases()
     
     if "error" in kb_list:
@@ -75,16 +75,16 @@ def main():
         return
     
     if kb_list['total_count'] == 0:
-        print("❌ 등록된 지식베이스가 없습니다.")
-        print("💡 admin.py를 실행하여 지식베이스를 구축하세요.")
+        print("❌ 등록된 지식 베이스가 없습니다.")
+        print("💡 admin.py를 실행하여 지식 베이스를 구축하세요.")
         return
     
-    print(f"✅ {kb_list['total_count']}개 지식베이스 발견:")
+    print(f"✅ {kb_list['total_count']}개 지식 베이스 발견:")
     for kb in kb_list['knowledge_bases']:
         print(f"  📚 {kb['name']} (청크 수: {kb['chunk_count']:,})")
     
     # 3. 사용자 입력
-    kb_name = input(f"\n사용할 지식베이스 이름: ").strip()
+    kb_name = input(f"\n사용할 지식 베이스 이름: ").strip()
     keyword = input("키워드: ").strip()
     
     # 검증 횟수 입력 추가
@@ -104,7 +104,7 @@ def main():
             print("❌ 숫자를 입력해주세요.")
     
     if not kb_name or not keyword:
-        print("❌ 지식베이스 이름과 키워드를 모두 입력해주세요.")
+        print("❌ 지식 베이스 이름과 키워드를 모두 입력해주세요.")
         return
     
     # 4. 요구사항 생성
@@ -128,7 +128,7 @@ def main():
     print("\n" + "=" * 60)
     print("📋 생성된 요구사항")
     print("=" * 60)
-    print(f"🏷️ 지식베이스: {result['knowledge_base']}")
+    print(f"🏷️ 지식 베이스: {result['knowledge_base']}")
     print(f"🔍 키워드: {result['keyword']}")
     print(f"📚 검색된 청크: {result['chunks_found']}개")
     print(f"🕐 생성 시간: {result['generated_at']}")

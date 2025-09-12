@@ -3,131 +3,131 @@ import { Button, Input, Typography, Space, Alert, Collapse, Card, Tag } from 'an
 import { SettingOutlined } from '@ant-design/icons';
 import { useWorkflowStore } from '../store/workflowStore';
 import { LayerType } from '../types';
-import ReactMarkdown from 'react-markdown';
 import CollapsibleWorkflowCanvas from './CollapsibleWorkflowCanvas';
 
 const { Text } = Typography;
 const { TextArea } = Input;
 
-// 개선된 Markdown 렌더러 - 테이블을 제대로 렌더링
-const MarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
-  // 빈 내용이나 undefined인 경우 처리
+// 실행 결과 전용 간단 마크다운 렌더러 
+const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
   if (!content || content.trim() === '') {
     return <Text type="secondary">내용이 없습니다.</Text>;
   }
 
-  return (
-    <div style={{ fontSize: '13px', lineHeight: '1.5' }}>
-      <ReactMarkdown
-        components={{
-          table: ({ children }) => (
-            <table style={{ 
-              borderCollapse: 'collapse', 
-              width: '100%', 
-              fontSize: '12px',
-              border: '2px solid #1890ff',
-              marginBottom: '16px',
-              backgroundColor: '#fff'
-            }}>
-              {children}
-            </table>
-          ),
-          thead: ({ children }) => (
-            <thead style={{ backgroundColor: '#e6f7ff' }}>
-              {children}
-            </thead>
-          ),
-          th: ({ children }) => (
-            <th style={{ 
-              border: '1px solid #1890ff', 
-              padding: '10px',
-              textAlign: 'left',
+  const lines = content.split('\n');
+  const elements: React.ReactElement[] = [];
+  let tableLines: string[] = [];
+  let inTable = false;
+  let key = 0;
+
+  const renderTable = (tableData: string[]) => {
+    if (tableData.length < 2) return null;
+    
+    const parseRow = (row: string) => {
+      return row.split('|').map(cell => cell.trim()).filter(cell => cell !== '');
+    };
+
+    const headerRow = parseRow(tableData[0]);
+    const dataRows = tableData.slice(2).map(parseRow).filter(row => row.length > 0);
+
+    if (headerRow.length === 0) return null;
+
+    return (
+      <table key={`simple-table-${key++}`} style={{
+        borderCollapse: 'collapse',
+        width: '100%',
+        fontSize: '12px',
+        border: '2px solid #722ed1',
+        marginBottom: '16px',
+        backgroundColor: '#fff'
+      }}>
+        <thead>
+          <tr style={{ backgroundColor: '#e6f7ff' }}>
+            {headerRow.map((header, idx) => (
+              <th key={idx} style={{
+                border: '1px solid #722ed1',
+                padding: '8px 12px',
+                textAlign: 'left',
+                fontWeight: 'bold',
+                backgroundColor: '#bae7ff',
+                color: '#722ed1'
+              }}>
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {dataRows.map((row, rowIdx) => (
+            <tr key={rowIdx}>
+              {row.map((cell, cellIdx) => (
+                <td key={cellIdx} style={{
+                  border: '1px solid #722ed1',
+                  padding: '8px 12px',
+                  verticalAlign: 'top',
+                  backgroundColor: '#fff'
+                }}>
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isTableLine = line.trim().includes('|') && line.trim().length > 0;
+
+    if (isTableLine) {
+      if (!inTable) {
+        inTable = true;
+        tableLines = [];
+      }
+      tableLines.push(line);
+    } else {
+      if (inTable) {
+        const table = renderTable(tableLines);
+        if (table) elements.push(table);
+        inTable = false;
+        tableLines = [];
+      }
+      
+      if (line.trim()) {
+        if (line.startsWith('**') && line.endsWith('**')) {
+          elements.push(
+            <div key={`heading-${key++}`} style={{
               fontWeight: 'bold',
-              backgroundColor: '#bae7ff',
-              color: '#1890ff'
+              fontSize: '14px',
+              color: '#722ed1',
+              margin: '12px 0 6px 0'
             }}>
-              {children}
-            </th>
-          ),
-          td: ({ children }) => (
-            <td style={{ 
-              border: '1px solid #1890ff', 
-              padding: '8px',
-              verticalAlign: 'top',
-              backgroundColor: '#fff'
+              {line.replace(/\*\*/g, '')}
+            </div>
+          );
+        } else {
+          elements.push(
+            <div key={`text-${key++}`} style={{
+              margin: '4px 0',
+              lineHeight: '1.5'
             }}>
-              {children}
-            </td>
-          ),
-          p: ({ children }) => (
-            <p style={{ margin: '8px 0', whiteSpace: 'pre-wrap' }}>
-              {children}
-            </p>
-          ),
-          h1: ({ children }) => (
-            <h1 style={{ fontSize: '16px', fontWeight: 'bold', margin: '12px 0 8px 0', color: '#1890ff' }}>
-              {children}
-            </h1>
-          ),
-          h2: ({ children }) => (
-            <h2 style={{ fontSize: '14px', fontWeight: 'bold', margin: '10px 0 6px 0', color: '#1890ff' }}>
-              {children}
-            </h2>
-          ),
-          h3: ({ children }) => (
-            <h3 style={{ fontSize: '13px', fontWeight: 'bold', margin: '8px 0 4px 0', color: '#1890ff' }}>
-              {children}
-            </h3>
-          ),
-          ul: ({ children }) => (
-            <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
-              {children}
-            </ul>
-          ),
-          ol: ({ children }) => (
-            <ol style={{ margin: '8px 0', paddingLeft: '20px' }}>
-              {children}
-            </ol>
-          ),
-          li: ({ children }) => (
-            <li style={{ margin: '2px 0' }}>
-              {children}
-            </li>
-          ),
-          strong: ({ children }) => (
-            <strong style={{ color: '#1890ff' }}>
-              {children}
-            </strong>
-          ),
-          code: ({ children }) => (
-            <code style={{ 
-              backgroundColor: '#f5f5f5', 
-              padding: '2px 4px', 
-              borderRadius: '3px',
-              fontSize: '11px',
-              border: '1px solid #e8e8e8'
-            }}>
-              {children}
-            </code>
-          ),
-          pre: ({ children }) => (
-            <pre style={{ 
-              backgroundColor: '#f5f5f5', 
-              padding: '12px', 
-              borderRadius: '4px',
-              border: '1px solid #e8e8e8',
-              overflow: 'auto',
-              fontSize: '11px'
-            }}>
-              {children}
-            </pre>
-          ),
-        }}
-      >
-        {content}
-      </ReactMarkdown>
-    </div>
-  );
+              {line}
+            </div>
+          );
+        }
+      }
+    }
+  }
+
+  // 마지막에 테이블이 있었다면 처리
+  if (inTable && tableLines.length > 0) {
+    const table = renderTable(tableLines);
+    if (table) elements.push(table);
+  }
+
+  return <div>{elements}</div>;
 };
 
 export const LayerWorkflowPanel: React.FC = () => {
@@ -139,6 +139,7 @@ export const LayerWorkflowPanel: React.FC = () => {
     layerPrompts,
     layerInputs,
     layerResults,
+    selectedProvider,
     executeLayerWithPrompt,
     setLayerPrompt,
     setLayerInput,
@@ -163,13 +164,13 @@ export const LayerWorkflowPanel: React.FC = () => {
     
     return (
       <Space size={4}>
-        <Tag color="blue" style={{ margin: 0, fontSize: '11px' }}>
+        <Tag color="green" style={{ margin: 0, fontSize: '11px' }}>
           Gen: {genCount}
         </Tag>
-        <Tag color="orange" style={{ margin: 0, fontSize: '11px' }}>
+        <Tag color="purple" style={{ margin: 0, fontSize: '11px' }}>
           Ens: {ensCount}
         </Tag>
-        <Tag color="green" style={{ margin: 0, fontSize: '11px' }}>
+        <Tag color="orange" style={{ margin: 0, fontSize: '11px' }}>
           Val: {valCount}
         </Tag>
       </Space>
@@ -179,10 +180,12 @@ export const LayerWorkflowPanel: React.FC = () => {
   // 전체 워크플로우 순차 실행 (Layer별 실행 방식 사용)
   const handleBatchExecute = async () => {
     if (!selectedKnowledgeBase) {
+      console.warn('지식 베이스를 선택해주세요.');
       return;
     }
     
     if (!keyword.trim()) {
+      console.warn('키워드를 입력해주세요.');
       return;
     }
 
@@ -198,35 +201,36 @@ export const LayerWorkflowPanel: React.FC = () => {
       
       // 1. Generation Layer 실행
       console.log('Step 1: Generation Layer 실행');
-      await executeLayerWithPrompt(LayerType.GENERATION);
+      const genResult = await executeLayerWithPrompt(LayerType.GENERATION);
       
-      // 잠시 대기 후 결과 확인
-      await new Promise(resolve => setTimeout(resolve, 500));
-      const genResult = layerResults.generation;
+      if (!genResult || !genResult.combined_result) {
+        throw new Error('Generation Layer 실행 실패: 결과가 없습니다.');
+      }
       
-      if (genResult && genResult.combined_result) {
-        setLayerInput(LayerType.ENSEMBLE, genResult.combined_result);
-        
-        // 2. Ensemble Layer 실행
-        console.log('Step 2: Ensemble Layer 실행');
-        await executeLayerWithPrompt(LayerType.ENSEMBLE);
-        
-        // 잠시 대기 후 결과 확인
-        await new Promise(resolve => setTimeout(resolve, 500));
-        const ensResult = layerResults.ensemble;
-        
-        if (ensResult && ensResult.combined_result) {
-          setLayerInput(LayerType.VALIDATION, ensResult.combined_result);
-          
-          // 3. Validation Layer 실행
-          console.log('Step 3: Validation Layer 실행');
-          await executeLayerWithPrompt(LayerType.VALIDATION);
-        }
+      console.log('Generation Layer 완료, Ensemble Layer 실행 중...');
+      
+      // 2. Ensemble Layer 실행 (executeLayerWithPrompt 내부에서 자동으로 input 설정됨)
+      console.log('Step 2: Ensemble Layer 실행');
+      const ensResult = await executeLayerWithPrompt(LayerType.ENSEMBLE);
+      
+      if (!ensResult || !ensResult.combined_result) {
+        throw new Error('Ensemble Layer 실행 실패: 결과가 없습니다.');
+      }
+      
+      console.log('Ensemble Layer 완료, Validation Layer 실행 중...');
+      
+      // 3. Validation Layer 실행 (executeLayerWithPrompt 내부에서 자동으로 input 설정됨)
+      console.log('Step 3: Validation Layer 실행');
+      const valResult = await executeLayerWithPrompt(LayerType.VALIDATION);
+      
+      if (!valResult) {
+        throw new Error('Validation Layer 실행 실패: 결과가 없습니다.');
       }
       
       console.log('전체 워크플로우 실행 완료!');
     } catch (error: any) {
       console.error('전체 워크플로우 실행 중 오류가 발생했습니다:', error);
+      // 여기서 사용자에게 알림을 보여줄 수 있습니다 (예: message.error)
     } finally {
       setIsExecuting(false);
     }
@@ -259,7 +263,8 @@ export const LayerWorkflowPanel: React.FC = () => {
     const prompt = layerPrompts[layerType] || '';
     const input = layerInputs[layerType] || '';
     const result = layerResults[layerType];
-    const isExecuting = executingLayers.has(layerType);
+    const isLayerExecuting = executingLayers.has(layerType);
+    const isAnyExecuting = isExecuting || isLayerExecuting; // 전체 실행 또는 개별 레이어 실행 중
 
     const collapseItems = [
       {
@@ -273,8 +278,8 @@ export const LayerWorkflowPanel: React.FC = () => {
                 e.stopPropagation(); // Collapse 토글 방지
                 handleLayerExecution(layerType);
               }}
-              loading={isExecuting}
-              disabled={!prompt.trim() || !selectedKnowledgeBase || !input.trim()}
+              loading={isLayerExecuting}
+              disabled={!prompt.trim() || !selectedKnowledgeBase || !input.trim() || isAnyExecuting}
               size="small"
             >
               실행
@@ -303,22 +308,6 @@ export const LayerWorkflowPanel: React.FC = () => {
                 rows={4}
                 style={{ marginTop: 8 }}
               />
-              {input && (
-                <div style={{ marginTop: 8 }}>
-                  <Text strong>Input 미리보기:</Text>
-                  <div style={{ 
-                    marginTop: 4, 
-                    padding: 8, 
-                    backgroundColor: '#f9f9f9', 
-                    border: '1px solid #d9d9d9', 
-                    borderRadius: 4,
-                    maxHeight: 200,
-                    overflow: 'auto'
-                  }}>
-                    <MarkdownRenderer content={input} />
-                  </div>
-                </div>
-              )}
             </div>
 
             {result && (
@@ -333,11 +322,37 @@ export const LayerWorkflowPanel: React.FC = () => {
                   maxHeight: 400,
                   overflow: 'auto'
                 }}>
-                  {result.combined_result ? (
-                    <MarkdownRenderer content={result.combined_result} />
-                  ) : (
-                    <Text type="secondary">결과가 비어있습니다. 콘솔을 확인해주세요.</Text>
-                  )}
+                  {/* Layer 실행 결과는 포괄적인 내용(combined_result) 우선 표시 */}
+                  {(() => {
+                    // 실행 결과에 대한 확실한 마크다운 렌더링
+                    const renderResultWithMarkdown = (content: string, label: string) => {
+                      const hasTable = content.includes('|');
+                      return (
+                        <div style={{ width: '100%' }}>
+                          <Text strong style={{ fontSize: '11px', color: '#666', display: 'block', marginBottom: '8px' }}>
+                            {label} ({content.length} chars, Table: {hasTable ? 'Yes' : 'No'}):
+                          </Text>
+                          <div style={{ 
+                            backgroundColor: '#fff',
+                            padding: '12px',
+                            borderRadius: '4px',
+                            border: '1px solid #e8e8e8'
+                          }}>
+                            <SimpleMarkdownRenderer content={content} />
+                          </div>
+                        </div>
+                      );
+                    };
+
+                    if (result.combined_result) {
+                      return renderResultWithMarkdown(result.combined_result, 'Combined Result');
+                    } else if (result.final_result) {
+                      return renderResultWithMarkdown(result.final_result, 'Final Result');
+                    } else {
+                      console.warn('결과가 비어있음:', result);
+                      return <Text type="secondary">결과가 비어있습니다. 콘솔을 확인해주세요.</Text>;
+                    }
+                  })()}
                 </div>
                 {/* 디버깅용 정보 */}
                 <details style={{ marginTop: 8, fontSize: '11px' }}>
@@ -359,16 +374,47 @@ export const LayerWorkflowPanel: React.FC = () => {
   if (!selectedKnowledgeBase) {
     return (
       <Alert
-        message="Knowledge Base가 선택되지 않았습니다"
-        description="먼저 ControlPanel에서 Knowledge Base를 선택해주세요."
+        message="지식 베이스가 선택되지 않았습니다"
+        description="먼저 실행 설정 창에서 지식 베이스를 선택해주세요."
         type="warning"
         showIcon
       />
     );
   }
 
+  // 실행 가능 여부 확인
+  const canExecute = () => {
+    if (!selectedKnowledgeBase || !keyword.trim()) {
+      return false;
+    }
+    if (!selectedProvider) {
+      return false;
+    }
+    // 모델 검증은 실행 시점에서 수행 (provider별 동적 로딩)
+    return true;
+  };
+
+  // 실행 불가 사유 메시지
+  const getDisabledReason = () => {
+    if (!selectedKnowledgeBase) return '지식 베이스를 선택해주세요';
+    if (!keyword.trim()) return '키워드를 입력해주세요';
+    if (!selectedProvider) return 'LLM Provider를 선택해주세요';
+    // 모델 검증은 실행 시점에서 수행
+    return '';
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%' }}>
+      {/* 실행 불가 상태 알림 */}
+      {!canExecute() && (
+        <Alert
+          message={getDisabledReason()}
+          type="warning"
+          showIcon
+          style={{ marginBottom: 8 }}
+        />
+      )}
+      
       {/* 워크플로우 구성 카드 */}
       <Card 
         title="워크플로우 구성" 
@@ -379,7 +425,8 @@ export const LayerWorkflowPanel: React.FC = () => {
             size="small"
             onClick={handleBatchExecute}
             loading={isExecuting}
-            disabled={!selectedKnowledgeBase || !keyword.trim()}
+            disabled={!canExecute()}
+            title={!canExecute() ? getDisabledReason() : ''}
           >
             전체 워크플로우 실행
           </Button>
@@ -389,6 +436,7 @@ export const LayerWorkflowPanel: React.FC = () => {
           {/* 워크플로우 배치 섹션 */}
           <Collapse
             size="small"
+            defaultActiveKey={['workflow-layout']}
             items={[{
               key: 'workflow-layout',
               label: (

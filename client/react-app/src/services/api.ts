@@ -25,7 +25,6 @@ import {
   EnsembleRequest,
   ValidationRequest,
   ValidationResponse,
-  WorkflowResult,
   KnowledgeBase,
   LayerExecutionRequest,
   LayerExecutionResponse,
@@ -85,22 +84,23 @@ export const stepwiseWorkflowAPI = {
 // ==================== 기존 API 함수들 ====================
 
 export const workflowAPI = {
-  // 기존 통합 워크플로우 (레거시)
-  executeWorkflow: async (workflowData: any): Promise<WorkflowResult> => {
-    const response = await api.post('/execute-workflow', workflowData);
-    return response.data;
-  },
-
-  // 지식베이스 목록 조회
+  // 지식 베이스 목록 조회
   getKnowledgeBases: async (): Promise<KnowledgeBase[]> => {
     const response = await api.get('/knowledge-bases');
     return response.data.knowledge_bases;
   },
 
-  // 사용 가능한 모델 목록
-  getAvailableModels: async () => {
-    const response = await api.get('/available-models');
-    return response.data.models;
+  // Provider별 모델 목록
+  getProviderModels: async (provider: string) => {
+    const response = await api.get(`/available-models/${provider}`);
+    // 서버 응답을 클라이언트 AvailableModel 형식으로 변환
+    return response.data.map((serverModel: any) => ({
+      id: serverModel.value || serverModel.model_type, // value를 id로 매핑
+      name: serverModel.label || serverModel.value,    // label을 name으로 매핑  
+      provider: serverModel.provider,
+      model_type: serverModel.model_type,
+      available: !serverModel.disabled               // disabled의 반대값을 available로 매핑
+    }));
   },
 
   // 기본 프롬프트 템플릿

@@ -1,18 +1,33 @@
 import { Node, Edge } from '@xyflow/react';
+
 export enum ModelType {
   PERPLEXITY_SONAR_PRO = "sonar-pro",
   PERPLEXITY_SONAR_MEDIUM = "sonar-medium",
   OPENAI_GPT4 = "gpt-4",
   OPENAI_GPT35 = "gpt-3.5-turbo"
 }
+
 export enum LayerType {
   GENERATION = "generation",
   ENSEMBLE = "ensemble", 
   VALIDATION = "validation"
 }
+
+export enum LLMProvider {
+  PERPLEXITY = "perplexity",
+  OPENAI = "openai",
+  GOOGLE = "google"
+}
+
+export enum SearchIntensity {
+  LOW = "low",      // 약: 기본 검색량
+  MEDIUM = "medium", // 중: 적당한 검색량  
+  HIGH = "high"     // 강: 최대 검색량
+}
+
 export interface WorkflowNodeData extends Record<string, unknown> {
   id: string;
-  model_type: ModelType;
+  model?: string;
   layer: LayerType;
   label: string;
 }
@@ -36,6 +51,20 @@ export interface NodeOutput {
   requirements: string;
   execution_time: number;
 }
+
+// 새로운 모델 관리 시스템 타입들
+export interface AvailableModel {
+  id: string;
+  name: string;
+  provider: LLMProvider;
+  model_type: string;
+  available: boolean;
+}
+
+export interface AvailableModelsResponse {
+  models: AvailableModel[];
+}
+
 export interface WorkflowResult {
   success: boolean;
   knowledge_base: string;
@@ -51,8 +80,9 @@ export interface WorkflowResult {
 export interface LayerPromptRequest {
   layer_type: LayerType;
   prompt: string;
-  input_data: string;
+  layer_input: string;
   knowledge_base: string;
+  top_k: number;  // 더 높은 기본값으로 사용 (50)
   nodes: NodeConfig[];
   context_chunks?: string[];
 }
@@ -61,10 +91,11 @@ export interface LayerPromptResponse {
   success: boolean;
   layer_type: LayerType;
   knowledge_base: string;
-  input_data: string;
+  layer_input: string;
   layer_prompt: string;
   outputs: NodeOutput[];
-  combined_result: string;
+  combined_result: string;  // 전체 상세 결과 (포괄적인 결과)
+  final_result: string;     // 최종 결과만 (핵심 결과)
   failed_nodes: string[];
   execution_time: number;
   context_chunks_used: string[];
@@ -73,7 +104,7 @@ export interface LayerPromptResponse {
 
 export interface ValidationLayerPromptResponse extends LayerPromptResponse {
   filtered_requirements: string[];
-  validation_changes: ValidationChange[];
+  validation_changes: string[];  // ValidationChange에서 string으로 간소화
   final_validated_result: string;
   validation_steps: Array<{
     step: number;
@@ -89,7 +120,7 @@ export interface ValidationLayerPromptResponse extends LayerPromptResponse {
 
 export interface LayerExecutionRequest {
   knowledge_base: string;
-  input_data: string;
+  layer_input: string;
   nodes: NodeConfig[];
   context_chunks?: string[];
 }
@@ -98,7 +129,7 @@ export interface LayerExecutionResponse {
   success: boolean;
   layer_type: LayerType;
   knowledge_base: string;
-  input_data: string;
+  layer_input: string;
   outputs: NodeOutput[];
   combined_result: string;
   failed_nodes: string[];
@@ -113,7 +144,8 @@ export interface ValidationLayerResponse extends LayerExecutionResponse {
 
 export interface NodeConfig {
   id: string;
-  model_type: ModelType;
+  model?: string;
+  provider?: string;
   prompt: string;
   layer: LayerType;
   position: { x: number; y: number };
@@ -124,7 +156,7 @@ export interface NodeConfig {
 export interface SearchContextRequest {
   knowledge_base: string;
   query: string;
-  top_k?: number;
+  top_k?: number;  // 기본값 50으로 처리됨
 }
 
 export interface SearchContextResponse {
@@ -137,7 +169,7 @@ export interface SearchContextResponse {
 
 export interface SingleNodeRequest {
   knowledge_base: string;
-  input_data: string;
+  layer_input: string;
   node_config: {
     id: string;
     model_type: ModelType;

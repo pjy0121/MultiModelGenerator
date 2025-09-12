@@ -8,7 +8,7 @@ class VectorStore:
         self.kb_name = kb_name
         self.db_path = Config.get_kb_path(kb_name)
         
-        # 지식베이스 디렉토리 생성
+        # 지식 베이스 디렉토리 생성
         os.makedirs(self.db_path, exist_ok=True)
         
         self.client = chromadb.PersistentClient(path=self.db_path)
@@ -19,7 +19,7 @@ class VectorStore:
     
     def store_chunks(self, chunks: List[Dict]) -> None:
         """청크들을 벡터 DB에 저장"""
-        print(f"💾 지식베이스 '{self.kb_name}'에 {len(chunks)}개 청크 저장 중...")
+        print(f"💾 지식 베이스 '{self.kb_name}'에 {len(chunks)}개 청크 저장 중...")
         
         # 기존 데이터 삭제 (새로 저장하는 경우)
         try:
@@ -48,24 +48,35 @@ class VectorStore:
                 metadatas=metadatas[i:end_idx]
             )
         
-        print(f"✅ 지식베이스 '{self.kb_name}' 저장 완료!")
+        print(f"✅ 지식 베이스 '{self.kb_name}' 저장 완료!")
     
     def search_similar_chunks(self, query: str, top_k: int = None) -> List[str]:
         """유사한 청크 검색"""
         if top_k is None:
             top_k = Config.SEARCH_TOP_K
+        
+        # 최대 검색 결과 수 제한 적용
+        if top_k > Config.SEARCH_MAX_TOP_K:
+            top_k = Config.SEARCH_MAX_TOP_K
             
-        print(f"🔍 지식베이스 '{self.kb_name}'에서 키워드 '{query}' 검색 중...")
+        print(f"🔍 지식 베이스 '{self.kb_name}'에서 키워드 '{query}' 검색 중... (top_k={top_k})")
         
         try:
             # 컬렉션이 비어있는지 확인
             collection_count = self.collection.count()
             if collection_count == 0:
-                print("❌ 지식베이스가 비어있습니다.")
+                print("❌ 지식 베이스가 비어있습니다.")
                 return []
             
-            # 실제 검색할 결과 수 조정 (전체 청크 수보다 많을 수 없음)
-            actual_top_k = min(top_k, collection_count)
+            # 포괄적 검색 모드가 활성화된 경우, 더 많은 결과 검색
+            if Config.SEARCH_ENABLE_COMPREHENSIVE:
+                # 전체 문서의 80% 또는 설정된 top_k 중 더 큰 값 사용
+                comprehensive_top_k = max(top_k, int(collection_count * 0.8))
+                actual_top_k = min(comprehensive_top_k, collection_count)
+                print(f"📖 포괄적 검색 모드: {actual_top_k}개 청크 검색 (전체 {collection_count}개 중)")
+            else:
+                # 실제 검색할 결과 수 조정 (전체 청크 수보다 많을 수 없음)
+                actual_top_k = min(top_k, collection_count)
             
             results = self.collection.query(
                 query_texts=[query],
@@ -77,15 +88,16 @@ class VectorStore:
                 chunks = results['documents'][0]
                 distances = results['distances'][0] if results['distances'] else []
                 
-                # 유사도 점수 기반 필터링 (거리 0.8 이하만 반환)
+                # 유사도 점수 기반 필터링 (설정된 임계값 사용)
                 filtered_chunks = []
                 for i, (chunk, distance) in enumerate(zip(chunks, distances)):
-                    if distance <= 0.8:  # 유사도 임계값
+                    if distance <= Config.SEARCH_SIMILARITY_THRESHOLD:
                         filtered_chunks.append(chunk)
-                    else:
-                        break  # 이미 거리순으로 정렬되어 있으므로 중단
+                    # 포괄적 검색 모드에서는 중단하지 않고 모든 결과 확인
+                    elif not Config.SEARCH_ENABLE_COMPREHENSIVE:
+                        break  # 일반 모드에서만 중단
                 
-                print(f"📚 {len(filtered_chunks)}개 관련 청크 발견 (총 {len(chunks)}개 중)")
+                print(f"📚 {len(filtered_chunks)}개 관련 청크 발견 (총 {len(chunks)}개 검색 결과 중)")
                 return filtered_chunks
             else:
                 print("❌ 관련 문서를 찾지 못했습니다.")
@@ -96,7 +108,7 @@ class VectorStore:
             return []
     
     def get_status(self) -> dict:
-        """지식베이스 상태 정보 반환"""
+        """지식 베이스 상태 정보 반환"""
         try:
             count = self.collection.count()
             return {

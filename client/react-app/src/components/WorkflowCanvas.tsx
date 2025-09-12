@@ -32,8 +32,9 @@ const nodeTypes = {
 const MiniMapNode = (props: any) => {
   const { x, y, width, height, color, strokeColor, strokeWidth, selected } = props;
   
+  // PlaceholderNode는 미니맵에서 숨김
   if (props.type === 'placeholderNode') {
-    return <g />;
+    return null;
   }
 
   return (
@@ -56,7 +57,8 @@ const WorkflowCanvasContent: React.FC = () => {
     nodes, 
     updateNode,
     currentViewport,
-    setCurrentViewport
+    setCurrentViewport,
+    isExecuting
   } = useWorkflowStore();
 
   const [reactFlowNodes, setReactFlowNodes, onNodesChange] = useNodesState<AnyWorkflowNode>(nodes);
@@ -76,10 +78,16 @@ const WorkflowCanvasContent: React.FC = () => {
     console.log('노드 클릭 이벤트:', node.type, node.id);
     
     if (node.type === 'placeholderNode') {
+      // 실행 중일 때는 노드 추가 방지
+      if (isExecuting) {
+        console.log('실행 중이므로 노드 추가가 차단됨');
+        return;
+      }
+      
       console.log('PlaceholderNode 클릭됨:', node.data.layer);
       node.data.onAddNode(node.data.layer);
     }
-  }, []);
+  }, [isExecuting]);
 
   const handleNodeDoubleClick = useCallback((event: React.MouseEvent, node: AnyWorkflowNode) => {
     if (node.type === 'placeholderNode') return;
@@ -110,7 +118,6 @@ const WorkflowCanvasContent: React.FC = () => {
     reactFlowInstance.current = instance;
     
     if (currentViewport) {
-      console.log('저장된 뷰포트 복원:', currentViewport);
       isRestoringViewport.current = true;
       instance.setViewport(currentViewport);
       setTimeout(() => {
@@ -133,7 +140,6 @@ const WorkflowCanvasContent: React.FC = () => {
   // ✅ 뷰포트 복원을 위한 useEffect 추가
   React.useEffect(() => {
     if (currentViewport && reactFlowInstance.current) {
-      console.log('뷰포트 변경 감지, 복원 중:', currentViewport);
       isRestoringViewport.current = true;
       reactFlowInstance.current.setViewport(currentViewport);
       setTimeout(() => {
@@ -213,8 +219,8 @@ const WorkflowCanvasContent: React.FC = () => {
           target: firstValidationNode.id,
           type: 'default',
           animated: true,
-          style: { stroke: '#1890ff', strokeWidth: 2 },
-          markerEnd: { type: MarkerType.ArrowClosed, color: '#1890ff' }
+          style: { stroke: '#722ed1', strokeWidth: 2 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: '#722ed1' }
         });
       }
     }
@@ -261,7 +267,7 @@ const WorkflowCanvasContent: React.FC = () => {
             </Title>
           </div>
           <div>
-            <Title level={5} style={{ margin: 0, color: '#1890ff', fontSize: '14px' }}>
+            <Title level={5} style={{ margin: 0, color: '#722ed1', fontSize: '14px' }}>
               Ensemble Layer (1)
             </Title>
           </div>
@@ -308,10 +314,15 @@ const WorkflowCanvasContent: React.FC = () => {
             nodeComponent={MiniMapNode}
             nodeStrokeWidth={2}
             nodeColor={(node) => {
+              // PlaceholderNode는 미니맵에서 제외
+              if (node.type === 'placeholderNode') {
+                return 'transparent';
+              }
+              
               const nodeData = node.data as any;
               switch (nodeData.layer) {
                 case LayerType.GENERATION: return '#52c41a';
-                case LayerType.ENSEMBLE: return '#1890ff';
+                case LayerType.ENSEMBLE: return '#722ed1';
                 case LayerType.VALIDATION: return '#faad14';
                 default: return '#e0e0e0';
               }

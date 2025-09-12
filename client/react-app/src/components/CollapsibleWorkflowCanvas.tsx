@@ -9,11 +9,11 @@ const { TextArea } = Input;
 
 const CollapsibleWorkflowCanvas: React.FC = () => {
   const { 
-    nodes, 
     setNodes, 
     saveCurrentWorkflow, 
     restoreWorkflow, 
-    exportToJSON 
+    exportToJSON,
+    isExecuting
   } = useWorkflowStore();
   
   const [importModalVisible, setImportModalVisible] = useState(false);
@@ -25,13 +25,27 @@ const CollapsibleWorkflowCanvas: React.FC = () => {
   };
 
   // ✅ 복원 시 뷰포트도 함께 복원되도록 개선
-  const handleRestore = () => {
-    const success = restoreWorkflow();
-    if (success) {
-      message.success('저장된 워크플로우 상태를 복원했습니다.');
-      // 뷰포트 복원은 store에서 자동으로 처리됨
-    } else {
-      message.warning('저장된 워크플로우가 없습니다.');
+  const handleRestore = async () => {
+    if (isExecuting) {
+      Modal.warning({
+        title: '워크플로우 실행 중',
+        content: '워크플로우가 실행 중입니다. 실행이 완료된 후 복원을 시도해주세요.',
+        okText: '확인'
+      });
+      return;
+    }
+    
+    try {
+      const success = await restoreWorkflow();
+      if (success) {
+        message.success('저장된 워크플로우 상태를 복원했습니다.');
+        // 뷰포트 복원은 store에서 자동으로 처리됨
+      } else {
+        message.warning('저장된 워크플로우가 없습니다.');
+      }
+    } catch (error) {
+      console.error('복원 중 오류:', error);
+      message.error('워크플로우 복원 중 오류가 발생했습니다.');
     }
   };
 
@@ -45,8 +59,12 @@ const CollapsibleWorkflowCanvas: React.FC = () => {
   };
 
   const handleImportJson = () => {
-    if (!jsonText.trim()) {
-      message.warning('JSON 데이터를 입력해주세요.');
+    if (isExecuting) {
+      Modal.warning({
+        title: '워크플로우 실행 중',
+        content: '워크플로우가 실행 중입니다. 실행이 완료된 후 JSON 파일을 불러와주세요.',
+        okText: '확인'
+      });
       return;
     }
 
@@ -70,6 +88,14 @@ const CollapsibleWorkflowCanvas: React.FC = () => {
   };
 
   const openImportModal = () => {
+    if (isExecuting) {
+      Modal.warning({
+        title: '워크플로우 실행 중',
+        content: '워크플로우가 실행 중입니다. 실행이 완료된 후 JSON 파일을 불러와주세요.',
+        okText: '확인'
+      });
+      return;
+    }
     setImportModalVisible(true);
     setJsonText('');
   };

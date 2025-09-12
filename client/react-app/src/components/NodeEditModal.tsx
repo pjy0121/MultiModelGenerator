@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { Modal, Form, Select, message } from 'antd';
-import { WorkflowNodeData, ModelType } from '../types';
+import { WorkflowNodeData } from '../types';
+import { useWorkflowStore } from '../store/workflowStore';
 
 interface NodeEditModalProps {
   visible: boolean;
@@ -16,45 +17,58 @@ const NodeEditModal: React.FC<NodeEditModalProps> = ({
   onCancel
 }) => {
   const [form] = Form.useForm();
+  
+  // WorkflowStore에서 미리 로드된 모델 목록 가져오기
+  const { providerModels } = useWorkflowStore();
 
+  // 노드 데이터로 폼 초기화
   useEffect(() => {
     if (nodeData && visible) {
-      console.log('모달에서 받은 노드 데이터:', nodeData); // 디버깅용
+      console.log('모달에서 받은 노드 데이터:', nodeData);
+
+      // 현재 노드의 모델 이름 찾기
+      let selectedModelId = '';
+      if (nodeData.model) {
+        selectedModelId = nodeData.model;
+      } else if ('model_type' in nodeData && typeof nodeData.model_type === 'string') {
+        // 기존 호환성을 위해 model_type 지원 (타입 안전하게)
+        selectedModelId = nodeData.model_type;
+      }
+
+      // 기본값으로 첫 번째 사용 가능한 모델 선택
+      if (!selectedModelId && providerModels.length > 0) {
+        const firstAvailableModel = providerModels.find(m => m.available);
+        selectedModelId = firstAvailableModel ? firstAvailableModel.id : providerModels[0].id;
+      }
+      
       form.setFieldsValue({
-        model_type: nodeData.model_type
+        model: selectedModelId
       });
     }
-  }, [nodeData, visible, form]);
+  }, [nodeData, visible, form, providerModels]);
 
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
-      console.log('폼 값:', values); // 디버깅용
+      console.log('폼 값:', values);
+      
+      const selectedModel = providerModels.find(m => m.id === values.model);
+      
+      // 비활성화된 모델 선택 확인
+      if (selectedModel && !selectedModel.available) {
+        message.warning('선택된 모델은 현재 사용할 수 없습니다. API 키를 확인해주세요.');
+        return;
+      }
       
       onSave({
-        model_type: values.model_type,
-        label: getModelLabel(values.model_type)
+        model: values.model,
+        label: selectedModel ? selectedModel.name : 'Unknown Model'
       });
       
       message.success('노드가 업데이트되었습니다.');
     } catch (error) {
       console.error('폼 검증 실패:', error);
       message.error('입력값을 확인해주세요.');
-    }
-  };
-
-  const getModelLabel = (modelType: ModelType): string => {
-    switch (modelType) {
-      case ModelType.PERPLEXITY_SONAR_PRO:
-        return "Sonar Pro";
-      case ModelType.PERPLEXITY_SONAR_MEDIUM:
-        return "Sonar Medium";
-      case ModelType.OPENAI_GPT4:
-        return "GPT-4";
-      case ModelType.OPENAI_GPT35:
-        return "GPT-3.5";
-      default:
-        return "Unknown";
     }
   };
 
@@ -70,28 +84,42 @@ const NodeEditModal: React.FC<NodeEditModalProps> = ({
       onOk={handleSave}
       onCancel={handleCancel}
       width={500}
-      destroyOnClose={true} // 모달이 닫힐 때 완전히 제거
+      destroyOnClose={true}
     >
       {nodeData && (
         <Form form={form} layout="vertical">
           <Form.Item
-            name="model_type"
-            label="모델 타입"
-            rules={[{ required: true, message: '모델 타입을 선택해주세요.' }]}
+            name="model"
+            label="모델 선택"
+            rules={[{ required: true, message: '모델을 선택해주세요.' }]}
           >
             <Select placeholder="모델을 선택하세요">
-              <Select.Option value={ModelType.PERPLEXITY_SONAR_PRO}>
-                Perplexity Sonar Pro
-              </Select.Option>
-              <Select.Option value={ModelType.PERPLEXITY_SONAR_MEDIUM}>
-                Perplexity Sonar Medium
-              </Select.Option>
-              <Select.Option value={ModelType.OPENAI_GPT4} disabled>
-                OpenAI GPT-4 (Coming Soon)
-              </Select.Option>
-              <Select.Option value={ModelType.OPENAI_GPT35} disabled>
-                OpenAI GPT-3.5 (Coming Soon)
-              </Select.Option>
+              {providerModels.map((model) => (
+                <Select.Option 
+                  key={model.id} 
+                  value={model.id}
+                  disabled={!model.available}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>{model.name}</span>
+                    <div>
+                      <span style={{ 
+                        color: model.provider === 'openai' ? '#52c41a' : 
+                              model.provider === 'google' ? '#4285f4' : '#722ed1',
+                        fontSize: '12px',
+                        marginRight: '8px'
+                      }}>
+                        {model.provider.toUpperCase()}
+                      </span>
+                      {!model.available && (
+                        <span style={{ color: '#ff4d4f', fontSize: '12px' }}>
+                          사용 불가
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </Select.Option>
+              ))}
             </Select>
           </Form.Item>
         </Form>

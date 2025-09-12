@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Layout, Typography, Row, Col } from 'antd';
 import ControlPanel from './components/ControlPanel';
 import { LayerWorkflowPanel } from './components/LayerWorkflowPanel';
 import ExecutionResultPanel from './components/ExecutionResultPanel';
+import { useWorkflowStore } from './store/workflowStore';
 import '@xyflow/react/dist/style.css';
 import 'antd/dist/reset.css';
 
@@ -10,6 +11,34 @@ const { Header, Content } = Layout;
 const { Title } = Typography;
 
 const App: React.FC = () => {
+  const { restoreWorkflow, initializeDefaultWorkflow } = useWorkflowStore();
+  
+  useEffect(() => {
+    // 페이지 로드 시 저장된 워크플로우 복원 시도
+    const initializeApp = async () => {
+      try {
+        const restored = await restoreWorkflow();
+        if (!restored) {
+          // 저장된 워크플로우가 없으면 기본 워크플로우 초기화
+          console.log('저장된 워크플로우가 없어 기본 워크플로우를 초기화합니다.');
+          await initializeDefaultWorkflow();
+        } else {
+          console.log('✅ 저장된 워크플로우를 성공적으로 복원했습니다.');
+        }
+      } catch (error) {
+        console.error('워크플로우 초기화 중 오류:', error);
+        // 오류 발생 시 기본 워크플로우 초기화
+        try {
+          await initializeDefaultWorkflow();
+        } catch (fallbackError) {
+          console.error('기본 워크플로우 초기화도 실패:', fallbackError);
+        }
+      }
+    };
+    
+    initializeApp();
+  }, [restoreWorkflow, initializeDefaultWorkflow]);
+  
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Header style={{ background: '#001529', padding: '0 24px' }}>

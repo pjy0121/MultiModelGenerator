@@ -20,11 +20,9 @@ server/
     ├── core/             # 핵심 모듈
     │   ├── config.py     # 설정 관리
     │   ├── models.py     # 데이터 모델
-    │   ├── prompts.py    # 프롬프트 템플릿
-    │   └── workflow_engine.py  # 워크플로우 엔진
+    │   └── layer_engine.py  # 레이어 실행 엔진
     ├── services/         # 외부 서비스 연동
     │   ├── document_processor.py  # 문서 처리
-    │   ├── perplexity_client.py   # Perplexity AI 클라이언트
     │   └── vector_store.py        # Vector DB 관리
     └── admin/            # 관리자 도구
         └── admin.py      # 지식 베이스 관리
@@ -96,7 +94,7 @@ python admin_tool.py status <kb_name>
 ```http
 POST /search-context
 ```
-- 지식베이스에서 관련 청크 검색
+- 지식 베이스에서 관련 청크 검색
 - 프론트엔드에서 워크플로우 시작 시 사용
 
 #### 단일 노드 실행
@@ -120,23 +118,14 @@ POST /execute-validation
 - Validation Layer 노드 개별 실행
 - 변경사항 추적 기능 포함
 
-### 2. **기존 통합 워크플로우 API** (레거시)
+### 2. **지식 베이스 관리 API**
 
-#### 전체 워크플로우 실행
-```http
-POST /execute-workflow
-```
-- 전체 워크플로우를 한 번에 실행
-- 기존 방식 (사용자 피드백 제한)
-
-### 3. **지식베이스 관리 API**
-
-#### 지식베이스 목록
+#### 지식 베이스 목록
 ```http
 GET /knowledge-bases
 ```
 
-#### 지식베이스 상태
+#### 지식 베이스 상태
 ```http
 GET /knowledge-bases/{kb_name}/status
 ```
@@ -148,12 +137,7 @@ GET /knowledge-bases/{kb_name}/status
 GET /available-models
 ```
 
-#### 기본 프롬프트 템플릿
-```http
-GET /default-prompts
-```
-
-## 새로운 워크플로우 실행 방식
+## 레이어 기반 실행 방식
 
 ### 프론트엔드에서의 실행 흐름:
 

@@ -15,7 +15,7 @@ App GUI에서 다음과 같은 기능들을 제공해야 함
 - Layer별 노드 추가/삭제 기능
    - Layer별 1개의 노드가 기본으로 존재
    - Layer별 첫 번째 노드는 삭제 불가하며, Layer별 마지막 노드에 대한 삭제 기능 제공
-   - Generation Layer는 최대 3개, Ensemble Layer는 1개, Validation Layer는 5개까지 추가 가능
+   - Generation Layer는 최대 5개, Ensemble Layer는 1개, Validation Layer는 3개까지 추가 가능
    - 다음 노드 추가가 가능한 위치에 PlaceholderNode가 보여야 함
 - 워크플로우 로컬 저장/복원 기능
    - React Flow 내 노드들의 위치와 Canvas 내의 Zoom과 View Point도 함께 저장/복원되어야 함

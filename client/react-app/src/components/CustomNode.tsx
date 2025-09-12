@@ -11,19 +11,35 @@ const { confirm } = Modal;
 type CustomNodeProps = NodeProps<WorkflowNode>;
 
 const CustomNode: React.FC<CustomNodeProps> = ({ data, selected }) => {
-  const { nodes, removeNode } = useWorkflowStore();
+  const { nodes, removeNode, currentExecutingLayer } = useWorkflowStore();
 
   const getNodeColor = (layer: LayerType) => {
     switch (layer) {
       case LayerType.GENERATION:
         return '#52c41a';
       case LayerType.ENSEMBLE:
-        return '#1890ff';
+        return '#722ed1'; // 보라색으로 변경 (선택된 노드의 파란색과 구분)
       case LayerType.VALIDATION:
         return '#faad14';
       default:
         return '#d9d9d9';
     }
+  };
+
+  // 현재 실행 중인 Layer인지 확인
+  const isCurrentlyExecuting = currentExecutingLayer === data.layer;
+
+  // 실행 중인 노드의 스타일
+  const getExecutingStyle = () => {
+    if (isCurrentlyExecuting) {
+      return {
+        boxShadow: '0 0 10px 2px rgba(255, 77, 79, 0.6)',
+        animation: 'pulse 1.5s ease-in-out infinite alternate',
+        border: '2px solid #ff4d4f',
+        borderColor: '#ff4d4f !important'
+      };
+    }
+    return {};
   };
 
   // ✅ 마지막 노드만 삭제 가능하도록 수정
@@ -80,10 +96,11 @@ const CustomNode: React.FC<CustomNodeProps> = ({ data, selected }) => {
         size="small"
         style={{
           width: 150,
-          borderColor: selected ? '#1890ff' : getNodeColor(data.layer),
-          borderWidth: selected ? 2 : 1,
+          borderColor: isCurrentlyExecuting ? '#ff4d4f' : (selected ? '#1890ff' : getNodeColor(data.layer)),
+          borderWidth: isCurrentlyExecuting ? 2 : (selected ? 2 : 1),
           cursor: 'pointer',
-          position: 'relative'
+          position: 'relative',
+          ...getExecutingStyle() // 실행 중인 노드 스타일 적용
         }}
         bodyStyle={{ padding: '8px 12px' }}
       >
@@ -173,6 +190,14 @@ const CustomNode: React.FC<CustomNodeProps> = ({ data, selected }) => {
           <Text type="secondary" style={{ fontSize: '10px' }}>
             {data.layer}
           </Text>
+          {isCurrentlyExecuting && (
+            <>
+              <br />
+              <Text style={{ fontSize: '9px', color: 'red', fontWeight: 'bold' }}>
+                실행 중...
+              </Text>
+            </>
+          )}
         </div>
       </Card>
     </div>
