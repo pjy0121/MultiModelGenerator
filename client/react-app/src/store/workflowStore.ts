@@ -1129,16 +1129,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       throw new Error('LLM Provider를 선택해주세요.');
     }
 
-    // 선택된 프로바이더의 사용 가능한 모델 확인
-    const providerModels = await get().loadProviderModels(selectedProvider);
-    const availableProviderModels = providerModels.filter(m => m.available);
-    if (availableProviderModels.length === 0) {
-      const providerName = selectedProvider === 'perplexity' ? 'Perplexity' :
-                          selectedProvider === 'openai' ? 'OpenAI' :
-                          selectedProvider === 'google' ? 'Google AI Studio' : selectedProvider;
-      throw new Error(`${providerName}에서 사용 가능한 모델이 없습니다. API 키를 확인해주세요.`);
-    }
-
     // 현재 실행 중인 Layer 상태 설정
     set({ 
       isExecuting: true,
@@ -1157,10 +1147,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         throw new Error(`${layer} 레이어에 노드가 없습니다.`);
       }
 
-      // 모든 Layer에 대해 지식 베이스 컨텍스트 검색 수행
+      // Ensemble Layer는 지식 베이스 검색을 skip (context를 사용하지 않음)
       let contextChunks: string[] = [];
       
-      if (selectedKnowledgeBase) {
+      if (selectedKnowledgeBase && layer !== LayerType.ENSEMBLE) {
         try {
           console.log(`${layer} Layer 컨텍스트 검색 시작...`);
           console.log('키워드:', keyword);
@@ -1175,8 +1165,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           contextChunks = searchResponse.chunks || [];
           console.log(`기본 키워드 검색 결과: ${contextChunks.length}개 청크`);
 
-          // 2. Generation/Ensemble Layer의 경우 추가 검색
-          if (layer === LayerType.GENERATION || layer === LayerType.ENSEMBLE) {
+          // 2. Generation Layer의 경우 추가 검색
+          if (layer === LayerType.GENERATION) {
             // 입력 데이터에서 키워드 추출하여 추가 검색
             const inputKeywords = input.split(/\s+/).filter(word => word.length > 2).slice(0, 3);
             for (const inputKeyword of inputKeywords) {
@@ -1236,6 +1226,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           console.error(`${layer} Layer 컨텍스트 검색 실패:`, error);
           contextChunks = [];
         }
+      } else if (layer === LayerType.ENSEMBLE) {
+        console.log(`⏭️ ${layer} Layer: 컨텍스트를 사용하지 않으므로 검색을 건너뜀`);
       } else {
         console.warn(`⚠️ ${layer} Layer: 지식 베이스가 선택되지 않아 컨텍스트 검색을 건너뜀`);
       }

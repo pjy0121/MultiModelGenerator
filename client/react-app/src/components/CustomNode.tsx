@@ -33,10 +33,11 @@ const CustomNode: React.FC<CustomNodeProps> = ({ data, selected }) => {
   const getExecutingStyle = () => {
     if (isCurrentlyExecuting) {
       return {
-        boxShadow: '0 0 10px 2px rgba(255, 77, 79, 0.6)',
-        animation: 'pulse 1.5s ease-in-out infinite alternate',
-        border: '2px solid #ff4d4f',
-        borderColor: '#ff4d4f !important'
+        boxShadow: '0 0 15px 3px rgba(255, 77, 79, 0.8)',
+        animation: 'pulse 1s ease-in-out infinite alternate',
+        border: '3px solid #ff4d4f',
+        borderColor: '#ff4d4f !important',
+        transform: 'scale(1.05)'
       };
     }
     return {};
