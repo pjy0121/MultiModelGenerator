@@ -114,22 +114,20 @@ class LayerPromptRequest(BaseModel):
     prompt: str
     layer_input: str
     knowledge_base: str
+    top_k: Optional[int] = Field(default=15, description="컨텍스트 검색 결과 수")
     nodes: List[NodeConfig] = Field(default=[], description="실행할 노드들")
     context_chunks: Optional[List[str]] = []
 
 class LayerPromptResponse(BaseModel):
+    """Layer 실행 응답 - 새로운 구조"""
     success: bool
     layer_type: LayerType
     knowledge_base: str
     layer_input: str
     layer_prompt: str
-    outputs: List[NodeOutput]
-    combined_result: str  # 전체 상세 결과 (포괄적인 결과)
-    final_result: str  # 최종 결과만 (핵심 결과)
-    failed_nodes: List[str]
+    node_outputs: Dict[str, Any] = Field(..., description="노드별 general_output과 통합 forward_data")
     execution_time: float
-    context_chunks_used: List[str]
-    updated_input: str  # 다음 Layer나 노드를 위한 업데이트된 input
+    timestamp: str
 
 class ValidationLayerPromptResponse(LayerPromptResponse):
     filtered_requirements: List[str] = Field(default_factory=list, description="필터링된 요구사항들")

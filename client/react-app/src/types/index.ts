@@ -130,11 +130,10 @@ export interface LayerExecutionResponse {
   layer_type: LayerType;
   knowledge_base: string;
   layer_input: string;
-  outputs: NodeOutput[];
-  combined_result: string;
-  failed_nodes: string[];
+  layer_prompt: string;
+  node_outputs: { [key: string]: string }; // 새로운 구조: { "node1": "general_output", "node2": "general_output", "forward_data": "결합된 forward_data" }
   execution_time: number;
-  context_chunks_used: string[];
+  timestamp: string;
 }
 
 export interface ValidationLayerResponse extends LayerExecutionResponse {

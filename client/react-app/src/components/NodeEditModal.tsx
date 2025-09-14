@@ -24,7 +24,6 @@ const NodeEditModal: React.FC<NodeEditModalProps> = ({
   // 노드 데이터로 폼 초기화
   useEffect(() => {
     if (nodeData && visible) {
-      console.log('모달에서 받은 노드 데이터:', nodeData);
 
       // 현재 노드의 모델 이름 찾기
       let selectedModelId = '';
@@ -50,7 +49,6 @@ const NodeEditModal: React.FC<NodeEditModalProps> = ({
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
-      console.log('폼 값:', values);
       
       const selectedModel = providerModels.find(m => m.id === values.model);
       
@@ -67,7 +65,6 @@ const NodeEditModal: React.FC<NodeEditModalProps> = ({
       
       message.success('노드가 업데이트되었습니다.');
     } catch (error) {
-      console.error('폼 검증 실패:', error);
       message.error('입력값을 확인해주세요.');
     }
   };

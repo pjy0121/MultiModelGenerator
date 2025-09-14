@@ -75,16 +75,12 @@ const WorkflowCanvasContent: React.FC = () => {
   );
 
   const handleNodeClick = useCallback((_event: React.MouseEvent, node: AnyWorkflowNode) => {
-    console.log('노드 클릭 이벤트:', node.type, node.id);
-    
     if (node.type === 'placeholderNode') {
       // 실행 중일 때는 노드 추가 방지
       if (isExecuting) {
-        console.log('실행 중이므로 노드 추가가 차단됨');
         return;
       }
       
-      console.log('PlaceholderNode 클릭됨:', node.data.layer);
       node.data.onAddNode(node.data.layer);
     }
   }, [isExecuting]);

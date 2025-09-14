@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { Layout, Typography, Row, Col } from 'antd';
+import { Layout, Typography } from 'antd';
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import ControlPanel from './components/ControlPanel';
 import { LayerWorkflowPanel } from './components/LayerWorkflowPanel';
 import ExecutionResultPanel from './components/ExecutionResultPanel';
@@ -48,10 +49,15 @@ const App: React.FC = () => {
       </Header>
       
       <Content style={{ padding: '16px', backgroundColor: '#f0f2f5' }}>
-        <Row gutter={[16, 0]} style={{ height: 'calc(100vh - 112px)' }}>
+        <PanelGroup direction="horizontal" style={{ height: 'calc(100vh - 112px)' }}>
           {/* 워크플로우 설정 및 실행 결과 - 좌측 */}
-          <Col span={8} style={{ height: '100%' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%' }}>
+          <Panel 
+            defaultSize={33} 
+            minSize={20} 
+            maxSize={50}
+            style={{ display: 'flex', flexDirection: 'column' }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%', padding: '0 8px 0 0' }}>
               {/* 실행 설정 - 필요한 크기만 차지 */}
               <div style={{ flexShrink: 0 }}>
                 <ControlPanel />
@@ -61,13 +67,45 @@ const App: React.FC = () => {
                 <ExecutionResultPanel />
               </div>
             </div>
-          </Col>
+          </Panel>
+          
+          {/* 리사이즈 핸들 */}
+          <PanelResizeHandle 
+            style={{ 
+              width: '6px', 
+              backgroundColor: '#e8e8e8',
+              cursor: 'col-resize',
+              borderRadius: '3px',
+              margin: '0 4px',
+              transition: 'background-color 0.2s ease',
+              position: 'relative'
+            }}
+            onMouseEnter={(e) => {
+              const target = e.currentTarget as unknown as HTMLElement;
+              if (target && target.style) {
+                target.style.backgroundColor = '#1890ff';
+              }
+            }}
+            onMouseLeave={(e) => {
+              const target = e.currentTarget as unknown as HTMLElement;
+              if (target && target.style) {
+                target.style.backgroundColor = '#e8e8e8';
+              }
+            }}
+          />
           
           {/* Layer별 워크플로우 실행 - 우측 */}
-          <Col span={16} style={{ height: '100%' }}>
-            <LayerWorkflowPanel />
-          </Col>
-        </Row>
+          <Panel 
+            defaultSize={67} 
+            minSize={50} 
+            maxSize={80}
+            style={{ display: 'flex', flexDirection: 'column' }}
+          >
+            <div style={{ height: '100%', padding: '0 0 0 8px', overflow: 'auto' }}>
+              <LayerWorkflowPanel />
+            </div>
+          </Panel>
+        </PanelGroup>
       </Content>
     </Layout>
   );

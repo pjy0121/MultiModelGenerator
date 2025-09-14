@@ -143,7 +143,8 @@ export const LayerWorkflowPanel: React.FC = () => {
     executeLayerWithPrompt,
     setLayerPrompt,
     setLayerInput,
-    setIsExecuting
+    resetExecution,
+    startStepwiseExecution
   } = useWorkflowStore();
 
   const [executingLayers, setExecutingLayers] = useState<Set<LayerType>>(new Set());
@@ -177,62 +178,28 @@ export const LayerWorkflowPanel: React.FC = () => {
     );
   };
 
-  // 전체 워크플로우 순차 실행 (Layer별 실행 방식 사용)
+  // 전체 워크플로우 순차 실행 (startStepwiseExecution 사용)
   const handleBatchExecute = async () => {
     if (!selectedKnowledgeBase) {
-      console.warn('지식 베이스를 선택해주세요.');
       return;
     }
     
     if (!keyword.trim()) {
-      console.warn('키워드를 입력해주세요.');
       return;
     }
 
     try {
-      setIsExecuting(true);
-      
       // 각 레이어에 기본 입력 설정 (키워드 기반)
       if (!layerInputs.generation.trim()) {
         setLayerInput(LayerType.GENERATION, keyword.trim());
       }
       
-      console.log('전체 워크플로우 순차 실행 시작...');
+      // startStepwiseExecution을 사용하여 전체 워크플로우 실행
+      await startStepwiseExecution();
       
-      // 1. Generation Layer 실행
-      console.log('Step 1: Generation Layer 실행');
-      const genResult = await executeLayerWithPrompt(LayerType.GENERATION);
-      
-      if (!genResult || !genResult.combined_result) {
-        throw new Error('Generation Layer 실행 실패: 결과가 없습니다.');
-      }
-      
-      console.log('Generation Layer 완료, Ensemble Layer 실행 중...');
-      
-      // 2. Ensemble Layer 실행 (executeLayerWithPrompt 내부에서 자동으로 input 설정됨)
-      console.log('Step 2: Ensemble Layer 실행');
-      const ensResult = await executeLayerWithPrompt(LayerType.ENSEMBLE);
-      
-      if (!ensResult || !ensResult.combined_result) {
-        throw new Error('Ensemble Layer 실행 실패: 결과가 없습니다.');
-      }
-      
-      console.log('Ensemble Layer 완료, Validation Layer 실행 중...');
-      
-      // 3. Validation Layer 실행 (executeLayerWithPrompt 내부에서 자동으로 input 설정됨)
-      console.log('Step 3: Validation Layer 실행');
-      const valResult = await executeLayerWithPrompt(LayerType.VALIDATION);
-      
-      if (!valResult) {
-        throw new Error('Validation Layer 실행 실패: 결과가 없습니다.');
-      }
-      
-      console.log('전체 워크플로우 실행 완료!');
     } catch (error: any) {
-      console.error('전체 워크플로우 실행 중 오류가 발생했습니다:', error);
-      // 여기서 사용자에게 알림을 보여줄 수 있습니다 (예: message.error)
-    } finally {
-      setIsExecuting(false);
+      // 에러는 startStepwiseExecution 내부에서 처리됨
+      console.error('전체 워크플로우 실행 실패:', error);
     }
   };
 
@@ -240,13 +207,14 @@ export const LayerWorkflowPanel: React.FC = () => {
     // input_data 검증
     const input = layerInputs[layerType] || '';
     if (!input.trim()) {
-      console.warn(`${layerType} Layer: input_data가 비어있어서 실행할 수 없습니다.`);
       return;
     }
 
     setExecutingLayers(prev => new Set(prev).add(layerType));
     
     try {
+      // 개별 Layer 실행 시 currentExecution 초기화
+      resetExecution();
       await executeLayerWithPrompt(layerType);
       
       // 실행 완료 (결과는 ExecutionResultPanel에서 자동으로 감지됨)
@@ -287,83 +255,75 @@ export const LayerWorkflowPanel: React.FC = () => {
           </div>
         ),
         children: (
-          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-            <div>
-              <Text strong>Layer Prompt:</Text>
-              <TextArea
-                value={prompt}
-                onChange={(e) => setLayerPrompt(layerType, e.target.value)}
-                placeholder={`${title} 프롬프트를 입력하세요`}
-                rows={6}
-                style={{ marginTop: 8 }}
-              />
-            </div>
-
-            <div>
-              <Text strong>Layer Input:</Text>
-              <TextArea
-                value={input}
-                onChange={(e) => setLayerInput(layerType, e.target.value)}
-                placeholder={`${title} 입력 데이터를 입력하세요`}
-                rows={4}
-                style={{ marginTop: 8 }}
-              />
-            </div>
-
-            {result && (
+          <>
+            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
               <div>
-                <Text strong>실행 결과:</Text>
-                <div style={{ 
-                  marginTop: 8, 
-                  padding: 12, 
-                  backgroundColor: '#f6ffed', 
-                  border: '1px solid #b7eb8f', 
-                  borderRadius: 4,
-                  maxHeight: 400,
-                  overflow: 'auto'
-                }}>
-                  {/* Layer 실행 결과는 포괄적인 내용(combined_result) 우선 표시 */}
-                  {(() => {
-                    // 실행 결과에 대한 확실한 마크다운 렌더링
-                    const renderResultWithMarkdown = (content: string, label: string) => {
-                      const hasTable = content.includes('|');
-                      return (
-                        <div style={{ width: '100%' }}>
-                          <Text strong style={{ fontSize: '11px', color: '#666', display: 'block', marginBottom: '8px' }}>
-                            {label} ({content.length} chars, Table: {hasTable ? 'Yes' : 'No'}):
-                          </Text>
-                          <div style={{ 
-                            backgroundColor: '#fff',
-                            padding: '12px',
-                            borderRadius: '4px',
-                            border: '1px solid #e8e8e8'
-                          }}>
-                            <SimpleMarkdownRenderer content={content} />
-                          </div>
-                        </div>
-                      );
-                    };
-
-                    if (result.combined_result) {
-                      return renderResultWithMarkdown(result.combined_result, 'Combined Result');
-                    } else if (result.final_result) {
-                      return renderResultWithMarkdown(result.final_result, 'Final Result');
-                    } else {
-                      console.warn('결과가 비어있음:', result);
-                      return <Text type="secondary">결과가 비어있습니다. 콘솔을 확인해주세요.</Text>;
-                    }
-                  })()}
-                </div>
-                {/* 디버깅용 정보 */}
-                <details style={{ marginTop: 8, fontSize: '11px' }}>
-                  <summary>디버그 정보</summary>
-                  <pre style={{ fontSize: '10px', color: '#666' }}>
-                    {JSON.stringify(result, null, 2)}
-                  </pre>
-                </details>
+                <Text strong>Layer Prompt:</Text>
+                <TextArea
+                  value={prompt}
+                  onChange={(e) => setLayerPrompt(layerType, e.target.value)}
+                  placeholder={`${title} 프롬프트를 입력하세요`}
+                  rows={6}
+                  style={{ marginTop: 8 }}
+                />
               </div>
-            )}
-          </Space>
+
+              <div>
+                <Text strong>Layer Input:</Text>
+                <TextArea
+                  value={input}
+                  onChange={(e) => setLayerInput(layerType, e.target.value)}
+                  placeholder={`${title} 입력 데이터를 입력하세요`}
+                  rows={4}
+                  style={{ marginTop: 8 }}
+                />
+              </div>
+
+              {result && (
+                <div>
+                  <Text strong>실행 결과:</Text>
+                  <div style={{ 
+                    marginTop: 8, 
+                    padding: 12, 
+                    backgroundColor: '#f6ffed', 
+                    border: '1px solid #b7eb8f', 
+                    borderRadius: 4,
+                    maxHeight: 400,
+                    overflow: 'auto'
+                  }}>
+                    {result.node_outputs ? (
+                      <div style={{ width: '100%' }}>
+                        {Object.keys(result.node_outputs)
+                          .filter(key => key.startsWith('node'))
+                          .map((nodeKey) => {
+                            const general_output = result.node_outputs[nodeKey];
+                            
+                            return (
+                              <div key={nodeKey} style={{ marginBottom: '16px' }}>
+                                <Text strong style={{ fontSize: '10px', color: '#1890ff', display: 'block', marginBottom: '4px' }}>
+                                  {nodeKey} 결과:
+                                </Text>
+                                <div style={{ 
+                                  backgroundColor: '#fff',
+                                  padding: '8px',
+                                  borderRadius: '4px',
+                                  border: '1px solid #e8e8e8',
+                                  fontSize: '11px'
+                                }}>
+                                  <SimpleMarkdownRenderer content={general_output || '결과 없음'} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    ) : (
+                      <Text type="secondary">결과 데이터가 없습니다.</Text>
+                    )}
+                  </div>
+                </div>
+              )}
+            </Space>
+          </>
         )
       }
     ];

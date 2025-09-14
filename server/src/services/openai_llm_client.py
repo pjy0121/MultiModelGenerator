@@ -22,7 +22,6 @@ class OpenAIClient(LLMClientInterface):
                 api_key=Config.OPENAI_API_KEY
             )
         except Exception as e:
-            print(f"⚠️ OpenAIClient 초기화 실패: {e}")
             self.client = None
     
     def chat_completion(
@@ -91,5 +90,4 @@ class OpenAIClient(LLMClientInterface):
             return available_models
             
         except Exception as e:
-            print(f"⚠️ OpenAI 모델 목록 가져오기 실패: {e}")
             return []

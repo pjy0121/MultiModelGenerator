@@ -23,7 +23,6 @@ class PerplexityClient(LLMClientInterface):
                 base_url=Config.PERPLEXITY_BASE_URL
             )
         except Exception as e:
-            print(f"⚠️ PerplexityClient 초기화 실패: {e}")
             self.client = None
     
     def chat_completion(

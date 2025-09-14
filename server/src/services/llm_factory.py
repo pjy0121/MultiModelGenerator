@@ -20,17 +20,17 @@ class LLMFactory:
         try:
             cls._clients["perplexity"] = PerplexityClient()
         except Exception as e:
-            print(f"⚠️ Perplexity 클라이언트 초기화 실패: {e}")
+            pass
             
         try:
             cls._clients["openai"] = OpenAIClient()
         except Exception as e:
-            print(f"⚠️ OpenAI 클라이언트 초기화 실패: {e}")
+            pass
             
         try:
             cls._clients["google"] = GoogleLLMClient()
         except Exception as e:
-            print(f"⚠️ Google AI 클라이언트 초기화 실패: {e}")
+            pass
             
         cls._initialized = True
     
