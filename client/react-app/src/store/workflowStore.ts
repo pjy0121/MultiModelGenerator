@@ -769,62 +769,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           finalRequirements = '';
         }
         
-        // Validation Layer가 있는 경우 실행
-        if (validationNodes.length > 0) {
-          console.log('🚀 Validation Layer 시작');
-          // Validation Layer들을 순차적으로 실행
-          for (const node of validationNodes) {
-            const stepId = `val_${node.id}`;
-            get().updateExecutionStep(stepId, { status: 'running', start_time: new Date() });
-            
-            try {
-              // Validation Layer 프롬프트가 설정되어 있는지 확인
-              if (!layerPrompts[LayerType.VALIDATION]) {
-                throw new Error('Validation Layer 프롬프트가 설정되지 않았습니다.');
-              }
-              
-              // Validation Layer 실행 (executeLayerWithPrompt에서 자동으로 데이터 흐름 처리됨)
-              const validationResponse = await get().executeLayerWithPrompt(LayerType.VALIDATION);
-              
-              // Validation 결과로 현재 요구사항 업데이트 (node_outputs.forward_data 사용)
-              if (validationResponse.node_outputs?.forward_data && validationResponse.node_outputs.forward_data.trim()) {
-                finalRequirements = validationResponse.node_outputs.forward_data;
-              } else {
-                console.warn('⚠️ Validation Layer에서 forward_data를 찾을 수 없습니다.');
-              }
-              
-              get().updateExecutionStep(stepId, { 
-                status: 'completed', 
-                end_time: new Date(),
-                result: validationResponse 
-              });
-              
-            } catch (error) {
-              get().updateExecutionStep(stepId, { 
-                status: 'error', 
-                end_time: new Date(),
-                error: error instanceof Error ? error.message : 'Unknown error'
-              });
-              // Validation 오류는 계속 진행 (선택적 단계)
-            }
-          }
-        }
-        
-        // 최종 완료
-        set(state => ({
-          currentExecution: state.currentExecution ? {
-            ...state.currentExecution,
-            finalResult: finalRequirements,
-            status: 'completed'
-          } : null,
-          isExecuting: false,
-          currentExecutingLayer: null,
-          result: {
-            final_requirements: finalRequirements,
-            execution_steps: get().currentExecution?.steps || []
-          }
-        }));
-        
       } catch (error) {
         get().updateExecutionStep('ensemble', { 
           status: 'error', 
@@ -846,6 +790,66 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         console.error('Ensemble Layer 실행 실패로 워크플로우 중단:', error);
         return; // Ensemble 실패 시 전체 실행 중단
       }
+      
+      // 4. Validation Layer 실행 (Ensemble 성공 후)
+      let finalRequirements = get().layerInputs[LayerType.VALIDATION] || '';
+      
+      if (validationNodes.length > 0) {
+        console.log('🚀 Validation Layer 시작');
+        // Validation Layer들을 순차적으로 실행
+        for (const node of validationNodes) {
+          const stepId = `val_${node.id}`;
+          get().updateExecutionStep(stepId, { status: 'running', start_time: new Date() });
+          
+          try {
+            // Validation Layer 프롬프트가 설정되어 있는지 확인
+            if (!layerPrompts[LayerType.VALIDATION]) {
+              throw new Error('Validation Layer 프롬프트가 설정되지 않았습니다.');
+            }
+            
+            // Validation Layer 실행 (executeLayerWithPrompt에서 자동으로 데이터 흐름 처리됨)
+            const validationResponse = await get().executeLayerWithPrompt(LayerType.VALIDATION);
+            
+            // Validation 결과로 현재 요구사항 업데이트 (node_outputs.forward_data 사용)
+            if (validationResponse.node_outputs?.forward_data && validationResponse.node_outputs.forward_data.trim()) {
+              finalRequirements = validationResponse.node_outputs.forward_data;
+            } else {
+              console.warn('⚠️ Validation Layer에서 forward_data를 찾을 수 없습니다.');
+            }
+            
+            get().updateExecutionStep(stepId, { 
+              status: 'completed', 
+              end_time: new Date(),
+              result: validationResponse 
+            });
+            
+          } catch (error) {
+            get().updateExecutionStep(stepId, { 
+              status: 'error', 
+              end_time: new Date(),
+              error: error instanceof Error ? error.message : 'Unknown error'
+            });
+            console.warn(`Validation 노드 ${node.id} 실행 실패, 계속 진행:`, error);
+            // Validation 오류는 계속 진행 (선택적 단계)
+          }
+        }
+      }
+      
+      // 5. 최종 완료 - 모든 Layer 실행 완료
+      console.log('🎉 전체 워크플로우 실행 완료');
+      set(state => ({
+        currentExecution: state.currentExecution ? {
+          ...state.currentExecution,
+          finalResult: finalRequirements,
+          status: 'completed'
+        } : null,
+        isExecuting: false,
+        currentExecutingLayer: null,
+        result: {
+          final_requirements: finalRequirements,
+          execution_steps: get().currentExecution?.steps || []
+        }
+      }));
       
     } catch (error) {
       set(state => ({
