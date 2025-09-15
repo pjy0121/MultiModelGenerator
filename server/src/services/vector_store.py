@@ -51,7 +51,7 @@ class VectorStore:
         print(f"✅ 지식 베이스 '{self.kb_name}' 저장 완료!")
     
     def search_similar_chunks(self, query: str, top_k: int = None) -> List[str]:
-        """유사한 청크 검색"""
+        """유사한 청크 검색 (페이지 정보 포함)"""
         if top_k is None:
             top_k = Config.SEARCH_TOP_K
         
@@ -87,12 +87,19 @@ class VectorStore:
             if results['documents'] and results['documents'][0]:
                 chunks = results['documents'][0]
                 distances = results['distances'][0] if results['distances'] else []
+                metadatas = results['metadatas'][0] if results['metadatas'] else []
                 
-                # 유사도 점수 기반 필터링 (설정된 임계값 사용)
+                # 유사도 점수 기반 필터링 및 페이지 정보 포함
                 filtered_chunks = []
                 for i, (chunk, distance) in enumerate(zip(chunks, distances)):
                     if distance <= Config.SEARCH_SIMILARITY_THRESHOLD:
-                        filtered_chunks.append(chunk)
+                        # 페이지 정보 추출 및 포함
+                        page_info = self._extract_page_info(chunk)
+                        if page_info:
+                            formatted_chunk = f"{chunk}\n\n[Source: {page_info}]"
+                        else:
+                            formatted_chunk = chunk
+                        filtered_chunks.append(formatted_chunk)
                     # 포괄적 검색 모드에서는 중단하지 않고 모든 결과 확인
                     elif not Config.SEARCH_ENABLE_COMPREHENSIVE:
                         break  # 일반 모드에서만 중단
@@ -106,6 +113,16 @@ class VectorStore:
         except Exception as e:
             print(f"⚠️ 검색 중 오류 발생: {e}")
             return []
+    
+    def _extract_page_info(self, chunk_text: str) -> str:
+        """청크에서 페이지 정보 추출"""
+        import re
+        # [Page X] 패턴 찾기
+        page_matches = re.findall(r'\[Page (\d+)\]', chunk_text)
+        if page_matches:
+            # 가장 마지막 페이지 번호 사용 (해당 청크의 실제 위치)
+            return f"Page {page_matches[-1]}"
+        return ""
     
     def get_status(self) -> dict:
         """지식 베이스 상태 정보 반환"""

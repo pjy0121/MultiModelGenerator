@@ -10,6 +10,7 @@ from langchain_core.runnables.base import Runnable
 
 from ..services.langchain_llm_factory import LangChainLLMFactory
 from ..services.vector_store import VectorStore
+from ..core.default_prompts import DEFAULT_LAYER_PROMPTS
 from src.langchain_parsers.output_parsers import (
     LayerOutputParser, 
     LayerOutput,
@@ -21,7 +22,6 @@ logger = logging.getLogger(__name__)
 # 상수 정의
 DEFAULT_MODEL = "gpt-3.5-turbo"
 DEFAULT_TOP_K = 15
-DEFAULT_MAX_EXCERPT_LENGTH = 100
 
 
 class LayerChainExecutor:
@@ -51,129 +51,32 @@ class LayerChainExecutor:
         
         return RunnableLambda(retrieve_context)
     
-    def _create_requirements_chain(self, node: Dict[str, Any], knowledge_base: str) -> Runnable:
-        """요구사항 생성 체인 생성"""
-        # 프롬프트 템플릿 (직접 문자열 사용)
-        prompt_template = ChatPromptTemplate.from_template("""
-다음 컨텍스트와 입력을 기반으로 요구사항을 생성하세요.
-
-컨텍스트:
-{context}
-
-입력 데이터:
-{input_data}
-
-노드 프롬프트:
-{node_prompt}
-
-응답은 다음 JSON 형식으로 제공하세요:
-{{
-    "content": "요구사항 분석에 대한 상세한 설명",
-    "requirements": ["요구사항1", "요구사항2", "요구사항3"],
-    "confidence_score": 0.85
-}}
-""")
+    def _create_chain(self, node: Dict[str, Any], knowledge_base: str, layer_type: str) -> Runnable:
+        """레이어 타입에 따른 통합 체인 생성"""
+        # 레이어 타입에 따른 프롬프트 선택
+        prompt_mapping = {
+            "requirement": "generation",
+            "ensemble": "ensemble", 
+            "validation": "validation"
+        }
+        
+        prompt_key = prompt_mapping.get(layer_type)
+        if not prompt_key:
+            raise ValueError(f"지원하지 않는 레이어 타입: {layer_type}")
+        
+        # 프롬프트 템플릿 생성
+        prompt_template = ChatPromptTemplate.from_template(DEFAULT_LAYER_PROMPTS[prompt_key])
         
         # LLM 선택
         try:
             llm = self.llm_factory.get_llm_by_model_id(node.get("model", DEFAULT_MODEL))
         except Exception as e:
-            logger.error(f"LLM 초기화 실패: {e}")
+            logger.error(f"LLM 초기화 실패 ({layer_type}): {e}")
             raise
-        
-        # 출력 파서 (문자열만 반환)
-        output_parser = self.str_parser
         
         # 체인 구성
         context_retriever = self._create_context_retriever(knowledge_base)
-        
-        chain = (
-            context_retriever
-            | prompt_template
-            | llm
-            | output_parser
-        )
-        
-        return chain
-    
-    def _create_ensemble_chain(self, node: Dict[str, Any], knowledge_base: str) -> Runnable:
-        """앙상블 레이어 체인 생성"""
-        prompt_template = ChatPromptTemplate.from_template("""
-여러 관점을 고려하여 최종 의사결정을 내리세요.
-
-컨텍스트:
-{context}
-
-입력 데이터 (이전 결정들):
-{input_data}
-
-노드 프롬프트:
-{node_prompt}
-
-응답은 다음 JSON 형식으로 제공하세요:
-{{
-    "content": "의사결정 과정에 대한 상세한 설명",
-    "decisions": [
-        {{"perspective": "관점1", "decision": "결정1", "reasoning": "근거1"}},
-        {{"perspective": "관점2", "decision": "결정2", "reasoning": "근거2"}}
-    ],
-    "final_decision": "최종 합의된 결정",
-    "confidence_score": 0.9
-}}
-""")
-        
-        try:
-            llm = self.llm_factory.get_llm_by_model_id(node.get("model", DEFAULT_MODEL))
-        except Exception as e:
-            logger.error(f"LLM 초기화 실패: {e}")
-            raise
-        
         output_parser = self.str_parser
-        context_retriever = self._create_context_retriever(knowledge_base)
-        
-        chain = (
-            context_retriever
-            | prompt_template
-            | llm
-            | output_parser
-        )
-        
-        return chain
-    
-    def _create_validation_chain(self, node: Dict[str, Any], knowledge_base: str) -> Runnable:
-        """검증 레이어 체인 생성"""
-        prompt_template = ChatPromptTemplate.from_template("""
-주어진 요구사항이나 결정을 검증하세요.
-
-컨텍스트:
-{context}
-
-검증할 항목들:
-{input_data}
-
-노드 프롬프트:
-{node_prompt}
-
-응답은 다음 JSON 형식으로 제공하세요:
-{{
-    "content": "검증 과정에 대한 상세한 설명",
-    "validation_results": [
-        {{"criterion": "기준1", "status": "pass", "reason": "통과 이유"}},
-        {{"criterion": "기준2", "status": "fail", "reason": "실패 이유"}}
-    ],
-    "overall_valid": true,
-    "confidence_score": 0.8
-}}
-""")
-        
-        try:
-            llm = self.llm_factory.get_llm_by_model_id(node.get("model", DEFAULT_MODEL))
-        except Exception as e:
-            logger.error(f"LLM 초기화 실패: {e}")
-            raise
-        
-        output_parser = self.str_parser
-        context_retriever = self._create_context_retriever(knowledge_base)
         
         chain = (
             context_retriever
@@ -194,15 +97,8 @@ class LayerChainExecutor:
         """체인을 사용한 노드 실행 - 문자열 결과 반환"""
         
         try:
-            # 레이어 타입에 따른 체인 선택
-            if layer_type == "requirement":
-                chain = self._create_requirements_chain(node, knowledge_base)
-            elif layer_type == "ensemble":
-                chain = self._create_ensemble_chain(node, knowledge_base)
-            elif layer_type == "validation":
-                chain = self._create_validation_chain(node, knowledge_base)
-            else:
-                raise ValueError(f"지원하지 않는 레이어 타입: {layer_type}")
+            # 통합된 체인 생성 함수 사용
+            chain = self._create_chain(node, knowledge_base, layer_type)
             
             # 입력 데이터 준비
             input_data = {
@@ -252,23 +148,23 @@ class ChainBasedLayerExecutors:
                 # 결과 저장
                 result[f"node{node.get('id', 'unknown')}"] = chain_output
                 
-                # forward_data 생성 (JSON에서 추출하거나 첫 100자 사용)
+                # forward_data 생성 (전체 텍스트 사용)
                 try:
                     import json
                     parsed = json.loads(chain_output)
                     if "requirements" in parsed:
                         forward_data = f"Requirements: {', '.join(parsed['requirements'][:3])}"
                     else:
-                        forward_data = parsed.get("content", chain_output)[:DEFAULT_MAX_EXCERPT_LENGTH]
+                        forward_data = parsed.get("content", chain_output)
                 except:
-                    forward_data = chain_output[:DEFAULT_MAX_EXCERPT_LENGTH]
+                    forward_data = chain_output
                 
                 forward_data_list.append(forward_data)
-                logger.info(f"노드 {node.id} Chain 실행 완료")
+                logger.info(f"노드 {node.get('id', 'unknown')} Chain 실행 완료")
                 
             except Exception as e:
-                logger.error(f"노드 {node.id} Chain 실행 실패: {e}")
-                result[f"node{node.id}"] = f"실행 실패: {str(e)}"
+                logger.error(f"노드 {node.get('id', 'unknown')} Chain 실행 실패: {e}")
+                result[f"node{node.get('id', 'unknown')}"] = f"실행 실패: {str(e)}"
         
         # forward_data 결합
         result["forward_data"] = "\n\n".join(forward_data_list)
@@ -305,16 +201,16 @@ class ChainBasedLayerExecutors:
                     if "final_decision" in parsed:
                         forward_data = f"Decision: {parsed['final_decision']}"
                     else:
-                        forward_data = parsed.get("content", chain_output)[:DEFAULT_MAX_EXCERPT_LENGTH]
+                        forward_data = parsed.get("content", chain_output)
                 except:
-                    forward_data = chain_output[:DEFAULT_MAX_EXCERPT_LENGTH]
+                    forward_data = chain_output
                 
                 forward_data_list.append(forward_data)
-                logger.info(f"노드 {node.id} Chain 실행 완료")
+                logger.info(f"노드 {node.get('id', 'unknown')} Chain 실행 완료")
                 
             except Exception as e:
-                logger.error(f"노드 {node.id} Chain 실행 실패: {e}")
-                result[f"node{node.id}"] = f"실행 실패: {str(e)}"
+                logger.error(f"노드 {node.get('id', 'unknown')} Chain 실행 실패: {e}")
+                result[f"node{node.get('id', 'unknown')}"] = f"실행 실패: {str(e)}"
         
         result["forward_data"] = "\n\n".join(forward_data_list)
         
@@ -331,38 +227,40 @@ class ChainBasedLayerExecutors:
         logger.info(f"Chain 기반 Validation Layer 실행: {len(nodes)}개 노드")
         
         result = {}
-        final_forward_data = ""
+        current_input = layer_input  # 현재 노드의 입력 (순차적으로 업데이트됨)
         
         # 순차 실행 (validation은 순서 중요)
-        for node in nodes:
+        for i, node in enumerate(nodes):
             try:
-                # Chain으로 노드 실행
+                # Chain으로 노드 실행 (이전 노드의 결과를 다음 노드의 입력으로 사용)
                 chain_output = self.chain_executor.execute_node_with_chain(
-                    node, layer_input, knowledge_base, "validation"
+                    node, current_input, knowledge_base, "validation"
                 )
                 
                 # 결과 저장
                 result[f"node{node.get('id', 'unknown')}"] = chain_output
                 
-                # forward_data 업데이트 (덮어쓰기)
+                # forward_data 추출 및 다음 노드의 입력으로 설정
                 try:
                     import json
                     parsed = json.loads(chain_output)
-                    if "overall_valid" in parsed:
-                        status = "PASS" if parsed["overall_valid"] else "FAIL"
-                        final_forward_data = f"Validation: {status} - {parsed.get('content', '')[:DEFAULT_MAX_EXCERPT_LENGTH]}"
-                    else:
-                        final_forward_data = parsed.get("content", chain_output)[:DEFAULT_MAX_EXCERPT_LENGTH]
+                    forward_data = parsed.get("forward_data", chain_output)
+                    
+                    # 다음 노드를 위해 현재 결과를 입력으로 설정
+                    current_input = forward_data
+                    
                 except:
-                    final_forward_data = chain_output[:DEFAULT_MAX_EXCERPT_LENGTH]
+                    # JSON 파싱 실패 시 전체 결과를 다음 입력으로 사용
+                    current_input = chain_output
                 
-                logger.info(f"노드 {node.get('id', 'unknown')} Chain 실행 완료")
+                logger.info(f"노드 {node.get('id', 'unknown')} Chain 실행 완료 (노드 {i+1}/{len(nodes)})")
                 
             except Exception as e:
                 logger.error(f"노드 {node.get('id', 'unknown')} Chain 실행 실패: {e}")
                 result[f"node{node.get('id', 'unknown')}"] = f"실행 실패: {str(e)}"
         
-        result["forward_data"] = final_forward_data
+        # 최종 결과는 마지막 노드의 forward_data
+        result["forward_data"] = current_input
         
         logger.info(f"Validation Layer Chain 실행 완료")
         return result

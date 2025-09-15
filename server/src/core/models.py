@@ -136,3 +136,23 @@ class KnowledgeBaseListResponse(BaseModel):
     success: bool = True
     knowledge_bases: List[KnowledgeBaseInfo] = Field(..., description="지식 베이스 목록")
     total_count: int = Field(..., description="전체 지식 베이스 수")
+
+# ==================== 새로운 GET 기반 워크플로우 실행 모델들 ====================
+
+class SimpleWorkflowRequest(BaseModel):
+    """단순 GET 요청 기반 워크플로우 실행"""
+    knowledge_base: str = Field(..., description="사용할 지식 베이스 이름")
+    keyword: str = Field(..., description="검색 키워드")
+    search_intensity: str = Field(default="medium", description="검색 강도 (low/medium/high)")
+    generation_nodes: int = Field(default=2, description="Generation 레이어 노드 개수")
+    ensemble_nodes: int = Field(default=1, description="Ensemble 레이어 노드 개수") 
+    validation_nodes: int = Field(default=1, description="Validation 레이어 노드 개수")
+    model_name: str = Field(default="gpt-3.5-turbo", description="사용할 LLM 모델명")
+    provider: str = Field(default="openai", description="LLM 제공자")
+
+class SimpleWorkflowResponse(BaseModel):
+    """단순 워크플로우 실행 결과"""
+    success: bool = Field(..., description="실행 성공 여부")
+    final_result: str = Field(..., description="최종 마크다운 표 결과")
+    execution_summary: Dict[str, Any] = Field(..., description="실행 요약 정보")
+    total_execution_time: float = Field(..., description="전체 실행 시간(초)")

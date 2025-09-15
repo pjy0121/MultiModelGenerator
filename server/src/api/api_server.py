@@ -22,6 +22,9 @@ from ..core.models import (
     # 모델 관리
     AvailableModel,
     AvailableModelsResponse,
+    # 새로운 GET 기반 워크플로우 모델들
+    SimpleWorkflowRequest,
+    SimpleWorkflowResponse,
 )
 
 # LangChain 기반 실행기 import
@@ -413,4 +416,160 @@ async def _execute_chain_fallback_workflow(request: LayerPromptRequest, start_ti
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fallback 워크플로우 실행에 실패했습니다: {str(e)}"
+        )
+
+
+# ==================== 새로운 GET 기반 단순 워크플로우 API ====================
+
+@app.get("/simple-workflow", response_model=SimpleWorkflowResponse)
+async def execute_simple_workflow(
+    knowledge_base: str,
+    keyword: str,
+    search_intensity: str = "medium",
+    generation_nodes: int = 2,
+    ensemble_nodes: int = 1, 
+    validation_nodes: int = 1,
+    model_name: str = "gpt-3.5-turbo",
+    provider: str = "openai"
+):
+    """
+    GET 요청으로 전체 3-레이어 워크플로우를 한 번에 실행
+    Python 클라이언트를 위한 단순화된 API
+    """
+    start_time = time.time()
+    
+    try:
+        # 기본 프롬프트 import
+        from ..core.default_prompts import DEFAULT_LAYER_PROMPTS, SEARCH_INTENSITY_MAPPING
+        from .chain_executors import ChainBasedLayerExecutors
+        
+        logger.info(f"단순 워크플로우 실행 시작 - KB: {knowledge_base}, 키워드: {keyword}")
+        
+        # 검색 강도에 따른 top_k 값 설정
+        top_k = SEARCH_INTENSITY_MAPPING.get(search_intensity, 50)
+        
+        # Chain 실행기 초기화
+        chain_executors = ChainBasedLayerExecutors()
+        
+        # 1단계: Generation Layer 실행
+        logger.info(f"Generation Layer 실행 - {generation_nodes}개 노드")
+        
+        # Generation 노드들 생성
+        generation_layer_nodes = []
+        for i in range(generation_nodes):
+            node = {
+                "id": f"gen_{i+1}",
+                "model": model_name,
+                "provider": provider,
+                "prompt": DEFAULT_LAYER_PROMPTS["generation"],
+                "layer": "generation"
+            }
+            generation_layer_nodes.append(node)
+        
+        # Generation Layer 실행
+        gen_result = chain_executors.execute_generation_layer_with_chains(
+            generation_layer_nodes,
+            keyword,
+            knowledge_base
+        )
+        
+        logger.info("Generation Layer 완료")
+        
+        # 2단계: Ensemble Layer 실행
+        logger.info(f"Ensemble Layer 실행 - {ensemble_nodes}개 노드")
+        
+        # Ensemble 노드들 생성
+        ensemble_layer_nodes = []
+        for i in range(ensemble_nodes):
+            node = {
+                "id": f"ens_{i+1}",
+                "model": model_name,
+                "provider": provider,
+                "prompt": DEFAULT_LAYER_PROMPTS["ensemble"],
+                "layer": "ensemble"
+            }
+            ensemble_layer_nodes.append(node)
+        
+        # Generation 결과를 Ensemble 입력으로 사용
+        gen_forward_data = gen_result.get("forward_data", "")
+        
+        # Ensemble Layer 실행
+        ens_result = chain_executors.execute_ensemble_layer_with_chains(
+            ensemble_layer_nodes,
+            gen_forward_data,
+            knowledge_base
+        )
+        
+        logger.info("Ensemble Layer 완료")
+        
+        # 3단계: Validation Layer 실행
+        logger.info(f"Validation Layer 실행 - {validation_nodes}개 노드")
+        
+        # Validation 노드들 생성
+        validation_layer_nodes = []
+        for i in range(validation_nodes):
+            node = {
+                "id": f"val_{i+1}",
+                "model": model_name,
+                "provider": provider,
+                "prompt": DEFAULT_LAYER_PROMPTS["validation"],
+                "layer": "validation"
+            }
+            validation_layer_nodes.append(node)
+        
+        # Ensemble 결과를 Validation 입력으로 사용
+        ens_forward_data = ens_result.get("forward_data", "")
+        
+        # Validation Layer 실행
+        val_result = chain_executors.execute_validation_layer_with_chains(
+            validation_layer_nodes,
+            ens_forward_data,
+            knowledge_base
+        )
+        
+        logger.info("Validation Layer 완료")
+        
+        # 실행 시간 계산
+        total_execution_time = time.time() - start_time
+        
+        # 최종 결과 추출 (마크다운 표)
+        final_result = val_result.get("forward_data", "")
+        
+        # 실행 요약 정보
+        execution_summary = {
+            "knowledge_base": knowledge_base,
+            "keyword": keyword,
+            "search_intensity": search_intensity,
+            "top_k_used": top_k,
+            "nodes_executed": {
+                "generation": generation_nodes,
+                "ensemble": ensemble_nodes,
+                "validation": validation_nodes
+            },
+            "model_info": {
+                "model_name": model_name,
+                "provider": provider
+            },
+            "layer_results": {
+                "generation_outputs": gen_result.get("forward_data", ""),
+                "ensemble_output": ens_result.get("forward_data", ""),
+                "validation_output": val_result.get("forward_data", "")
+            }
+        }
+        
+        logger.info(f"단순 워크플로우 완료 - 총 실행시간: {total_execution_time:.2f}초")
+        
+        return SimpleWorkflowResponse(
+            success=True,
+            final_result=final_result,
+            execution_summary=execution_summary,
+            total_execution_time=total_execution_time
+        )
+        
+    except Exception as e:
+        execution_time = time.time() - start_time
+        logger.error(f"단순 워크플로우 실행 실패: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"단순 워크플로우 실행에 실패했습니다: {str(e)}"
         )
