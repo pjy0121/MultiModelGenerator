@@ -1,5 +1,5 @@
 ﻿import { create } from 'zustand';
-import { WorkflowNode, PlaceholderNode, WorkflowNodeData, AnyWorkflowNode, LayerType, WorkflowExecution, WorkflowExecutionStep, LayerExecutionResponse, ValidationLayerResponse, SearchIntensity, LLMProvider, AvailableModel } from '../types';
+import { WorkflowNode, PlaceholderNode, WorkflowNodeData, AnyWorkflowNode, LayerType, WorkflowExecution, WorkflowExecutionStep, LayerExecutionResponse, ValidationLayerResponse, SearchIntensity, AvailableModel } from '../types';
 import { stepwiseWorkflowAPI, layerPromptAPI, workflowAPI } from '../services/api';
 import { DEFAULT_LAYER_PROMPTS, DEFAULT_LAYER_INPUTS } from '../config/defaultPrompts';
 
@@ -159,9 +159,8 @@ interface WorkflowState {
   result: any;
   currentViewport: { x: number; y: number; zoom: number } | null;
   
-  // LLM Provider 선택 관련 상태
-  selectedProvider: LLMProvider | null;
-  providerModels: AvailableModel[]; // 현재 선택된 Provider의 모델 목록
+  // 모든 사용 가능한 모델 목록 (Provider별로 구분되지 않음)
+  allModels: AvailableModel[];
   
   // 새로운 단계별 워크플로우 실행 상태
   currentExecution: WorkflowExecution | null;
@@ -199,11 +198,10 @@ interface WorkflowState {
   updatePlaceholderNodes: () => void;
   initializeDefaultWorkflow: () => Promise<void>;
   
-  // LLM Provider 관련 액션들
-  getDefaultModelForProvider: (provider: LLMProvider) => string;
-  setSelectedProvider: (provider: LLMProvider | null) => Promise<void>;
-  loadProviderModels: (provider: LLMProvider) => Promise<AvailableModel[]>;
-  updateAllNodesModelByProvider: (provider: LLMProvider) => Promise<void>;
+  // 모델 관련 액션들
+  loadAllModels: () => Promise<void>;
+  getModelsByProvider: (provider: string) => AvailableModel[];
+  getProviderFromModel: (modelId: string) => string | undefined;
   
   // 뷰포트 관련 액션들
   setCurrentViewport: (viewport: { x: number; y: number; zoom: number }) => void;
@@ -240,9 +238,10 @@ const createDefaultNode = (layer: LayerType, position: { x: number; y: number })
     position,
     data: {
       id,
-      model: '', // 모델명이 설정되면 업데이트됨
+      model: 'gemini-1.5-flash', // 기본 모델 설정
+      provider: 'google', // 기본 프로바이더 설정
       layer,
-      label: "모델 선택 필요" // 모델이 선택되면 업데이트됨
+      label: "Gemini 1.5 Flash" // 기본 모델 라벨
     },
     className: 'nopan',
     draggable: false,
@@ -297,9 +296,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   result: null,
   currentViewport: null,
   
-  // LLM Provider 관련 초기 상태
-  selectedProvider: LLMProvider.GOOGLE,
-  providerModels: [], // 현재 선택된 Provider의 모델 목록
+  // 모든 사용 가능한 모델 목록
+  allModels: [],
+  
   layerPrompts: DEFAULT_LAYER_PROMPTS,
   layerInputs: DEFAULT_LAYER_INPUTS,
   layerResults: {
@@ -344,18 +343,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const newNode = createDefaultNode(layer, newPosition);
     const nonPlaceholderNodes = nodes.filter(n => !isPlaceholderNode(n));
     set({ nodes: [...nonPlaceholderNodes, newNode] });
-    
-    // 현재 provider의 기본 모델로 설정
-    const provider = get().selectedProvider;
-    if (provider) {
-      const defaultModel = get().getDefaultModelForProvider(provider);
-      if (defaultModel) {
-        get().updateNode(newNode.id, {
-          model: defaultModel,
-          label: defaultModel
-        });
-      }
-    }
     
     setTimeout(() => {
       get().updatePlaceholderNodes();
@@ -456,47 +443,29 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set({ nodes: newNodes });
   },
 
-  // ✅ 현재 워크플로우 상태를 localStorage에 저장 (뷰포트, Provider 포함, 지식 베이스/키워드 제외)
+  // ✅ 현재 워크플로우 상태를 localStorage에 저장 (뷰포트 포함, 지식 베이스/키워드 제외)
   saveCurrentWorkflow: () => {
-    const { nodes, currentViewport, selectedProvider } = get();
+    const { nodes, currentViewport } = get();
     const workflowState = {
       nodes,
       viewport: currentViewport, // ✅ 현재 뷰포트 상태 포함 (x, y, zoom)
-      selectedProvider, // ✅ 현재 선택된 Provider 포함
       savedAt: new Date().toISOString()
     };
     
     localStorage.setItem(WORKFLOW_SAVE_KEY, JSON.stringify(workflowState));
   },
 
-  // ✅ 저장된 워크플로우 상태 복원 (뷰포트, Provider 포함, 지식 베이스/키워드 제외)
+  // ✅ 저장된 워크플로우 상태 복원 (뷰포트 포함, 지식 베이스/키워드 제외)
   restoreWorkflow: async () => {
     try {
       const savedState = localStorage.getItem(WORKFLOW_SAVE_KEY);
       if (savedState) {
         const workflowState = JSON.parse(savedState);
-        const { selectedProvider: currentProvider } = get();
         
         set({ 
           nodes: workflowState.nodes || [],
           currentViewport: workflowState.viewport || null // ✅ 뷰포트 복원 (x, y, zoom)
         });
-        
-        // 저장된 Provider가 있으면 사용, 없으면 기본 Provider 사용
-        const savedProvider = workflowState.selectedProvider || LLMProvider.GOOGLE;
-        const providerChanged = currentProvider !== savedProvider;
-        
-        // Provider 설정
-        set({ selectedProvider: savedProvider });
-        
-        // Provider의 모델 목록 로드
-        const providerModels = await get().loadProviderModels(savedProvider);
-        set({ providerModels });
-        
-        // Provider가 변경된 경우에만 노드들을 기본 모델로 업데이트
-        if (providerChanged && providerModels.length > 0) {
-          await get().updateAllNodesModelByProvider(savedProvider);
-        }
         
         setTimeout(() => {
           get().updatePlaceholderNodes();
@@ -884,17 +853,12 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   },
 
   executeLayerWithPrompt: async (layer: LayerType): Promise<LayerExecutionResponse | ValidationLayerResponse> => {
-    const { layerPrompts, layerInputs, nodes, selectedKnowledgeBase, keyword, searchIntensity, selectedProvider } = get();
+    const { layerPrompts, layerInputs, nodes, selectedKnowledgeBase, keyword, searchIntensity } = get();
     const prompt = layerPrompts[layer];
     const input = layerInputs[layer];
 
     if (!prompt.trim()) {
       throw new Error('프롬프트를 입력해주세요.');
-    }
-
-    // LLM Provider 선택 검증
-    if (!selectedProvider) {
-      throw new Error('LLM Provider를 선택해주세요.');
     }
 
     // 현재 실행 중인 Layer 상태 설정
@@ -976,8 +940,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       const processedPrompt = prompt.replace(/{layer_input}/g, input).replace(/{context}/g, context);
 
       // Layer 프롬프트 API 호출
-      const { selectedProvider } = get(); // 현재 선택된 provider 가져오기
-      
       const request = {
         layer_type: layer,
         prompt: processedPrompt,  // 클라이언트에서 처리된 완성된 프롬프트 사용
@@ -988,7 +950,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           return {
             id: node.id,
             model: node.data.model, // 현재 노드의 모델 이름
-            provider: selectedProvider || undefined, // LLMProvider를 string으로 변환
+            provider: node.data.provider || undefined, // 노드별 provider 정보 사용
             prompt: processedPrompt,  // 완성된 프롬프트 사용
             layer: node.data.layer,
             position: node.position
@@ -1096,143 +1058,36 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     }
   },
 
-  // 기본 워크플로우 초기화 (모델 정보 포함)
+  // 기본 워크플로우 초기화 
   initializeDefaultWorkflow: async () => {
     try {
-      // 1. 기본 provider를 Google로 설정
-      const defaultProvider = LLMProvider.GOOGLE;
-      set({ selectedProvider: defaultProvider });
-      
-      // 2. Provider의 모델 목록 로드
-      const providerModels = await get().loadProviderModels(defaultProvider);
-      set({ providerModels });
-      
-      if (providerModels.length === 0) {
-        console.warn(`⚠️ ${defaultProvider} 프로바이더에서 사용 가능한 모델이 없습니다.`);
-        return;
-      }
-      
-      // 3. 기본 모델 선택
-      const defaultModelValue = get().getDefaultModelForProvider(defaultProvider);
-      const defaultModel = providerModels.find(model => model.id === defaultModelValue);
-      const selectedModel = defaultModel || providerModels[0];
-      
-      // 4. 모든 워크플로우 노드에 기본 모델 적용
-      const { nodes } = get();
-      const workflowNodes = nodes.filter(isWorkflowNode);
-      
-      const updatedNodes = workflowNodes.map(node => {
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            model: selectedModel.id,
-            label: selectedModel.name
-          }
-        };
-      });
-      
-      // 5. 플레이스홀더 노드들도 유지
-      const placeholderNodes = nodes.filter(isPlaceholderNode);
-      const allNodes = [...updatedNodes, ...placeholderNodes];
-      
-      set({ nodes: allNodes });
-      
-      // 6. placeholder 노드들 업데이트
-      setTimeout(() => {
-        get().updatePlaceholderNodes();
-      }, 100);
-      
+      // 노드들이 이미 각자의 기본 모델을 가지고 있으므로 별도 처리 불필요
+      console.log('✅ 기본 워크플로우가 초기화되었습니다.');
     } catch (error) {
       console.error('❌ 기본 워크플로우 초기화 실패:', error);
     }
   },
 
-  // Helper function to get default model for provider
-  getDefaultModelForProvider: (provider: LLMProvider): string => {
-    switch (provider) {
-      case LLMProvider.PERPLEXITY:
-        return 'sonar-pro';
-      case LLMProvider.GOOGLE:
-        return 'gemini-2.0-flash';
-      case LLMProvider.OPENAI:
-        return 'gpt-4-turbo';
-      default:
-        return 'gpt-4-turbo';
-    }
-  },
-
-  // LLM Provider 관련 액션들
-  setSelectedProvider: async (provider: LLMProvider | null) => {
-    const prevProvider = get().selectedProvider;
-    set({ selectedProvider: provider });
-    
-    if (provider && provider !== prevProvider) {
-      // Provider가 변경된 경우 모델 목록을 미리 로드하고 상태에 저장
-      const models = await get().loadProviderModels(provider);
-      set({ providerModels: models });
-      
-      // 모든 노드의 모델을 해당 Provider의 기본 모델로 변경
-      await get().updateAllNodesModelByProvider(provider);
-    } else if (!provider) {
-      set({ providerModels: [] });
-    }
-  },
-
-  loadProviderModels: async (provider: LLMProvider): Promise<AvailableModel[]> => {
+  // 모델 관련 액션들
+  loadAllModels: async () => {
     try {
-      const models = await workflowAPI.getProviderModels(provider);
-      return models;
+      const models = await workflowAPI.getAllModels();
+      set({ allModels: models });
     } catch (error) {
-      console.error(`${provider} 모델 목록 로드 실패:`, error);
-      return [];
+      console.error('모든 모델 목록 로드 실패:', error);
+      set({ allModels: [] });
     }
   },
 
-  updateAllNodesModelByProvider: async (provider: LLMProvider) => {
-    const { nodes, providerModels } = get();
-    const defaultModelValue = get().getDefaultModelForProvider(provider);
-    
-    // Provider 변경 시 모든 노드를 해당 provider의 기본 모델로 업데이트
-    
-    // 이미 로드된 모델 목록 사용 (없으면 다시 로드)
-    let availableModels = providerModels;
-    if (availableModels.length === 0) {
-      // Provider 모델 목록이 없으면 다시 로드
-      availableModels = await get().loadProviderModels(provider);
-      set({ providerModels: availableModels });
-    }
-    
-    // 사용 가능한 모델 목록 확인
-    
-    // 기본 모델 찾기
-    const defaultModel = availableModels.find(model => model.id === defaultModelValue);
-    const selectedModel = defaultModel || availableModels[0];
-    
-    // 기본 모델 선택 완료
-    
-    if (!selectedModel) {
-      console.warn(`Provider ${provider}에 사용 가능한 모델이 없습니다.`);
-      return;
-    }
+  getModelsByProvider: (provider: string): AvailableModel[] => {
+    const { allModels } = get();
+    return allModels.filter(model => model.provider === provider);
+  },
 
-    const updatedNodes = nodes.map(node => {
-      if (isWorkflowNode(node)) {
-        // 노드 모델 업데이트
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            model: selectedModel.id,
-            label: selectedModel.name
-          }
-        };
-      }
-      return node;
-    });
-    
-    set({ nodes: updatedNodes });
-    // 노드 모델 업데이트 완료
+  getProviderFromModel: (modelId: string): string | undefined => {
+    const { allModels } = get();
+    const model = allModels.find(m => m.id === modelId || m.model_type === modelId);
+    return model?.provider;
   },
 
   // 구조화된 출력 파싱 함수 - 모든 Layer에서 사용하는 통합된 파싱 로직

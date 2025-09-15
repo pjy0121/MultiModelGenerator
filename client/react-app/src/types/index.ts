@@ -1,12 +1,5 @@
 import { Node, Edge } from '@xyflow/react';
 
-export enum ModelType {
-  PERPLEXITY_SONAR_PRO = "sonar-pro",
-  PERPLEXITY_SONAR_MEDIUM = "sonar-medium",
-  OPENAI_GPT4 = "gpt-4",
-  OPENAI_GPT35 = "gpt-3.5-turbo"
-}
-
 export enum LayerType {
   GENERATION = "generation",
   ENSEMBLE = "ensemble", 
@@ -14,7 +7,6 @@ export enum LayerType {
 }
 
 export enum LLMProvider {
-  PERPLEXITY = "perplexity",
   OPENAI = "openai",
   GOOGLE = "google"
 }
@@ -28,6 +20,7 @@ export enum SearchIntensity {
 export interface WorkflowNodeData extends Record<string, unknown> {
   id: string;
   model?: string;
+  provider?: string; // LLM Provider 정보 추가
   layer: LayerType;
   label: string;
 }
@@ -171,7 +164,7 @@ export interface SingleNodeRequest {
   layer_input: string;
   node_config: {
     id: string;
-    model_type: ModelType;
+    model_type: string;
     prompt: string;
     layer: LayerType;
     position: { x: number; y: number };
@@ -191,7 +184,7 @@ export interface EnsembleRequest {
   generation_results: string[];
   ensemble_node: {
     id: string;
-    model_type: ModelType;
+    model_type: string;
     prompt: string;
     layer: LayerType;
     position: { x: number; y: number };
@@ -212,7 +205,7 @@ export interface ValidationRequest {
   input_requirements: string;
   validation_node: {
     id: string;
-    model_type: ModelType;
+    model_type: string;
     prompt: string;
     layer: LayerType;
     position: { x: number; y: number };

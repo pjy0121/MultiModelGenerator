@@ -14,8 +14,8 @@ Vector DB에 저장된 지식 베이스에서 주어진 키워드와 관련된 �
 
 ## 기능별 상세 설명
 ### 1. 외부 LLM 쿼리 기능
-- Perplextity AI API를 이용하여 사용할 수 있는 LLM 모델의 종류를 Rest API로 제공할 수 있어야 함
-- Perplexity AI API를 이용하여 지정된 LLM 모델에 대해 프롬프트를 쿼리할 수 있어야 함
+- OpenAI, Google AI API를 이용하여 사용할 수 있는 LLM 모델의 종류를 Rest API로 제공할 수 있어야 함
+- OpenAI, Google AI API를 이용하여 지정된 LLM 모델에 대해 프롬프트를 쿼리할 수 있어야 함
 
 ### 2. 현재 구축된 지식 베이스 목록 제공 기능
 - 서버 내 지식 베이스 경로에 구축되어 있는 지식 베이스들의 목록 확인 및 Rest API를 통한 제공이 가능해야 함

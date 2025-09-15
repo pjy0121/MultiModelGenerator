@@ -5,14 +5,12 @@ from datetime import datetime
 import logging
 from typing import List
 
-from ..core.layer_engine import LayerEngine
-from ..services.llm_factory import LLMFactory
+from ..services.langchain_llm_factory import LangChainLLMFactory
 from ..core.config import Config
 from ..services.vector_store import VectorStore
 from ..core.models import (
     KnowledgeBaseInfo, 
     KnowledgeBaseListResponse,
-    NodeConfig,
     NodeOutput,
     # 새로운 Layer별 프롬프트 시스템 모델들
     LayerPromptRequest,
@@ -26,8 +24,8 @@ from ..core.models import (
     AvailableModelsResponse,
 )
 
-# Layer별 실행기 import
-from .layer_executors import LayerExecutorFactory, parse_structured_output
+# LangChain 기반 실행기 import
+from ..core.output_parser import parse_structured_output
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -36,7 +34,7 @@ logger = logging.getLogger(__name__)
 # FastAPI 앱 초기화
 app = FastAPI(
     title="Spec 문서 기반 요구사항 생성 API",
-    description="RAG와 Perplexity AI를 사용한 지능형 요구사항 생성 시스템",
+    description="RAG와 LangChain을 사용한 지능형 요구사항 생성 시스템",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
@@ -68,12 +66,14 @@ async def health_check():
         # 지식 베이스 목록 확인
         kb_list = Config.get_kb_list()
         
-        # Perplexity API 키 확인
-        api_key_status = "configured" if Config.PERPLEXITY_API_KEY else "missing"
+        # OpenAI, Google API 키 확인
+        openai_status = "configured" if Config.OPENAI_API_KEY else "missing"
+        google_status = "configured" if Config.GOOGLE_API_KEY else "missing"
         
         return {
             "status": "healthy",
-            "perplexity_api_key": api_key_status,
+            "openai_api_key": openai_status,
+            "google_api_key": google_status,
             "knowledge_bases_count": len(kb_list),
             "knowledge_bases": kb_list,
             "timestamp": datetime.now()
@@ -155,13 +155,29 @@ async def get_knowledge_base_status(kb_name: str):
 async def get_provider_models(provider: str):
     """특정 Provider의 모델 목록 조회"""
     try:
-        # LLMFactory를 통해 직접 클라이언트 가져오기
-        client = LLMFactory.get_client_by_provider(provider)
-        if client and client.is_available():
-            models = client.get_available_models()
-            return models
+        # LangChain Factory를 통해 모델 목록 가져오기
+        llm_factory = LangChainLLMFactory()
+        if provider == "openai":
+            models = llm_factory.get_available_openai_models()
+        elif provider == "google":
+            models = llm_factory.get_available_google_models()
         else:
-            return []
+            # 지원하지 않는 제공자
+            models = []
+        
+        # AvailableModel 형식으로 변환
+        available_models = []
+        for model in models:
+            if isinstance(model, str):
+                available_models.append(AvailableModel(
+                    id=model,
+                    name=model,
+                    provider=provider
+                ))
+            else:
+                available_models.append(model)
+                
+        return available_models
             
     except Exception as e:
         logger.warning(f"{provider} 모델 목록 조회 실패: {e}")
@@ -217,18 +233,18 @@ async def execute_layer_prompt(request: LayerPromptRequest):
         # 노드들이 비어있으면 기본 노드 생성
         nodes = request.nodes
         if not nodes:
-            default_node = NodeConfig(
-                id=f"{request.layer_type[:3]}_sonar_pro_{int(time.time())}",
-                model_type="sonar-pro",
-                prompt=request.prompt,
-                layer=request.layer_type,
-                position={"x": 100, "y": 100}
-            )
+            default_node = {
+                "id": f"{request.layer_type[:3]}_gpt35_{int(time.time())}",
+                "model": "gpt-3.5-turbo",
+                "prompt": request.prompt,
+                "layer": request.layer_type,
+                "position": {"x": 100, "y": 100}
+            }
             nodes = [default_node]
         
         # 모든 노드의 프롬프트를 요청된 프롬프트로 업데이트
         for node in nodes:
-            node.prompt = request.prompt
+            node["prompt"] = request.prompt
         
         # 컨텍스트 준비
         context_chunks = request.context_chunks or []
@@ -268,4 +284,133 @@ async def execute_layer_prompt(request: LayerPromptRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"{request.layer_type} Layer 실행에 실패했습니다: {str(e)}"
+        )
+
+
+# ==================== LangGraph 워크플로우 API ====================
+
+@app.post("/execute-langgraph-workflow")
+async def execute_langgraph_workflow_endpoint(request: LayerPromptRequest):
+    """
+    LangGraph 기반 전체 워크플로우 실행
+    Generation → Ensemble → Validation 순차 실행
+    """
+    start_time = time.time()
+    
+    try:
+        logger.info(f"LangGraph 워크플로우 실행 시작: {request.knowledge_base}")
+        
+        # LangGraph 워크플로우 import (지연 로딩)
+        try:
+            from .langgraph_workflow import execute_langgraph_workflow
+        except ImportError as import_error:
+            logger.warning(f"LangGraph 임포트 실패: {import_error}")
+            # Chain 기반 fallback 실행
+            return await _execute_chain_fallback_workflow(request, start_time)
+        
+        # LangGraph 워크플로우 실행
+        result = execute_langgraph_workflow(
+            initial_input=request.layer_input,
+            knowledge_base=request.knowledge_base,
+            generation_nodes=request.nodes if request.nodes else None,
+            ensemble_nodes=None,  # TODO: 구분해서 전달
+            validation_nodes=None  # TODO: 구분해서 전달
+        )
+        
+        execution_time = (time.time() - start_time) * 1000
+        
+        if result.get("success", False):
+            # 성공적인 LangGraph 실행
+            response_data = {
+                "success": True,
+                "layer_type": "langgraph_workflow",
+                "knowledge_base": request.knowledge_base,
+                "layer_input": request.layer_input,
+                "layer_prompt": "LangGraph Multi-Layer Workflow",
+                "node_outputs": result.get("node_outputs", {}),
+                "execution_time": execution_time,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            logger.info(f"LangGraph 워크플로우 완료: {execution_time:.1f}ms")
+            return LayerPromptResponse(**response_data)
+        else:
+            # LangGraph 실행 실패, Chain 기반 fallback
+            logger.warning("LangGraph 실행 실패, Chain 기반 fallback 시도")
+            return await _execute_chain_fallback_workflow(request, start_time)
+        
+    except Exception as e:
+        logger.error(f"LangGraph 워크플로우 실행 실패: {str(e)}")
+        # Chain 기반 fallback
+        try:
+            return await _execute_chain_fallback_workflow(request, start_time)
+        except Exception as fallback_error:
+            logger.error(f"Fallback 실행도 실패: {fallback_error}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"워크플로우 실행에 실패했습니다: {str(e)}"
+            )
+
+
+async def _execute_chain_fallback_workflow(request: LayerPromptRequest, start_time: float):
+    """Chain 기반 fallback 워크플로우"""
+    from .chain_executors import ChainBasedLayerExecutors
+    
+    logger.info("Chain 기반 fallback 워크플로우 실행")
+    
+    chain_executors = ChainBasedLayerExecutors()
+    
+    # 단순화된 순차 실행
+    try:
+        # Generation
+        gen_result = chain_executors.execute_generation_layer_with_chains(
+            request.nodes if request.nodes else [],
+            request.layer_input,
+            request.knowledge_base
+        )
+        
+        # Ensemble
+        ens_input = gen_result.get("forward_data", request.layer_input)
+        ens_result = chain_executors.execute_ensemble_layer_with_chains(
+            request.nodes if request.nodes else [],
+            ens_input,
+            request.knowledge_base
+        )
+        
+        # Validation
+        val_input = ens_result.get("forward_data", ens_input)
+        val_result = chain_executors.execute_validation_layer_with_chains(
+            request.nodes if request.nodes else [],
+            val_input,
+            request.knowledge_base
+        )
+        
+        execution_time = (time.time() - start_time) * 1000
+        
+        # 결과 통합
+        response_data = {
+            "success": True,
+            "layer_type": "chain_workflow",
+            "knowledge_base": request.knowledge_base,
+            "layer_input": request.layer_input,
+            "layer_prompt": "Chain-based Multi-Layer Workflow",
+            "node_outputs": {
+                "generation": gen_result,
+                "ensemble": ens_result,
+                "validation": val_result,
+                "forward_data": val_result.get("forward_data", "")
+            },
+            "execution_time": execution_time,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        logger.info(f"Chain fallback 워크플로우 완료: {execution_time:.1f}ms")
+        return LayerPromptResponse(**response_data)
+        
+    except Exception as e:
+        execution_time = (time.time() - start_time) * 1000
+        logger.error(f"Chain fallback 실행 실패: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fallback 워크플로우 실행에 실패했습니다: {str(e)}"
         )

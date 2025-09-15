@@ -139,7 +139,6 @@ export const LayerWorkflowPanel: React.FC = () => {
     layerPrompts,
     layerInputs,
     layerResults,
-    selectedProvider,
     executeLayerWithPrompt,
     setLayerPrompt,
     setLayerInput,
@@ -331,26 +330,12 @@ export const LayerWorkflowPanel: React.FC = () => {
     return <Collapse items={collapseItems} />;
   };
 
-  if (!selectedKnowledgeBase) {
-    return (
-      <Alert
-        message="지식 베이스가 선택되지 않았습니다"
-        description="먼저 실행 설정 창에서 지식 베이스를 선택해주세요."
-        type="warning"
-        showIcon
-      />
-    );
-  }
-
   // 실행 가능 여부 확인
   const canExecute = () => {
     if (!selectedKnowledgeBase || !keyword.trim()) {
       return false;
     }
-    if (!selectedProvider) {
-      return false;
-    }
-    // 모델 검증은 실행 시점에서 수행 (provider별 동적 로딩)
+    // 노드별 모델 검증은 실행 시점에서 수행
     return true;
   };
 
@@ -358,8 +343,7 @@ export const LayerWorkflowPanel: React.FC = () => {
   const getDisabledReason = () => {
     if (!selectedKnowledgeBase) return '지식 베이스를 선택해주세요';
     if (!keyword.trim()) return '키워드를 입력해주세요';
-    if (!selectedProvider) return 'LLM Provider를 선택해주세요';
-    // 모델 검증은 실행 시점에서 수행
+    // 노드별 모델 검증은 실행 시점에서 수행
     return '';
   };
 

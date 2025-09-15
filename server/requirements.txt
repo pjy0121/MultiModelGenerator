@@ -9,3 +9,13 @@ uvicorn==0.24.0
 pydantic==2.5.0
 typing-extensions>=4.0.0
 google-generativeai==0.8.2
+
+# LangChain 의존성 추가
+langchain==0.1.0
+langchain-core==0.1.13
+langchain-openai==0.0.5
+langchain-google-genai==0.0.7
+langchain-community==0.0.13
+
+# LangGraph 추가
+langgraph==0.0.26

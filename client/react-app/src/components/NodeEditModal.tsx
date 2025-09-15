@@ -18,8 +18,15 @@ const NodeEditModal: React.FC<NodeEditModalProps> = ({
 }) => {
   const [form] = Form.useForm();
   
-  // WorkflowStore에서 미리 로드된 모델 목록 가져오기
-  const { providerModels } = useWorkflowStore();
+  // WorkflowStore에서 모든 모델 목록 가져오기
+  const { allModels, loadAllModels } = useWorkflowStore();
+
+  // 컴포넌트 마운트 시 모델 목록 로드
+  useEffect(() => {
+    if (visible && (!allModels || allModels.length === 0)) {
+      loadAllModels();
+    }
+  }, [visible, allModels, loadAllModels]);
 
   // 노드 데이터로 폼 초기화
   useEffect(() => {
@@ -35,22 +42,22 @@ const NodeEditModal: React.FC<NodeEditModalProps> = ({
       }
 
       // 기본값으로 첫 번째 사용 가능한 모델 선택
-      if (!selectedModelId && providerModels.length > 0) {
-        const firstAvailableModel = providerModels.find(m => m.available);
-        selectedModelId = firstAvailableModel ? firstAvailableModel.id : providerModels[0].id;
+      if (!selectedModelId && allModels && allModels.length > 0) {
+        const firstAvailableModel = allModels.find(m => m.available);
+        selectedModelId = firstAvailableModel ? firstAvailableModel.id : allModels[0].id;
       }
       
       form.setFieldsValue({
         model: selectedModelId
       });
     }
-  }, [nodeData, visible, form, providerModels]);
+  }, [nodeData, visible, form, allModels]);
 
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
       
-      const selectedModel = providerModels.find(m => m.id === values.model);
+      const selectedModel = allModels?.find(m => m.id === values.model);
       
       // 비활성화된 모델 선택 확인
       if (selectedModel && !selectedModel.available) {
@@ -60,6 +67,7 @@ const NodeEditModal: React.FC<NodeEditModalProps> = ({
       
       onSave({
         model: values.model,
+        provider: selectedModel?.provider, // 선택된 모델의 provider 정보 저장
         label: selectedModel ? selectedModel.name : 'Unknown Model'
       });
       
@@ -91,7 +99,7 @@ const NodeEditModal: React.FC<NodeEditModalProps> = ({
             rules={[{ required: true, message: '모델을 선택해주세요.' }]}
           >
             <Select placeholder="모델을 선택하세요">
-              {providerModels.map((model) => (
+              {allModels?.map((model) => (
                 <Select.Option 
                   key={model.id} 
                   value={model.id}
@@ -116,7 +124,7 @@ const NodeEditModal: React.FC<NodeEditModalProps> = ({
                     </div>
                   </div>
                 </Select.Option>
-              ))}
+              )) || []}
             </Select>
           </Form.Item>
         </Form>

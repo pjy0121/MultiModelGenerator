@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Select, Input, Typography, Space, Tag } from 'antd';
 import { useWorkflowStore } from '../store/workflowStore';
-import { KnowledgeBase, SearchIntensity, LLMProvider } from '../types';
+import { KnowledgeBase, SearchIntensity } from '../types';
 import { api } from '../services/api';
 
 const { Title } = Typography;
@@ -12,11 +12,9 @@ const ControlPanel: React.FC = () => {
     selectedKnowledgeBase,
     keyword,
     searchIntensity,
-    selectedProvider,
     setSelectedKnowledgeBase,
     setKeyword,
-    setSearchIntensity,
-    setSelectedProvider
+    setSearchIntensity
   } = useWorkflowStore();
 
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
@@ -98,37 +96,6 @@ const ControlPanel: React.FC = () => {
                 <Space>
                   <Tag color="red" style={{ margin: 0 }}>강</Tag>
                   철저한 검색 (25~35개 청크)
-                </Space>
-              </Option>
-            </Select>
-          </div>
-
-          {/* LLM Provider 선택 */}
-          <div style={{ marginBottom: 8 }}>
-            <Title level={5} style={{ marginBottom: 6, fontSize: '13px' }}>
-              LLM Provider
-            </Title>
-            <Select
-              style={{ width: '100%' }}
-              placeholder="LLM Provider를 선택하세요"
-              value={selectedProvider}
-              onChange={setSelectedProvider}
-              size="small"
-              allowClear
-            >
-              <Option value={LLMProvider.PERPLEXITY}>
-                <Space>
-                  <Tag color="purple" style={{ margin: 0 }}>Perplexity</Tag>
-                </Space>
-              </Option>
-              <Option value={LLMProvider.OPENAI}>
-                <Space>
-                  <Tag color="blue" style={{ margin: 0 }}>OpenAI</Tag>
-                </Space>
-              </Option>
-              <Option value={LLMProvider.GOOGLE}>
-                <Space>
-                  <Tag color="orange" style={{ margin: 0 }}>Google AI</Tag>
                 </Space>
               </Option>
             </Select>

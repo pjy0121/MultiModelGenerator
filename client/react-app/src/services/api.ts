@@ -1,8 +1,11 @@
 import axios from 'axios';
 import { LayerPromptRequest } from '../types';
 
+// API 기본 URL 설정 (환경변수 우선, 기본값 fallback)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
+
 export const api = axios.create({
-  baseURL: 'http://localhost:8000',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -90,7 +93,19 @@ export const workflowAPI = {
     return response.data.knowledge_bases;
   },
 
-  // Provider별 모델 목록
+  // 모든 사용 가능한 모델 목록 조회
+  getAllModels: async () => {
+    const response = await api.get('/available-models');
+    return response.data.models.map((serverModel: any) => ({
+      id: serverModel.value || serverModel.model_type,
+      name: serverModel.label || serverModel.value,
+      provider: serverModel.provider,
+      model_type: serverModel.model_type,
+      available: !serverModel.disabled
+    }));
+  },
+
+  // Provider별 모델 목록 (기존 호환성용)
   getProviderModels: async (provider: string) => {
     const response = await api.get(`/available-models/${provider}`);
     // 서버 응답을 클라이언트 AvailableModel 형식으로 변환

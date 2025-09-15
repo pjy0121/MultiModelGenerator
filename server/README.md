@@ -61,7 +61,8 @@ pip install -r requirements.txt
 `.env` 파일에 API 키 설정:
 
 ```env
-PERPLEXITY_API_KEY=your_api_key_here
+OPENAI_API_KEY=your_api_key_here
+GOOGLE_API_KEY=your_api_key_here
 ```
 
 ### 3. 서버 실행
