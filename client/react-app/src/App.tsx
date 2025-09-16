@@ -1,114 +1,46 @@
-import React, { useEffect } from 'react';
 import { Layout, Typography } from 'antd';
-import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
-import ControlPanel from './components/ControlPanel';
-import { LayerWorkflowPanel } from './components/LayerWorkflowPanel';
-import ExecutionResultPanel from './components/ExecutionResultPanel';
-import { useWorkflowStore } from './store/workflowStore';
-import '@xyflow/react/dist/style.css';
-import 'antd/dist/reset.css';
+import { NodeWorkflowControlPanel } from './components/NodeWorkflowControlPanel';
+import { NodeWorkflowCanvas } from './components/NodeWorkflowCanvas';
 
-const { Header, Content } = Layout;
+const { Header, Content, Sider } = Layout;
 const { Title } = Typography;
 
-const App: React.FC = () => {
-  const { restoreWorkflow, initializeDefaultWorkflow } = useWorkflowStore();
-  
-  useEffect(() => {
-    // 페이지 로드 시 저장된 워크플로우 복원 시도
-    const initializeApp = async () => {
-      try {
-        const restored = await restoreWorkflow();
-        if (!restored) {
-          // 저장된 워크플로우가 없으면 기본 워크플로우 초기화
-          console.log('저장된 워크플로우가 없어 기본 워크플로우를 초기화합니다.');
-          await initializeDefaultWorkflow();
-        } else {
-          console.log('✅ 저장된 워크플로우를 성공적으로 복원했습니다.');
-        }
-      } catch (error) {
-        console.error('워크플로우 초기화 중 오류:', error);
-        // 오류 발생 시 기본 워크플로우 초기화
-        try {
-          await initializeDefaultWorkflow();
-        } catch (fallbackError) {
-          console.error('기본 워크플로우 초기화도 실패:', fallbackError);
-        }
-      }
-    };
-    
-    initializeApp();
-  }, [restoreWorkflow, initializeDefaultWorkflow]);
-  
+function App() {
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Header style={{ background: '#001529', padding: '0 24px' }}>
-        <Title level={3} style={{ color: 'white', margin: '16px 0' }}>
-          🔬 Multi Model Generator
+    <Layout style={{ height: '100vh' }}>
+      <Header style={{ 
+        background: '#fff', 
+        borderBottom: '1px solid #e8e8e8',
+        padding: '0 24px',
+        display: 'flex',
+        alignItems: 'center'
+      }}>
+        <Title level={3} style={{ margin: 0, color: '#1890ff' }}>
+          MultiModelGenerator - 노드 기반 워크플로우
         </Title>
       </Header>
       
-      <Content style={{ padding: '16px', backgroundColor: '#f0f2f5' }}>
-        <PanelGroup direction="horizontal" style={{ height: 'calc(100vh - 112px)' }}>
-          {/* 워크플로우 설정 및 실행 결과 - 좌측 */}
-          <Panel 
-            defaultSize={33} 
-            minSize={20} 
-            maxSize={50}
-            style={{ display: 'flex', flexDirection: 'column' }}
-          >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%', padding: '0 8px 0 0' }}>
-              {/* 실행 설정 - 필요한 크기만 차지 */}
-              <div style={{ flexShrink: 0 }}>
-                <ControlPanel />
-              </div>
-              {/* 실행 결과 영역 - 나머지 공간 모두 사용 */}
-              <div style={{ flex: 1, minHeight: 0 }}>
-                <ExecutionResultPanel />
-              </div>
-            </div>
-          </Panel>
-          
-          {/* 리사이즈 핸들 */}
-          <PanelResizeHandle 
-            style={{ 
-              width: '6px', 
-              backgroundColor: '#e8e8e8',
-              cursor: 'col-resize',
-              borderRadius: '3px',
-              margin: '0 4px',
-              transition: 'background-color 0.2s ease',
-              position: 'relative'
-            }}
-            onMouseEnter={(e) => {
-              const target = e.currentTarget as unknown as HTMLElement;
-              if (target && target.style) {
-                target.style.backgroundColor = '#1890ff';
-              }
-            }}
-            onMouseLeave={(e) => {
-              const target = e.currentTarget as unknown as HTMLElement;
-              if (target && target.style) {
-                target.style.backgroundColor = '#e8e8e8';
-              }
-            }}
-          />
-          
-          {/* Layer별 워크플로우 실행 - 우측 */}
-          <Panel 
-            defaultSize={67} 
-            minSize={50} 
-            maxSize={80}
-            style={{ display: 'flex', flexDirection: 'column' }}
-          >
-            <div style={{ height: '100%', padding: '0 0 0 8px', overflow: 'auto' }}>
-              <LayerWorkflowPanel />
-            </div>
-          </Panel>
-        </PanelGroup>
-      </Content>
+      <Layout>
+        <Sider 
+          width={350} 
+          style={{ 
+            background: '#fff', 
+            borderRight: '1px solid #e8e8e8',
+            overflow: 'auto'
+          }}
+        >
+          <NodeWorkflowControlPanel />
+        </Sider>
+        
+        <Content style={{ 
+          background: '#fff',
+          padding: '16px'
+        }}>
+          <NodeWorkflowCanvas />
+        </Content>
+      </Layout>
     </Layout>
   );
-};
+}
 
 export default App;

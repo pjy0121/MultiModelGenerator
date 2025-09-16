@@ -124,3 +124,95 @@ class VectorStore:
                 'path': self.db_path,
                 'name': self.kb_name
             }
+
+
+class VectorStoreService:
+    """노드 기반 워크플로우를 위한 벡터 스토어 서비스"""
+    
+    def __init__(self):
+        """VectorStoreService 초기화"""
+        pass
+    
+    def search(self, query: str, collection_name: str, top_k: int = 5) -> List[Dict]:
+        """
+        지정된 컬렉션에서 벡터 검색 수행
+        
+        Args:
+            query: 검색 쿼리
+            collection_name: 지식 베이스 이름
+            top_k: 반환할 최대 결과 수
+            
+        Returns:
+            검색 결과 리스트 [{"content": "...", "distance": 0.5}, ...]
+        """
+        try:
+            vector_store = VectorStore(collection_name)
+            chunks = vector_store.search_similar_chunks(query, top_k)
+            
+            # VectorStore 결과를 통일된 형식으로 변환
+            results = []
+            for chunk in chunks:
+                results.append({
+                    "content": chunk,
+                    "distance": 0.0  # VectorStore는 거리 정보를 반환하지 않음
+                })
+            
+            return results
+            
+        except Exception as e:
+            print(f"벡터 검색 실패: {e}")
+            return []
+    
+    def get_knowledge_bases(self) -> List[str]:
+        """사용 가능한 지식 베이스 목록 반환"""
+        try:
+            kb_base_path = os.path.join(os.path.dirname(__file__), '..', '..', 'knowledge_bases')
+            if not os.path.exists(kb_base_path):
+                return []
+            
+            knowledge_bases = []
+            for item in os.listdir(kb_base_path):
+                item_path = os.path.join(kb_base_path, item)
+                if os.path.isdir(item_path):
+                    knowledge_bases.append(item)
+            
+            return knowledge_bases
+            
+        except Exception as e:
+            print(f"지식 베이스 목록 조회 실패: {e}")
+            return []
+    
+    def list_knowledge_bases(self) -> List[str]:
+        """사용 가능한 지식 베이스 목록 반환 (alias for get_knowledge_bases)"""
+        return self.get_knowledge_bases()
+    
+    def get_collection(self, kb_name: str):
+        """지정된 지식 베이스의 컬렉션 반환"""
+        try:
+            vector_store = VectorStore(kb_name)
+            return vector_store.collection
+        except Exception as e:
+            print(f"컬렉션 조회 실패 ({kb_name}): {e}")
+            return None
+    
+    def get_knowledge_base_info(self, kb_name: str) -> Dict:
+        """지정된 지식 베이스의 상세 정보 반환"""
+        try:
+            vector_store = VectorStore(kb_name)
+            status = vector_store.get_status()
+            return {
+                'name': kb_name,
+                'exists': status.get('exists', False),
+                'chunk_count': status.get('count', 0),  # document_count -> chunk_count
+                'path': status.get('path', ''),
+                'created_at': 'Unknown'
+            }
+        except Exception as e:
+            print(f"지식 베이스 정보 조회 실패 ({kb_name}): {e}")
+            return {
+                'name': kb_name,
+                'exists': False,
+                'chunk_count': 0,  # document_count -> chunk_count
+                'path': '',
+                'created_at': 'Unknown'
+            }
