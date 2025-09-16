@@ -16,8 +16,7 @@ import { PlusOutlined, PlayCircleOutlined, WarningOutlined } from '@ant-design/i
 import { useNodeWorkflowStore } from '../store/nodeWorkflowStore';
 import {
   NodeType,
-  SearchIntensity,
-  getSearchIntensityValue
+  SearchIntensity
 } from '../types';
 
 const { Title, Text } = Typography;
@@ -275,28 +274,36 @@ export const NodeWorkflowControlPanel: React.FC = () => {
                   <br />
                   <br />
                   <Text strong style={{ color: '#1890ff' }}>노드별 실행 결과:</Text>
-                  {executionResult.results.map((result: any) => (
-                    <div key={result.node_id} style={{ 
-                      marginTop: 8, 
-                      padding: 8, 
-                      background: result.success ? '#fff' : '#fff2f0',
-                      border: result.success ? '1px solid #d9d9d9' : '1px solid #ffccc7',
-                      borderRadius: 4 
-                    }}>
-                      <Text strong style={{ fontSize: 12 }}>
-                        {result.node_id}: 
-                      </Text>
-                      {result.success ? (
-                        <Text style={{ fontSize: 12, marginLeft: 4 }}>
-                          {result.description || '실행 완료'}
-                        </Text>
-                      ) : (
-                        <Text style={{ fontSize: 12, marginLeft: 4, color: '#ff4d4f' }}>
-                          오류: {result.error}
-                        </Text>
-                      )}
-                    </div>
-                  ))}
+                  {executionResult.results.map((result: any) => {
+                    const node = nodes.find(n => n.id === result.node_id);
+                    const nodeLabel = node?.data?.label || result.node_id;
+                    return (
+                      <div key={result.node_id} style={{ 
+                        marginTop: 8, 
+                        padding: 8, 
+                        background: result.success ? '#fff' : '#fff2f0',
+                        border: result.success ? '1px solid #d9d9d9' : '1px solid #ffccc7',
+                        borderRadius: 4 
+                      }}>
+                        <div>
+                          <Text strong style={{ fontSize: 13 }}>
+                            {nodeLabel}
+                          </Text>
+                        </div>
+                        <div style={{ marginTop: 4 }}>
+                          {result.success ? (
+                            <Text style={{ fontSize: 12, color: '#666' }}>
+                              {result.description || '실행 완료'}
+                            </Text>
+                          ) : (
+                            <Text style={{ fontSize: 12, color: '#ff4d4f' }}>
+                              오류: {result.error}
+                            </Text>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </>
               )}
             </div>

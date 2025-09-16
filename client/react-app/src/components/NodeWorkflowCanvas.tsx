@@ -91,14 +91,13 @@ export const NodeWorkflowCanvas: React.FC = () => {
     );
   }, [setNodes]);
 
-  // 노드 변경 핸들러 (입력/출력 노드는 이동 불가)
+  // 노드 변경 핸들러 (출력 노드만 이동 불가)
   const onNodesChangeWithFixed = useCallback((changes: any[]) => {
     const filteredChanges = changes.filter(change => {
-      // 입력/출력 노드의 위치 변경은 무시 (완전 고정)
+      // 출력 노드의 위치 변경만 무시 (완전 고정)
       if (change.type === 'position') {
         const node = nodes.find(n => n.id === change.id);
-        if (node?.data?.nodeType === NodeType.OUTPUT || 
-            node?.data?.nodeType === NodeType.INPUT) {
+        if (node?.data?.nodeType === NodeType.OUTPUT) {
           return false;
         }
       }
@@ -114,14 +113,9 @@ export const NodeWorkflowCanvas: React.FC = () => {
       const updatedNodes = storeNodes.map(storeNode => {
         const existingNode = currentNodes.find(node => node.id === storeNode.id);
         
-        // 출력 노드는 현재 뷰포트를 고려한 고정 위치로 설정
+        // 출력 노드만 현재 뷰포트를 고려한 고정 위치로 설정
         if (storeNode.data?.nodeType === NodeType.OUTPUT) {
           return { ...storeNode, position: getFixedOutputPosition(currentViewport), draggable: false };
-        }
-        
-        // 입력 노드는 현재 뷰포트를 고려한 고정 위치로 설정
-        if (storeNode.data?.nodeType === NodeType.INPUT) {
-          return { ...storeNode, position: getFixedInputPosition(currentViewport), draggable: false };
         }
         
         return existingNode 
@@ -372,8 +366,8 @@ export const NodeWorkflowCanvas: React.FC = () => {
           • 연결선을 선택 후 Delete키로 삭제<br/>
           • 연결선을 드래그해서 다른 노드로 이동<br/>
           • 연결선을 허공에 놓으면 연결 제거<br/>
-          • 중간 노드들만 드래그로 위치 조정 가능<br/>
-          • Input/Output 노드는 화면 중앙 상/하단 고정<br/>
+          • 모든 노드 드래그로 위치 조정 가능 (Output 노드 제외)<br/>
+          • Output 노드는 화면 중앙 하단 고정<br/>
           • 노드 Handle에서 드래그로 새 연결 생성<br/>
           • 마우스 휠로 줌 인/아웃 가능
         </div>

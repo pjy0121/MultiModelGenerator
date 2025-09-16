@@ -10,7 +10,6 @@ export enum NodeType {
 }
 
 export enum LLMProvider {
-  PERPLEXITY = "perplexity",
   OPENAI = "openai",
   GOOGLE = "google"
 }
@@ -114,11 +113,11 @@ export interface ValidationResult {
 // ==================== 모델 관리 타입들 ====================
 
 export interface AvailableModel {
-  id: string;
-  name: string;
-  provider: LLMProvider;
+  value: string;
+  label: string;
+  provider: string;
   model_type: string;
-  available: boolean;
+  disabled: boolean;
 }
 
 export interface AvailableModelsResponse {

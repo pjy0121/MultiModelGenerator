@@ -11,7 +11,7 @@
 2. 모든 노드에는 최소 하나의 pre-node와 post-node가 있어야 한다. 단, input-node에는 pre-node가 존재할 수 없고 output-node에는 post-node가 존재할 수 없다
 3. 여러 개의 pre-node와 연결될 수 있는 노드는 ensemble-node뿐이다
 4. 여러 개의 post-node와 연결될 수 있는 노드는 input-node뿐이다
-5. 최초 워크플로우에 input-node, output-node가 하나씩 연결된 채로 존재해야 한다
+5. 최초 워크플로우에 input-node, output-node가 하나씩 존재해야 한다
 6. 워크플로우 실행 중일 때 노드 간 연결 정보를 변경할 수 없다
 
 ### 노드의 종류와 특성

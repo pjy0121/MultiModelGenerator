@@ -1,7 +1,6 @@
 from typing import List, Dict, Any
 from openai import OpenAI
 from .llm_client_interface import LLMClientInterface
-from ..core.models import AvailableModel
 from ..core.config import Config
 
 class OpenAIClient(LLMClientInterface):
@@ -60,7 +59,7 @@ class OpenAIClient(LLMClientInterface):
         """클라이언트 사용 가능 여부 확인"""
         return self.client is not None and bool(Config.OPENAI_API_KEY)
     
-    def get_available_models(self) -> List[AvailableModel]:
+    def get_available_models(self) -> List[Dict[str, Any]]:
         """OpenAI API에서 실제 사용 가능한 모델 목록 가져오기"""
         if not self.is_available():
             return []
@@ -72,20 +71,18 @@ class OpenAIClient(LLMClientInterface):
             # GPT 모델들만 필터링 (채팅 완성용 모델들)
             chat_model_prefixes = ["gpt-3.5", "gpt-4"]
             
-            index = 0
             for model in models.data:
                 model_id = model.id
                 # 채팅 완성에 사용할 수 있는 모델들만 포함
                 if any(model_id.startswith(prefix) for prefix in chat_model_prefixes):
-                    available_models.append(AvailableModel(
-                        index=index,
-                        value=model_id,
-                        label=model_id,  # 원래 이름 사용
-                        provider="openai",
-                        model_type=model_id,
-                        disabled=False
-                    ))
-                    index += 1
+                    model_info = {
+                        "value": model_id,
+                        "label": model_id,
+                        "provider": "openai",
+                        "model_type": model_id,
+                        "disabled": False
+                    }
+                    available_models.append(model_info)
                 
             return available_models
             

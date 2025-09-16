@@ -28,24 +28,52 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
   // 모달이 열릴 때 폼 초기화
   useEffect(() => {
     if (visible && node) {
+      const provider = node.data.llm_provider || LLMProvider.GOOGLE;
+      
       form.setFieldsValue({
         label: node.data.label,
         content: node.data.content || '',
-        llm_provider: node.data.llm_provider || LLMProvider.OPENAI,
+        llm_provider: provider,
         model_type: node.data.model_type || '',
         prompt: node.data.prompt || ''
       });
       
-      if (node.data.llm_provider) {
-        loadAvailableModels(node.data.llm_provider);
+      // 해당 provider의 모델이 아직 로드되지 않았을 때 로드
+      const currentProviderModels = availableModels.filter(model => model.provider === provider);
+      if (currentProviderModels.length === 0) {
+        loadAvailableModels(provider);
       }
     }
-  }, [visible, node, form, loadAvailableModels]);
+  }, [visible, node?.id]);
 
-  // Provider 변경 시 모델 목록 로드
+  // 모델이 로드될 때 기본 모델 자동 선택
+  useEffect(() => {
+    if (visible && node && availableModels.length > 0) {
+      const currentProvider = node.data.llm_provider || LLMProvider.GOOGLE;
+      const currentModel = node.data.model_type;
+      
+      // 모델이 선택되지 않았거나, 현재 provider의 모델이 아닌 경우 기본 모델 선택
+      if (!currentModel || !availableModels.some(m => m.value === currentModel && m.provider === currentProvider)) {
+        const providerModels = availableModels.filter(model => model.provider === currentProvider);
+        
+        if (providerModels.length > 0) {
+          const defaultModel = currentProvider === LLMProvider.GOOGLE 
+            ? providerModels.find(m => m.value.includes('gemini-2.0-flash')) || providerModels[0]
+            : providerModels.find(m => m.value.includes('gpt-4o-mini')) || providerModels[0];
+          
+          form.setFieldValue('model_type', defaultModel.value);
+        }
+      }
+    }
+  }, [availableModels.length, visible, node?.id]); // 의존성 배열 최소화
+
+  // Provider 변경 시 모델 목록 로드 및 기본 모델 선택
   const handleProviderChange = (provider: LLMProvider) => {
+    // 먼저 모델 초기화
+    form.setFieldValue('model_type', '');
+    
+    // 모델 목록 로드
     loadAvailableModels(provider);
-    form.setFieldValue('model_type', ''); // 모델 초기화
   };
 
   // 저장 핸들러
@@ -133,14 +161,29 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
                 placeholder="Provider 선택"
                 onChange={handleProviderChange}
               >
+                <Option value={LLMProvider.GOOGLE}>Google AI Studio</Option>
                 <Option value={LLMProvider.OPENAI}>OpenAI</Option>
-                <Option value={LLMProvider.GOOGLE}>Google</Option>
-                <Option value={LLMProvider.PERPLEXITY}>Perplexity</Option>
               </Select>
             </Form.Item>
 
             <Form.Item
-              label="모델"
+              label={
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>모델</span>
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => {
+                      const provider = form.getFieldValue('llm_provider') || LLMProvider.GOOGLE;
+                      loadAvailableModels(provider);
+                      message.info('모델 목록을 새로고침했습니다.');
+                    }}
+                    style={{ padding: 0, fontSize: '12px' }}
+                  >
+                    새로고침
+                  </Button>
+                </div>
+              }
               name="model_type"
               rules={[{ required: true, message: '모델을 선택해주세요.' }]}
             >
@@ -152,25 +195,27 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
                   String(option?.children ?? '').toLowerCase().includes(input.toLowerCase())
                 }
               >
-                {availableModels.map((model: AvailableModel) => (
-                  <Option key={model.id} value={model.id}>
-                    <Text strong>{model.name}</Text>
-                  </Option>
-                ))}
+                {availableModels
+                  .filter(model => model.provider === (node.data.llm_provider || LLMProvider.GOOGLE))
+                  .map((model: AvailableModel) => (
+                    <Option key={model.value} value={model.value}>
+                      <Text strong>{model.label}</Text>
+                    </Option>
+                  ))
+                }
               </Select>
             </Form.Item>
 
             <Form.Item
               label={
                 <span>
-                  프롬프트 
-                  <Tooltip title="LLM에 전달될 프롬프트입니다. 변수를 사용하여 동적 데이터를 삽입할 수 있습니다.">
+                  프롬프트 (선택사항)
+                  <Tooltip title="LLM에 전달될 프롬프트입니다. 변수를 사용하여 동적 데이터를 삽입할 수 있습니다. 비워두면 기본 동작을 수행합니다.">
                     <InfoCircleOutlined style={{ marginLeft: 4, color: '#1890ff' }} />
                   </Tooltip>
                 </span>
               }
               name="prompt"
-              rules={[{ required: true, message: '프롬프트를 입력해주세요.' }]}
             >
               <div>
                 <div style={{ marginBottom: 8 }}>
@@ -191,7 +236,7 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
                 
                 <TextArea
                   rows={8}
-                  placeholder={`${node.data.nodeType} 작업을 위한 프롬프트를 입력하세요.`}
+                  placeholder="프롬프트를 입력하거나 기본 템플릿을 사용하세요. (선택사항)"
                   style={{ fontFamily: 'Consolas, "Courier New", monospace' }}
                 />
                 

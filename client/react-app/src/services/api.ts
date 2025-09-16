@@ -43,13 +43,7 @@ export const workflowAPI = {
   // Provider별 모델 목록
   getProviderModels: async (provider: LLMProvider): Promise<AvailableModel[]> => {
     const response = await api.get(`/available-models/${provider}`);
-    // 서버 응답을 클라이언트 AvailableModel 형식으로 변환
-    return response.data.map((serverModel: any) => ({
-      id: serverModel.value || serverModel.model_type,
-      name: serverModel.label || serverModel.value,    
-      provider: serverModel.provider,
-      model_type: serverModel.model_type,
-      available: !serverModel.disabled               
-    }));
+    // 서버 응답이 이미 클라이언트 형식과 일치하므로 그대로 반환
+    return response.data;
   }
 };

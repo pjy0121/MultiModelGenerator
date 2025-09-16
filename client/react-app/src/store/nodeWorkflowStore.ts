@@ -88,7 +88,7 @@ const createWorkflowNode = (nodeType: NodeType, position: { x: number; y: number
   // LLM 노드들은 모델 설정 필드 추가
   if ([NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION].includes(nodeType)) {
     nodeData.model_type = '';
-    nodeData.llm_provider = LLMProvider.OPENAI;
+    nodeData.llm_provider = LLMProvider.GOOGLE;
     nodeData.prompt = '';
   }
   
@@ -143,7 +143,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     knowledgeBases: [],
   
   // 노드 관리 액션들
-  addNode: (nodeType: NodeType, position: { x: number; y: number }) => {
+  addNode: async (nodeType: NodeType, position: { x: number; y: number }) => {
     // output-node는 하나만 존재할 수 있음
     if (nodeType === NodeType.OUTPUT) {
       const state = get();
@@ -153,18 +153,49 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       }
     }
     
-    // Input/Output 노드는 고정 위치 사용
+    // Output 노드만 고정 위치 사용
     let nodePosition = position;
-    if (nodeType === NodeType.INPUT) {
-      nodePosition = { x: 400, y: 50 }; // 상단 중앙 고정
-    } else if (nodeType === NodeType.OUTPUT) {
+    if (nodeType === NodeType.OUTPUT) {
       nodePosition = { x: 400, y: 550 }; // 하단 중앙 고정
     }
     
     const newNode = createWorkflowNode(nodeType, nodePosition);
+    
+    // 먼저 노드를 추가
     set(state => ({
       nodes: [...state.nodes, newNode]
     }));
+    
+    // LLM 노드인 경우 Google 모델 목록을 로드하고 기본 모델 선택
+    if ([NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION].includes(nodeType)) {
+      try {
+        const state = get();
+        
+        // Google 모델 목록 로드
+        await state.loadAvailableModels(LLMProvider.GOOGLE);
+        
+        // 모델 로드 완료 후 기본 모델 선택
+        const updatedState = get();
+        const googleModels = updatedState.availableModels.filter(
+          model => model.provider === LLMProvider.GOOGLE
+        );
+        
+        if (googleModels.length > 0) {
+          // 기본 모델 우선순위: gemini-2.0-flash-exp > 첫 번째 모델
+          const defaultModel = googleModels.find(m => m.value.includes('gemini-2.0-flash')) || googleModels[0];
+          
+          // 노드에 기본 모델 설정
+          state.updateNode(newNode.id, {
+            model_type: defaultModel.value
+          });
+          
+          message.success(`${nodeType} 노드가 생성되고 기본 모델(${defaultModel.label})이 선택되었습니다.`);
+        }
+      } catch (error) {
+        console.error('모델 로드 실패:', error);
+        message.warning(`${nodeType} 노드가 생성되었지만 모델 로드에 실패했습니다. 수동으로 모델을 선택해주세요.`);
+      }
+    }
   },
   
   updateNode: (nodeId: string, updates: Partial<NodeData>) => {
@@ -342,7 +373,13 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
   loadAvailableModels: async (provider: LLMProvider) => {
     try {
       const models = await workflowAPI.getProviderModels(provider);
-      set({ availableModels: models });
+      const state = get();
+      
+      // 기존 모델 중 다른 provider 모델들은 유지하고, 해당 provider 모델만 교체
+      const otherProviderModels = state.availableModels.filter(model => model.provider !== provider);
+      const updatedModels = [...otherProviderModels, ...models];
+      
+      set({ availableModels: updatedModels });
     } catch (error) {
       console.error('모델 목록 로딩 실패:', error);
     }

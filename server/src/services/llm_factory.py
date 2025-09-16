@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional
 from .llm_client_interface import LLMClientInterface
-from .perplexity_llm_client import PerplexityClient
+
 from .openai_llm_client import OpenAIClient
 from .google_llm_client import GoogleLLMClient
 
@@ -18,19 +18,22 @@ class LLMFactory:
             
         # 사용 가능한 클라이언트들 초기화
         try:
-            cls._clients["perplexity"] = PerplexityClient()
-        except Exception as e:
-            pass
-            
-        try:
+            print("🔄 OpenAI 클라이언트 생성 중...")
             cls._clients["openai"] = OpenAIClient()
+            print("✅ OpenAI 클라이언트 생성 완료")
         except Exception as e:
-            pass
+            print(f"❌ OpenAI 클라이언트 생성 실패: {e}")
+            import traceback
+            traceback.print_exc()
             
         try:
+            print("🔄 Google 클라이언트 생성 중...")
             cls._clients["google"] = GoogleLLMClient()
+            print("✅ Google 클라이언트 생성 완료")
         except Exception as e:
-            pass
+            print(f"❌ Google 클라이언트 생성 실패: {e}")
+            import traceback
+            traceback.print_exc()
             
         cls._initialized = True
     
@@ -72,8 +75,6 @@ class LLMFactory:
         # 모델 ID 기반으로 제공자 결정
         if model_id.startswith("gpt-"):
             provider = "openai"
-        elif model_id.startswith("sonar-"):
-            provider = "perplexity"
         elif model_id.startswith("gemini-") or model_id.startswith("gemma-") or model_id.startswith("learnlm-"):
             provider = "google"
         else:

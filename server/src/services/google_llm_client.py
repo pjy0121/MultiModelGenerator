@@ -1,9 +1,16 @@
 import os
-import google.generativeai as genai
 from typing import List, Dict, Any
 from .llm_client_interface import LLMClientInterface
-from ..core.models import AvailableModel
 from ..core.config import Config
+
+try:
+    import google.generativeai as genai
+    print(f"✅ Google AI 라이브러리 import 성공")
+    print(f"🔍 Google AI 라이브러리 버전: {getattr(genai, '__version__', 'Unknown')}")
+    print(f"🔍 Google AI 라이브러리 경로: {genai.__file__ if hasattr(genai, '__file__') else 'Unknown'}")
+except ImportError as e:
+    print(f"❌ Google AI 라이브러리 import 실패: {e}")
+    genai = None
 
 class GoogleLLMClient(LLMClientInterface):
     """Google AI Studio API 클라이언트"""
@@ -11,42 +18,76 @@ class GoogleLLMClient(LLMClientInterface):
     def __init__(self):
         """Google AI API 클라이언트 초기화"""
         self.api_key = Config.GOOGLE_API_KEY
+        self.client = None
+        
+        if genai is None:
+            print("❌ Google AI 라이브러리가 import되지 않았습니다.")
+            return
+        
         if self.api_key:
-            genai.configure(api_key=self.api_key)
-            self.client = genai
+            print(f"🔑 Google API Key 발견 (길이: {len(self.api_key)})")
+            try:
+                genai.configure(api_key=self.api_key)
+                self.client = genai
+                print("✅ Google AI 클라이언트 초기화 성공")
+                
+                # API 키 유효성 테스트는 thinking 필드 버그 때문에 스킵
+                print("🧪 API 키 테스트 스킵 (라이브러리 버그 회피)")
+                
+            except Exception as e:
+                print(f"❌ Google AI 클라이언트 초기화 실패: {e}")
+                import traceback
+                traceback.print_exc()
+                self.client = None
         else:
-            self.client = None
+            print("⚠️ GOOGLE_API_KEY가 설정되지 않았습니다.")
     
     def is_available(self) -> bool:
         """Google AI API 사용 가능 여부 확인"""
-        return self.client is not None and self.api_key is not None
+        return genai is not None and self.client is not None and self.api_key is not None
     
-    def get_available_models(self) -> List[AvailableModel]:
+    def get_available_models(self) -> List[Dict[str, Any]]:
         """사용 가능한 Google AI 모델 목록 반환"""
+        print(f"🔍 Google AI 모델 조회 시작 - 사용가능: {self.is_available()}")
+        
         if not self.is_available():
+            print("⚠️ Google AI 클라이언트가 사용 불가능합니다.")
+            print(f"  - genai 모듈: {genai is not None}")
+            print(f"  - client: {self.client is not None}")
+            print(f"  - api_key: {self.api_key is not None}")
             return []
         
+        print("✅ Google AI 클라이언트 사용 가능, 모델 목록 조회 중...")
+        
         try:
-            # 실제 API에서 모델 목록 가져오기
-            models = []
-            index = 0
-            for model in genai.list_models():
-                if 'generateContent' in model.supported_generation_methods:
-                    model_id = model.name.replace('models/', '')
-                    models.append({
-                        "index": index,
-                        "value": model_id,         # 서버 필드명
-                        "label": model_id,         # 서버 필드명
-                        "provider": "google",
-                        "model_type": model_id,
-                        "disabled": False          # 서버 필드명
-                    })
-                    index += 1
-                
-            return [AvailableModel(**model) for model in models]
+            # Google AI 라이브러리의 thinking 필드 버그 때문에 하드코딩 모델 사용
+            hardcoded_models = [
+                "gemini-2.0-flash-exp",
+                "gemini-1.5-flash",
+                "gemini-1.5-pro",
+                "gemini-1.0-pro"
+            ]
+            
+            print(f"🔄 {len(hardcoded_models)}개의 하드코딩된 Google AI 모델 사용")
+            
+            available_models = []
+            for model_name in hardcoded_models:
+                model_info = {
+                    "value": model_name,
+                    "label": model_name,
+                    "provider": "google",
+                    "model_type": model_name,
+                    "disabled": False
+                }
+                available_models.append(model_info)
+                print(f"  ✅ 모델 추가: {model_name}")
+            
+            print(f"✅ Google AI: {len(available_models)}개 모델 로드 완료")
+            return available_models
             
         except Exception as e:
-            print(f"Google AI 모델 목록 가져오기 실패: {e}")
+            print(f"❌ Google AI 모델 조회 실패: {e}")
+            print(f"   에러 타입: {type(e).__name__}")
             return []
     
     def chat_completion(self, model: str, messages: List[Dict[str, Any]], **kwargs) -> str:
