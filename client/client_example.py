@@ -5,7 +5,7 @@ from datetime import datetime
 class RequirementAPIClient:
     """요구사항 생성 API 클라이언트"""
     
-    def __init__(self, base_url: str = "http://localhost:8000"):
+    def __init__(self, base_url: str = "http://localhost:5001"):
         self.base_url = base_url
     
     def get_knowledge_bases(self) -> dict:
