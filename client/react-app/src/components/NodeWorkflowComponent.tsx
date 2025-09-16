@@ -140,7 +140,7 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = ({
                   style={{ padding: 0, width: 16, height: 16 }}
                   title="편집"
                 />
-                {data.nodeType !== NodeType.OUTPUT && data.nodeType !== NodeType.INPUT && (
+                {data.nodeType !== NodeType.OUTPUT && (
                   <Popconfirm
                     title="노드 삭제"
                     description={`이 ${data.nodeType}를 삭제하시겠습니까?`}

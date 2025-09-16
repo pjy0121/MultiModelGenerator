@@ -13,6 +13,7 @@ from ..core.models import (
     KnowledgeBaseListResponse
 )
 from ..services.vector_store import VectorStoreService
+from ..services.model_manager import ModelManager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -150,4 +151,24 @@ async def search_knowledge_base(request: dict):
         
     except Exception as e:
         logger.error(f"Knowledge base search failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/available-models/{provider}")
+async def get_available_models(provider: str):
+    """Provider별 사용 가능한 모델 목록 반환"""
+    try:
+        # Normalize provider
+        provider = provider.lower()
+        if provider not in ["openai", "google"]:
+            raise HTTPException(status_code=400, detail="Unsupported provider. Only 'openai' and 'google' are supported.")
+
+        models = ModelManager.get_models_by_provider(provider)
+        
+        # 이미 dict 형태이므로 그대로 반환
+        return models
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get models for {provider}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

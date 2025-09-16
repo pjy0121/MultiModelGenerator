@@ -5,20 +5,16 @@ load_dotenv()
 
 class Config:
     # LLM API 설정
-    PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
-    PERPLEXITY_BASE_URL = "https://api.perplexity.ai"
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
     
     # LLM 제공자 설정
-    SUPPORTED_LLM_PROVIDERS = ["perplexity", "openai", "google"]
+    SUPPORTED_LLM_PROVIDERS = ["openai", "google"]
     
     @classmethod
     def is_llm_provider_available(cls, provider: str) -> bool:
         """LLM 제공자가 사용 가능한지 확인 (API 키 존재 여부)"""
-        if provider == "perplexity":
-            return bool(cls.PERPLEXITY_API_KEY)
-        elif provider == "openai":
+        if provider == "openai":
             return bool(cls.OPENAI_API_KEY)
         elif provider == "google":
             return bool(cls.GOOGLE_API_KEY)

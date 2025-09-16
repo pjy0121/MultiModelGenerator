@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any
-from ..core.models import AvailableModel
 
 class LLMClientInterface(ABC):
     """LLM 클라이언트 추상 인터페이스"""
@@ -38,11 +37,11 @@ class LLMClientInterface(ABC):
         pass
     
     @abstractmethod
-    def get_available_models(self) -> List[AvailableModel]:
+    def get_available_models(self) -> List[Dict[str, Any]]:
         """
         사용 가능한 모델 목록 반환 (UI 표시용 메타데이터 포함)
         
         Returns:
-            AvailableModel 객체 리스트
+            모델 정보 딕셔너리 리스트
         """
         pass

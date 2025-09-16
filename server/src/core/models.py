@@ -21,6 +21,10 @@ class AvailableModel(BaseModel):
     disabled: bool = Field(default=False, description="비활성화 여부")
     model_type: str = Field(..., description="모델 타입 (실제 모델 ID)")
 
+class AvailableModelsResponse(BaseModel):
+    """사용 가능한 모델 목록 응답"""
+    models: List[AvailableModel] = Field(..., description="사용 가능한 모델 목록")
+
 class WorkflowNode(BaseModel):
     id: str = Field(..., description="Node ID")
     type: NodeType = Field(..., description="Node type")
