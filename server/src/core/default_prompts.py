@@ -89,44 +89,39 @@ NODE_PROMPTS = {
 # ==================== 출력 형식 템플릿 ====================
 
 OUTPUT_FORMATS = {
-    "requirements_json": """
-각 요구사항을 다음 JSON 형식으로 작성:
-{{
-    "requirements": [
-        {{
-            "id": "REQ-001",
-            "type": "functional|non-functional",
-            "title": "요구사항 제목",
-            "description": "상세 설명",
-            "priority": "high|medium|low",
-            "source": "원본 문서 위치/페이지",
-            "reference": "관련 근거 텍스트"
-        }}
-    ]
-}}
+    "requirements_markdown": """
+마크다운으로 자유롭게 작성하되, 다음 노드로 전달할 핵심 요구사항은 <output> 태그 안에 작성하세요:
+
+<output>
+# 추출된 요구사항
+
+## 기능적 요구사항
+- REQ-001: 요구사항 제목
+  - 상세 설명
+  - 우선순위: high/medium/low
+
+## 비기능적 요구사항  
+- REQ-002: 성능 요구사항
+  - 상세 설명
+</output>
 """,
     
     "validation_result": """
-검증 결과를 다음 형식으로 작성:
-{{
-    "validation_summary": {{
-        "total_requirements": 숫자,
-        "validated_requirements": 숫자,
-        "issues_found": 숫자,
-        "improvements_made": 숫자
-    }},
-    "requirements": [
-        {{
-            "id": "REQ-001",
-            "status": "validated|needs_improvement|rejected",
-            "title": "요구사항 제목",
-            "description": "개선된 설명",
-            "validation_notes": "검증 과정에서 발견된 이슈 및 개선사항",
-            "source": "원본 문서 위치",
-            "reference": "관련 근거"
-        }}
-    ]
-}}
+마크다운으로 자유롭게 작성하되, 검증된 최종 요구사항은 <output> 태그 안에 작성하세요:
+
+<output>
+# 검증 완료된 요구사항
+
+## 검증 요약
+- 총 요구사항: N개
+- 검증 완료: N개  
+- 개선된 항목: N개
+
+## 최종 요구사항
+- REQ-001: 검증된 요구사항 제목
+  - 개선된 설명
+  - 검증 완료 상태
+</output>
 """
 }
 
@@ -157,7 +152,7 @@ def get_output_format(format_type: str) -> str:
     """
     return OUTPUT_FORMATS.get(format_type, "")
 
-def create_node_prompts_dict(nodes: list, output_format: str = "requirements_json") -> dict:
+def create_node_prompts_dict(nodes: list, output_format: str = "requirements_markdown") -> dict:
     """
     노드 리스트로부터 node_prompts 딕셔너리 생성
     

@@ -68,12 +68,22 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
   }, [availableModels.length, visible, node?.id]); // 의존성 배열 최소화
 
   // Provider 변경 시 모델 목록 로드 및 기본 모델 선택
-  const handleProviderChange = (provider: LLMProvider) => {
+  const handleProviderChange = async (provider: LLMProvider) => {
     // 먼저 모델 초기화
     form.setFieldValue('model_type', '');
     
     // 모델 목록 로드
-    loadAvailableModels(provider);
+    await loadAvailableModels(provider);
+    
+    // 로드 완료 후 기본 모델 선택
+    const providerModels = availableModels.filter(model => model.provider === provider);
+    if (providerModels.length > 0) {
+      const defaultModel = provider === LLMProvider.GOOGLE
+        ? providerModels.find(m => m.value.includes('gemini-2.0-flash')) || providerModels[0]
+        : providerModels.find(m => m.value.includes('gpt-4o-mini')) || providerModels[0];
+      
+      form.setFieldValue('model_type', defaultModel.value);
+    }
   };
 
   // 저장 핸들러

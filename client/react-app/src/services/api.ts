@@ -28,6 +28,56 @@ export const nodeBasedWorkflowAPI = {
   executeNodeWorkflow: async (request: any): Promise<NodeBasedWorkflowResponse> => {
     const response = await api.post('/execute-workflow', request);
     return response.data;
+  },
+
+  // 노드 기반 워크플로우 스트리밍 실행
+  executeNodeWorkflowStream: async function* (request: any) {
+    const response = await fetch('http://localhost:5001/execute-workflow-stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('Response body is not readable');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        
+        // SSE 형식 파싱
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              yield data;
+            } catch (e) {
+              console.error('JSON parse error:', e);
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
   }
 };
 

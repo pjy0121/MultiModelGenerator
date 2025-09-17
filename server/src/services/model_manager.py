@@ -16,7 +16,6 @@ class ModelManager:
     @classmethod
     def _load_all_models(cls):
         """모든 프로바이더에서 모델 로드"""
-        print("🔄 ModelManager: 모델 로드 시작...")
         cls._model_registry.clear()
         index = 0
         
@@ -24,25 +23,21 @@ class ModelManager:
         providers = ["openai", "google"]
         
         for provider in providers:
-            print(f"🔄 {provider} 프로바이더 모델 로드 중...")
             try:
                 client = LLMFactory.get_client(provider)
                 if client:
-                    print(f"✅ {provider} 클라이언트 생성 성공")
-                    print(f"🔍 {provider} 클라이언트 사용 가능 여부: {client.is_available()}")
+                    is_available = client.is_available()
                     
-                    if client.is_available():
+                    if is_available:
                         models = client.get_available_models()
                         print(f"📋 {provider}에서 {len(models)}개 모델 반환")
+                        
+                        # 각 모델을 레지스트리에 추가
+                        for model in models:
+                            cls._model_registry.append(model)
+                            index += 1
                     else:
                         print(f"⚠️ {provider} 클라이언트가 사용 불가능합니다.")
-                        models = []
-                    
-                    # 각 모델을 레지스트리에 추가
-                    for model in models:
-                        cls._model_registry.append(model)
-                        print(f"  📝 모델 추가: {model['label']} (disabled: {model['disabled']})")
-                        index += 1
                 else:
                     print(f"❌ {provider} 클라이언트 생성 실패")
                         

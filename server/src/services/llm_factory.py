@@ -116,9 +116,11 @@ class LLMFactory:
         
         # 프로바이더가 지정되지 않은 경우 기존 로직 (모든 클라이언트에서 검색)
         for provider_name, client in cls._clients.items():
+            print(f"DEBUG: 클라이언트 확인 - {provider_name}, available: {client.is_available()}")
             if client.is_available():
                 # 각 클라이언트의 available_models에서 model_type으로 찾기
                 available_models = client.get_available_models()
+                print(f"DEBUG: {provider_name}에서 {len(available_models)}개 모델 발견")
                 for model in available_models:
                     if model.model_type == model_name and not model.disabled:
                         return client

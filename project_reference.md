@@ -77,21 +77,15 @@
 
 ### ResultParser 실행
 
-1. 항상 다음과 같은 형태의 json 포맷에서 "description"과 "output"을 parsing한다
+1. LLM 출력에서 `<output>...</output>` 태그 내용을 추출하여 다음 노드로 전달될 데이터로 사용한다
 
-```json
-{
-    "description": [UI 상에 print될 내용],
-    "output": [다음 노드로 전달될 내용]
-}
-```
-
-2. parsing 실패 시
+2. parsing 실패 시 (output 태그가 없는 경우)
+   - 전체 텍스트를 output으로 사용한다
    - 에러 내용을 client에 전달한다
 
 3. parsing 성공 시
-   - "description"의 내용을 client에 전달한다
-   - "output"의 내용을 return한다
+   - 전체 마크다운 텍스트는 스트리밍으로 client에 전달된다 (description 역할)
+   - `<output>` 태그 내용을 다음 노드로 전달될 데이터로 return한다
 
 ### 노드 실행
 
@@ -107,17 +101,9 @@
 
 1-2. input값이 null이 아닐 경우 content 속성을 업데이트한다
 
-1-3. 노드의 content 속성을 포함해 json 데이터를 만든다
+1-3. 노드의 content 속성을 마크다운 형태로 처리한다
 
-```json
-{
-    "description": [content 속성 (string)],
-    "output": [content 속성 (string)]
-}
-
-```
-
-1-4. json 데이터를 인자로 ResultParser를 실행한다
+1-4. content 속성을 인자로 ResultParser를 실행한다
 
 1-5. ResultParser의 return값을 output 속성에 저장한다
 
@@ -143,7 +129,7 @@
    2-4-1. intensity값에 따라 검색 시의 top_k를 결정한다
    2-4-2. VectorDB에서 해당 knowledge_base를 찾고, input_data를 검색한 결과를 얻는다 2-4-3. input prompt에서 '{context}'라는 문자열을 찾아 knowledge_base에서 얻은 검색 결과로 replace한다
 
-2-5. '{output_format}'이라는 문자열을 찾아 input으로 들어온 output_format 내용으로 replace한다
-2-6. LLM API를 호출하여 prompt를 보낸다
-2-7. LLM API의 호출 결과를 인자로 ResultParser를 실행한다
+2-5. '{output_format}'이라는 문자열을 찾아 마크다운 출력 형식 가이드로 replace한다
+2-6. LLM API를 호출하여 prompt를 보낸다 (스트리밍 응답)
+2-7. LLM API의 스트리밍 출력을 실시간으로 client에 전달하면서 ResultParser로 최종 output 추출
 2-8. ResultParser의 return값을 output 속성에 저장한다
