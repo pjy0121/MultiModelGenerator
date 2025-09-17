@@ -1,6 +1,7 @@
 import { Layout, Typography } from 'antd';
 import { NodeWorkflowControlPanel } from './components/NodeWorkflowControlPanel';
 import { NodeWorkflowCanvas } from './components/NodeWorkflowCanvas';
+import { NodeExecutionResultPanel } from './components/NodeExecutionResultPanel';
 
 const { Header, Content, Sider } = Layout;
 const { Title } = Typography;
@@ -22,7 +23,7 @@ function App() {
       
       <Layout>
         <Sider 
-          width={350} 
+          width={300} 
           style={{ 
             background: '#fff', 
             borderRight: '1px solid #e8e8e8',
@@ -38,6 +39,17 @@ function App() {
         }}>
           <NodeWorkflowCanvas />
         </Content>
+        
+        <Sider 
+          width={400} 
+          style={{ 
+            background: '#f9f9f9', 
+            borderLeft: '1px solid #e8e8e8',
+            overflow: 'auto'
+          }}
+        >
+          <NodeExecutionResultPanel />
+        </Sider>
       </Layout>
     </Layout>
   );

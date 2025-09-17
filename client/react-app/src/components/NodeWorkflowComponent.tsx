@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Card, Tag, Typography, Button, Badge, Popconfirm } from 'antd';
-import { EditOutlined, LoadingOutlined, CheckCircleOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Card, Tag, Typography, Button, Popconfirm } from 'antd';
+import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { NodeType, WorkflowNode } from '../types';
 import { NodeEditModal } from './NodeEditModal';
 import { useNodeWorkflowStore } from '../store/nodeWorkflowStore';
@@ -49,8 +49,12 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = ({
   id, 
   selected = false 
 }) => {
-  const { updateNode, removeNode } = useNodeWorkflowStore();
+  const { updateNode, removeNode, nodeExecutionStates } = useNodeWorkflowStore();
   const [editModalVisible, setEditModalVisible] = useState(false);
+  
+  // 실행 상태 가져오기
+  const executionState = nodeExecutionStates[id] || 'idle';
+  const isExecuting = executionState === 'executing';
   
   const colors = getNodeColor(data.nodeType);
   const handles = getHandleConfig(data.nodeType);
@@ -58,15 +62,12 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = ({
   const isLLMNode = [NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION].includes(data.nodeType);
   const isContentNode = [NodeType.INPUT, NodeType.OUTPUT].includes(data.nodeType);
 
-  // 실행 상태에 따른 아이콘
-  const getStatusIcon = () => {
-    if (data.isExecuting) {
-      return <LoadingOutlined style={{ color: '#1890ff' }} />;
+  // 실행 상태에 따른 배경 색상만 변경 (테두리는 원래대로)
+  const getBackgroundColor = () => {
+    if (isExecuting) {
+      return '#fff2f0'; // 실행 중만 빨간색 배경
     }
-    if (data.isCompleted) {
-      return <CheckCircleOutlined style={{ color: '#52c41a' }} />;
-    }
-    return null;
+    return colors.background; // 나머지는 원래 노드 타입 색상
   };
 
   // 노드 편집 핸들러
@@ -104,24 +105,17 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = ({
         />
       )}
       
-      <Badge.Ribbon 
-        text={getStatusIcon()} 
-        style={{ 
-          display: data.isExecuting || data.isCompleted ? 'block' : 'none' 
-        }}
-      >
         <Card
           size="small"
           style={{
             minWidth: 200,
             maxWidth: 300,
-            background: colors.background,
-            border: `2px solid ${colors.border}`,
+            background: getBackgroundColor(), // 실행 중일 때만 빨간색 배경
+            border: `2px solid ${colors.border}`, // 원래 테두리 색상 유지
             borderRadius: 8,
             boxShadow: selected 
               ? `0 0 0 2px ${colors.border}40` 
-              : '0 2px 8px rgba(0,0,0,0.1)',
-            opacity: data.isExecuting ? 0.8 : 1
+              : '0 2px 8px rgba(0,0,0,0.1)'
           }}
           title={
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -208,16 +202,15 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = ({
             {isContentNode && (
               <div>
                 <Text style={{ fontSize: 10, color: '#666' }}>
-                  Content: {data.content && data.content.length > 50 
+                  {data.content && data.content.length > 50 
                     ? `${data.content.substring(0, 50)}...` 
-                    : data.content || 'Not set'
+                    : data.content || 'Content not set!'
                   }
                 </Text>
               </div>
             )}
           </div>
         </Card>
-      </Badge.Ribbon>
       
       {/* Source Handle (출력) */}
       {handles.source && (

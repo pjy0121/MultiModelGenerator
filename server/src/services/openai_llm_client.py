@@ -59,6 +59,43 @@ class OpenAIClient(LLMClientInterface):
         """클라이언트 사용 가능 여부 확인"""
         return self.client is not None and bool(Config.OPENAI_API_KEY)
     
+    async def chat_completion_stream(
+        self, 
+        model: str, 
+        messages: List[Dict[str, str]], 
+        temperature: float = 0.1,
+        max_tokens: int = 2000
+    ):
+        """OpenAI API 스트리밍 채팅 완성"""
+        if not self.client:
+            raise RuntimeError("OpenAI 클라이언트가 초기화되지 않았습니다.")
+        
+        try:
+            stream = self.client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=True
+            )
+            
+            for chunk in stream:
+                if chunk.choices[0].delta.content is not None:
+                    yield chunk.choices[0].delta.content
+                    
+        except Exception as e:
+            if "401" in str(e) or "Unauthorized" in str(e):
+                error_msg = (
+                    f"OpenAI API 인증 실패: {e}\n"
+                    f"💡 해결 방법:\n"
+                    f"1. .env 파일의 OPENAI_API_KEY 확인\n"
+                    f"2. API 키가 유효한지 확인\n"
+                    f"3. 서버 재시작 후 다시 시도"
+                )
+                raise RuntimeError(error_msg)
+            else:
+                raise RuntimeError(f"OpenAI API 스트리밍 요청 실패: {e}")
+    
     def get_available_models(self) -> List[Dict[str, Any]]:
         """OpenAI API에서 실제 사용 가능한 모델 목록 가져오기"""
         if not self.is_available():

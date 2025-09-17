@@ -54,22 +54,24 @@ export const DEFAULT_PROMPTS = {
 검증 완료된 요구사항과 함께 개선 사항을 제안하세요.`
 };
 
-// 출력 형식 템플릿
+// 출력 형식 템플릿 (마크다운 태그 기반)
 export const OUTPUT_FORMAT_TEMPLATES = {
-  'requirements': `{
-  "description": "처리 결과에 대한 설명",
-  "output": "실제 처리된 요구사항 내용"
-}`,
+  'requirements': `마크다운으로 자유롭게 작성하되, 다음 노드로 전달할 핵심 내용은 <output> 태그 안에 작성하세요:
+
+<output>
+실제 처리된 요구사항 내용
+</output>`,
   
-  'validation': `{
-  "description": "검증 과정과 결과에 대한 설명",
-  "output": "검증 완료된 최종 요구사항"
-}`
+  'validation': `마크다운으로 자유롭게 작성하되, 다음 노드로 전달할 검증된 요구사항은 <output> 태그 안에 작성하세요:
+
+<output>
+검증 완료된 최종 요구사항
+</output>`
 };
 
 // 변수 설명
 export const PROMPT_VARIABLES = {
   '{input_data}': '이전 노드들에서 전달된 데이터가 여기에 삽입됩니다',
   '{context}': '지식 베이스에서 검색된 관련 문서 내용이 삽입됩니다',
-  '{output_format}': '예상되는 JSON 출력 형식이 삽입됩니다'
+  '{output_format}': '마크다운 출력 형식 가이드가 삽입됩니다'
 };

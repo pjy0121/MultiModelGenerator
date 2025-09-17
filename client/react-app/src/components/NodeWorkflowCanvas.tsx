@@ -30,7 +30,8 @@ export const NodeWorkflowCanvas: React.FC = () => {
     edges: storeEdges, 
     addEdge: addStoreEdge,
     removeEdge,
-    removeNode
+    removeNode,
+    nodeExecutionStates
   } = useNodeWorkflowStore();
 
   // ReactFlow 인스턴스 레퍼런스
@@ -48,6 +49,9 @@ export const NodeWorkflowCanvas: React.FC = () => {
   // ReactFlow용 상태 (스토어와 동기화)
   const [nodes, setNodes, onNodesChange] = useNodesState(storeNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(storeEdges);
+
+  // 메모이제이션으로 불필요한 재계산 방지
+  const memoizedNodeTypes = React.useMemo(() => nodeTypes, []);
 
   // 출력 노드 고정 위치 (하단 중앙)
   const getFixedOutputPosition = (viewport = { x: 0, y: 0, zoom: 1 }) => {
@@ -73,23 +77,11 @@ export const NodeWorkflowCanvas: React.FC = () => {
     return { x: visibleCenterX - 100, y: visibleTopY }; // 노드 크기 고려
   };
 
-  // 뷰포트 변화 감지 및 고정 노드 위치 업데이트
+  // 뷰포트 변화 감지 및 상태 업데이트 (디바운스 적용)
   const onViewportChange = useCallback((newViewport: any) => {
+    // 뷰포트 상태만 업데이트, 노드 위치는 useEffect에서 처리
     setCurrentViewport(newViewport);
-    
-    // Input/Output 노드 위치 업데이트
-    setNodes(currentNodes => 
-      currentNodes.map(node => {
-        if (node.data?.nodeType === NodeType.INPUT) {
-          return { ...node, position: getFixedInputPosition(newViewport) };
-        }
-        if (node.data?.nodeType === NodeType.OUTPUT) {
-          return { ...node, position: getFixedOutputPosition(newViewport) };
-        }
-        return node;
-      })
-    );
-  }, [setNodes]);
+  }, []);
 
   // 노드 변경 핸들러 (출력 노드만 이동 불가)
   const onNodesChangeWithFixed = useCallback((changes: any[]) => {
@@ -106,25 +98,68 @@ export const NodeWorkflowCanvas: React.FC = () => {
     onNodesChange(filteredChanges);
   }, [onNodesChange, nodes]);
 
-  // 스토어 상태가 변경되면 로컬 상태 업데이트 (위치 정보 보존)
+  // 노드 스타일을 메모이제이션으로 최적화
+  const getNodeStyle = React.useCallback((nodeId: string) => {
+    const executionState = nodeExecutionStates[nodeId] || 'idle';
+    
+    return {
+      backgroundColor: '#ffffff',
+      color: '#000',
+      border: 
+        executionState === 'executing' ? '3px solid #ff4d4f' : // 실행 중: 빨간색으로 변경
+        '2px solid #d9d9d9', // 나머지는 기본 색상
+      boxShadow: 
+        executionState === 'executing' ? '0 0 20px rgba(255, 77, 79, 0.6), 0 0 40px rgba(255, 77, 79, 0.3)' : // 실행 중: 빨간색 글로우
+        '0 2px 8px rgba(0,0,0,0.1)', // 나머지는 기본 그림자
+      transition: 'all 0.3s ease-in-out',
+      animation: 
+        executionState === 'executing' ? 'pulse-glow 2s infinite' :
+        'none' // 완료/에러 애니메이션 제거
+    };
+  }, [nodeExecutionStates]);
+
+  // 스토어 노드가 변경되면 로컬 상태 업데이트 (스타일 제외)
   React.useEffect(() => {
     setNodes(currentNodes => {
-      // 기존 노드들의 위치 정보를 보존하면서 업데이트
       const updatedNodes = storeNodes.map(storeNode => {
         const existingNode = currentNodes.find(node => node.id === storeNode.id);
         
-        // 출력 노드만 현재 뷰포트를 고려한 고정 위치로 설정
+        // 출력 노드는 고정 위치
         if (storeNode.data?.nodeType === NodeType.OUTPUT) {
-          return { ...storeNode, position: getFixedOutputPosition(currentViewport), draggable: false };
+          return { 
+            ...storeNode, 
+            position: getFixedOutputPosition(currentViewport), 
+            draggable: false
+          };
         }
         
+        // 입력 노드도 고정 위치
+        if (storeNode.data?.nodeType === NodeType.INPUT) {
+          return { 
+            ...storeNode, 
+            position: getFixedInputPosition(currentViewport), 
+            draggable: false
+          };
+        }
+        
+        // 다른 노드들은 기존 위치 유지
         return existingNode 
-          ? { ...storeNode, position: existingNode.position } // 기존 위치 유지
-          : storeNode; // 새 노드는 스토어의 위치 사용
+          ? { ...storeNode, position: existingNode.position }
+          : storeNode;
       });
       return updatedNodes;
     });
   }, [storeNodes, setNodes, currentViewport]);
+
+  // 노드 실행 상태가 변경되면 스타일만 업데이트
+  React.useEffect(() => {
+    setNodes(currentNodes => 
+      currentNodes.map(node => ({
+        ...node,
+        style: getNodeStyle(node.id)
+      }))
+    );
+  }, [nodeExecutionStates, getNodeStyle, setNodes]);
 
   React.useEffect(() => {
     setEdges(storeEdges);
@@ -207,7 +242,19 @@ export const NodeWorkflowCanvas: React.FC = () => {
 
   // 키보드 삭제 기능
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
-    if (event.key === 'Delete' || event.key === 'Backspace') {
+    if (event.key === 'Delete') {
+      // 입력 요소에 포커스가 있는지 확인 (모달 수정 중일 때 방지)
+      const activeElement = document.activeElement;
+      if (activeElement && (
+        activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        activeElement.tagName === 'SELECT' ||
+        activeElement.getAttribute('contenteditable') === 'true' ||
+        activeElement.closest('.ant-modal') !== null // Ant Design 모달 내부인지 확인
+      )) {
+        return; // 입력 중이거나 모달 내부에서는 삭제 방지
+      }
+
       const selectedNodes = reactFlowInstance?.getNodes().filter((node: any) => node.selected) || [];
       const selectedEdges = reactFlowInstance?.getEdges().filter((edge: any) => edge.selected) || [];
       
@@ -317,14 +364,14 @@ export const NodeWorkflowCanvas: React.FC = () => {
         onNodesDelete={onNodesDelete}
         onInit={onInit}
         onViewportChange={onViewportChange}
-        nodeTypes={nodeTypes}
+        nodeTypes={memoizedNodeTypes}
         fitView={false}
         snapToGrid
         snapGrid={[15, 15]}
         defaultViewport={{ x: 0, y: 0, zoom: 1 }}
         minZoom={0.5}
         maxZoom={2}
-        deleteKeyCode={['Backspace', 'Delete']}
+        deleteKeyCode={['Delete']}
         multiSelectionKeyCode={['Meta', 'Ctrl']}
         panOnDrag={false}
         zoomOnScroll={true}

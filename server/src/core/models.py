@@ -69,6 +69,7 @@ class NodeExecutionResult(BaseModel):
     description: Optional[str] = Field(None, description="UI description")
     output: Optional[str] = Field(None, description="Output data")
     error: Optional[str] = Field(None, description="Error message")
+    execution_time: float = Field(0.0, description="Node execution time in seconds")
 
 class WorkflowExecutionResponse(BaseModel):
     success: bool = Field(..., description="Overall success")

@@ -1,6 +1,9 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 import logging
+import json
+import asyncio
 
 # Node-based workflow imports
 from ..core.node_execution_engine import NodeExecutionEngine
@@ -95,6 +98,50 @@ async def execute_workflow(request: WorkflowExecutionRequest):
             total_execution_time=0.0,
             execution_order=[]
         )
+
+@app.post("/execute-workflow-stream")
+async def execute_workflow_stream(request: WorkflowExecutionRequest):
+    """
+    Node-based 워크플로우 실행 (스트리밍)
+    LLM 응답을 실시간으로 스트리밍하면서 최종 파싱된 결과도 반환
+    """
+    
+    async def generate_stream():
+        try:
+            logger.info(f"Starting streaming workflow execution with {len(request.workflow.nodes)} nodes")
+            
+            # 실행 전 검증
+            validation_result = validator.validate_workflow(request.workflow)
+            if not validation_result["valid"]:
+                yield f"data: {json.dumps({'type': 'error', 'message': f'Workflow validation failed: {validation_result['errors']}'})}\n\n"
+                return
+            
+            # 스트리밍으로 워크플로우 실행
+            async for chunk in execution_engine.execute_workflow_stream(
+                workflow=request.workflow,
+                knowledge_base=request.knowledge_base,
+                search_intensity=request.search_intensity
+            ):
+                yield f"data: {json.dumps(chunk)}\n\n"
+                
+                # 완료 또는 에러 시 스트림 종료
+                if chunk.get('type') in ['complete', 'error']:
+                    logger.info(f"Stream terminated with event: {chunk.get('type')}")
+                    break
+                
+        except Exception as e:
+            logger.error(f"Streaming workflow execution failed: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+    
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Content-Type": "text/event-stream"
+        }
+    )
 
 @app.get("/knowledge-bases", response_model=KnowledgeBaseListResponse)
 async def list_knowledge_bases():

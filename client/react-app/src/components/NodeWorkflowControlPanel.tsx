@@ -22,14 +22,16 @@ import {
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-export const NodeWorkflowControlPanel: React.FC = () => {
+const NodeWorkflowControlPanel: React.FC = () => {
+
+
+  
   const {
     nodes,
     edges,
     selectedKnowledgeBase,
     searchIntensity,
     isExecuting,
-    executionResult,
     validationErrors,
     knowledgeBases,
     
@@ -38,7 +40,7 @@ export const NodeWorkflowControlPanel: React.FC = () => {
     setSearchIntensity,
     validateWorkflow,
     getValidationErrors,
-    executeWorkflow,
+    executeWorkflowStream,
     loadKnowledgeBases
   } = useNodeWorkflowStore();
 
@@ -62,7 +64,7 @@ export const NodeWorkflowControlPanel: React.FC = () => {
     }
   };
 
-  // 워크플로우 실행 핸들러
+  // 워크플로우 실행 핸들러 (스트리밍)
   const handleExecuteWorkflow = async () => {
     // 실행 전 검증
     const isValid = validateWorkflow();
@@ -98,10 +100,47 @@ export const NodeWorkflowControlPanel: React.FC = () => {
     }
 
     try {
-      message.loading('노드 기반 워크플로우 실행 중...', 0);
-      const result = await executeWorkflow();
-      message.destroy();
-      message.success(`워크플로우 실행 완료! (${(result.total_execution_time || 0).toFixed(2)}초)`);
+      // 초기화
+      
+      message.loading('스트리밍 워크플로우 실행 중...', 0);
+      
+      let completedNodes = 0;
+      
+      await executeWorkflowStream((data) => {
+        switch (data.type) {
+          case 'start':
+            message.destroy();
+            message.info('워크플로우 실행 시작');
+            break;
+            
+          case 'node_start':
+            // 노드 시작은 store에서 처리됨
+            break;
+            
+          case 'stream':
+            // 스트리밍은 store에서 처리됨
+            break;
+            
+          case 'node_complete':
+            if (data.success) {
+              completedNodes++;
+              // Progress는 store에서 관리됨
+            }
+            break;
+            
+          case 'complete':
+            message.destroy();
+            message.success(`워크플로우 실행 완료! (${(data.total_execution_time || 0).toFixed(2)}초)`);
+            // 완료 상태는 store에서 관리됨
+            break;
+            
+          case 'error':
+            message.destroy();
+            message.error(`실행 오류: ${data.message}`);
+            break;
+        }
+      });
+      
     } catch (error: any) {
       message.destroy();
       message.error(`워크플로우 실행 실패: ${error.message}`);
@@ -249,67 +288,13 @@ export const NodeWorkflowControlPanel: React.FC = () => {
             워크플로우 실행
           </Button>
 
-          {/* 실행 결과 */}
-          {executionResult && (
-            <div style={{ 
-              marginTop: 16, 
-              padding: 12, 
-              background: '#f6ffed', 
-              border: '1px solid #b7eb8f', 
-              borderRadius: 4 
-            }}>
-              <Text strong style={{ color: '#52c41a' }}>실행 완료!</Text>
-              <br />
-              <Text style={{ fontSize: 12 }}>
-                실행 시간: {(executionResult.total_execution_time || 0).toFixed(2)}초
-              </Text>
-              <br />
-              <Text style={{ fontSize: 12 }}>
-                실행 순서: {(executionResult.execution_order || []).join(' → ')}
-              </Text>
-              
-              {/* 각 노드의 실행 결과 표시 */}
-              {executionResult.results && executionResult.results.length > 0 && (
-                <>
-                  <br />
-                  <br />
-                  <Text strong style={{ color: '#1890ff' }}>노드별 실행 결과:</Text>
-                  {executionResult.results.map((result: any) => {
-                    const node = nodes.find(n => n.id === result.node_id);
-                    const nodeLabel = node?.data?.label || result.node_id;
-                    return (
-                      <div key={result.node_id} style={{ 
-                        marginTop: 8, 
-                        padding: 8, 
-                        background: result.success ? '#fff' : '#fff2f0',
-                        border: result.success ? '1px solid #d9d9d9' : '1px solid #ffccc7',
-                        borderRadius: 4 
-                      }}>
-                        <div>
-                          <Text strong style={{ fontSize: 13 }}>
-                            {nodeLabel}
-                          </Text>
-                        </div>
-                        <div style={{ marginTop: 4 }}>
-                          {result.success ? (
-                            <Text style={{ fontSize: 12, color: '#666' }}>
-                              {result.description || '실행 완료'}
-                            </Text>
-                          ) : (
-                            <Text style={{ fontSize: 12, color: '#ff4d4f' }}>
-                              오류: {result.error}
-                            </Text>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-            </div>
-          )}
+
+
+
         </Space>
       </Card>
     </div>
   );
 };
+
+export { NodeWorkflowControlPanel };

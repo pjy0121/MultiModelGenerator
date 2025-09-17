@@ -31,6 +31,11 @@ interface NodeWorkflowState {
   isExecuting: boolean;
   executionResult: NodeBasedWorkflowResponse | null;
   
+  // 노드별 실행 상태 및 스트리밍 출력
+  nodeExecutionStates: Record<string, 'idle' | 'executing' | 'completed' | 'error'>;
+  nodeStreamingOutputs: Record<string, string>;
+  nodeExecutionResults: Record<string, { success: boolean; description?: string; error?: string; execution_time?: number; }>;
+  
   // 검증 상태
   validationResult: ValidationResult | null;
   validationErrors: string[];
@@ -56,6 +61,7 @@ interface NodeWorkflowState {
   getValidationErrors: () => string[];
   
   executeWorkflow: () => Promise<NodeBasedWorkflowResponse>;
+  executeWorkflowStream: (onStreamUpdate: (data: any) => void) => Promise<void>;
   
   loadKnowledgeBases: () => Promise<void>;
   loadAvailableModels: (provider: LLMProvider) => Promise<void>;
@@ -111,28 +117,14 @@ const createInitialNodes = (): WorkflowNode[] => {
   ];
 };
 
-// 초기 엣지 생성 함수 - input-node와 output-node를 연결
-const createInitialEdges = (inputNodeId: string, outputNodeId: string): WorkflowEdge[] => {
-  return [
-    {
-      id: `edge_${inputNodeId}_${outputNodeId}_initial`,
-      source: inputNodeId,
-      target: outputNodeId
-    }
-  ];
-};
-
 export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
-  // 초기 노드들 생성
+  // 초기 노드들 생성 (연결 없이)
   const initialNodes = createInitialNodes();
-  const inputNode = initialNodes.find(node => node.data.nodeType === NodeType.INPUT)!;
-  const outputNode = initialNodes.find(node => node.data.nodeType === NodeType.OUTPUT)!;
-  const initialEdges = createInitialEdges(inputNode.id, outputNode.id);
 
   return {
-    // 초기 상태 - input-node와 output-node가 기본으로 생성되고 연결됨
+    // 초기 상태 - input-node와 output-node가 기본으로 생성됨 (연결 없음)
     nodes: initialNodes,
-    edges: initialEdges,
+    edges: [],
     selectedKnowledgeBase: '',
     searchIntensity: SearchIntensity.MEDIUM,
     isExecuting: false,
@@ -141,6 +133,11 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     validationErrors: [],
     availableModels: [],
     knowledgeBases: [],
+    
+    // 노드별 실행 상태 및 출력
+    nodeExecutionStates: {},
+    nodeStreamingOutputs: {},
+    nodeExecutionResults: {},
   
   // 노드 관리 액션들
   addNode: async (nodeType: NodeType, position: { x: number; y: number }) => {
@@ -171,8 +168,9 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       try {
         const state = get();
         
-        // Google 모델 목록 로드
+        // 모든 provider 모델 목록 로드
         await state.loadAvailableModels(LLMProvider.GOOGLE);
+        await state.loadAvailableModels(LLMProvider.OPENAI);
         
         // 모델 로드 완료 후 기본 모델 선택
         const updatedState = get();
@@ -352,6 +350,178 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       } else if (error.response?.data?.error) {
         errorMessage = error.response.data.error;
       } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      throw new Error(errorMessage);
+    }
+  },
+
+  // 워크플로우 스트리밍 실행
+  executeWorkflowStream: async (onStreamUpdate: (data: any) => void) => {
+    const state = get();
+    
+    // 실행 전 검증
+    if (!state.validateWorkflow()) {
+      throw new Error('워크플로우 검증 실패. 연결 규칙을 확인해주세요.');
+    }
+
+    set({ isExecuting: true, executionResult: null });
+    
+    try {
+      // 서버가 기대하는 WorkflowExecutionRequest 형식으로 변환
+      const workflowDefinition = {
+        nodes: state.nodes.map(node => ({
+          id: node.id,
+          type: node.data.nodeType,
+          position: node.position,
+          content: node.data.content || null,
+          model_type: node.data.model_type || null,
+          llm_provider: node.data.llm_provider || null,
+          prompt: node.data.prompt || null,
+          output: null,
+          executed: false,
+          error: null
+        })),
+        edges: state.edges
+      };
+
+      const request = {
+        workflow: workflowDefinition,
+        knowledge_base: state.selectedKnowledgeBase || null,
+        search_intensity: state.searchIntensity
+      };
+
+      console.log('스트리밍 워크플로우 실행 요청:', request);
+      
+      // 초기화 - 모든 노드를 idle 상태로 설정
+      const initialStates: Record<string, 'idle' | 'executing' | 'completed' | 'error'> = {};
+      const initialOutputs: Record<string, string> = {};
+      const initialResults: Record<string, { success: boolean; description?: string; error?: string; execution_time?: number; }> = {};
+      
+      state.nodes.forEach(node => {
+        initialStates[node.id] = 'idle';
+        initialOutputs[node.id] = '';
+        initialResults[node.id] = { success: false };
+      });
+      
+      set({ 
+        nodeExecutionStates: initialStates,
+        nodeStreamingOutputs: initialOutputs,
+        nodeExecutionResults: initialResults
+      });
+      
+      // 스트리밍 실행
+      for await (const chunk of nodeBasedWorkflowAPI.executeNodeWorkflowStream(request)) {
+        onStreamUpdate(chunk);
+        
+        // 노드별 상태 업데이트
+        if (chunk.type === 'node_start' && chunk.node_id) {
+          set(state => ({
+            nodeExecutionStates: {
+              ...state.nodeExecutionStates,
+              [chunk.node_id]: 'executing'
+            }
+          }));
+        } else if (chunk.type === 'stream' && chunk.node_id && chunk.content) {
+          // 스트리밍 업데이트를 배치로 처리하여 성능 최적화
+          set(state => {
+            const currentOutput = state.nodeStreamingOutputs[chunk.node_id] || '';
+            const newOutput = currentOutput + chunk.content;
+            
+            // 불필요한 업데이트 방지
+            if (currentOutput === newOutput) return state;
+            
+            return {
+              ...state,
+              nodeStreamingOutputs: {
+                ...state.nodeStreamingOutputs,
+                [chunk.node_id]: newOutput
+              }
+            };
+          });
+        } else if (chunk.type === 'node_complete' && chunk.node_id) {
+          const status = chunk.success ? 'completed' : 'error';
+          set(state => {
+            const updatedResults = { ...state.nodeExecutionResults };
+            
+            // 모든 노드의 완료 결과를 즉시 저장 (성공/실패 상관없이)
+            updatedResults[chunk.node_id] = {
+              success: chunk.success,
+              description: chunk.description || (chunk.success ? '' : chunk.error),
+              error: chunk.success ? undefined : chunk.error,
+              execution_time: chunk.execution_time
+            };
+            
+            return {
+              ...state,
+              nodeExecutionStates: {
+                ...state.nodeExecutionStates,
+                [chunk.node_id]: status
+              },
+              nodeExecutionResults: updatedResults
+            };
+          });
+        }
+        
+        // 완료 시 결과 저장
+        if (chunk.type === 'complete') {
+          // 실제 노드 실행 결과로 nodeExecutionResults 업데이트
+          const nodeResults: Record<string, any> = {};
+          if (chunk.results && Array.isArray(chunk.results)) {
+            chunk.results.forEach((result: any) => {
+              if (result.node_id) {
+                nodeResults[result.node_id] = {
+                  success: result.success,
+                  description: result.description, // 실제 노드 실행 결과
+                  error: result.error,
+                  execution_time: result.execution_time
+                };
+              }
+            });
+          }
+
+          // 완료된 모든 노드의 상태를 completed로 설정
+          const completedStates: Record<string, 'idle' | 'executing' | 'completed' | 'error'> = {};
+          if (chunk.results && Array.isArray(chunk.results)) {
+            chunk.results.forEach((result: any) => {
+              if (result.node_id) {
+                completedStates[result.node_id] = result.success ? 'completed' : 'error';
+              }
+            });
+          }
+
+          set(state => ({ 
+            executionResult: {
+              success: chunk.success,
+              results: chunk.results || [],
+              final_output: chunk.final_output,
+              total_execution_time: chunk.total_execution_time,
+              execution_order: chunk.execution_order || [],
+              error: chunk.error
+            },
+            nodeExecutionResults: {
+              ...state.nodeExecutionResults,
+              ...nodeResults // 실제 실행 결과로 업데이트
+            },
+            nodeExecutionStates: {
+              ...state.nodeExecutionStates,
+              ...completedStates // 완료된 노드 상태 업데이트
+            },
+            isExecuting: false 
+          }));
+        } else if (chunk.type === 'error') {
+          set({ isExecuting: false });
+        }
+      }
+      
+    } catch (error: any) {
+      console.error('스트리밍 워크플로우 실행 에러:', error);
+      
+      set({ isExecuting: false });
+      
+      let errorMessage = '알 수 없는 오류가 발생했습니다.';
+      if (error.message) {
         errorMessage = error.message;
       }
       
