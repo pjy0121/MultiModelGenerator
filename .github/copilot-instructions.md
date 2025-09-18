@@ -47,7 +47,6 @@ LLM nodes receive templated prompts with variable substitution:
 # Template variables in prompts
 '{input_data}' → concatenated pre-node outputs
 '{context}' → vector store search results  
-'{output_format}' → expected response structure
 ```
 Search intensity determines vector store `top_k` parameter for context retrieval.
 

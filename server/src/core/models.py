@@ -10,9 +10,11 @@ class NodeType(str, Enum):
     OUTPUT = "output-node"
 
 class SearchIntensity(str, Enum):
+    VERY_LOW = "very_low"
     LOW = "low"
     MEDIUM = "medium" 
     HIGH = "high"
+    VERY_HIGH = "very_high"
 
 class AvailableModel(BaseModel):
     """사용 가능한 LLM 모델"""
@@ -33,6 +35,7 @@ class WorkflowNode(BaseModel):
     model_type: Optional[str] = Field(None, description="LLM model")
     llm_provider: Optional[str] = Field(None, description="LLM provider")
     prompt: Optional[str] = Field(None, description="Prompt for LLM nodes")
+    output_format: Optional[str] = Field(None, description="Expected output format for LLM nodes")
     output: Optional[str] = Field(None, description="Execution result")
     executed: bool = Field(default=False)
     error: Optional[str] = Field(None)

@@ -50,15 +50,9 @@ class VectorStore:
         
         print(f"✅ 지식 베이스 '{self.kb_name}' 저장 완료!")
     
-    def search_similar_chunks(self, query: str, top_k: int = None) -> List[str]:
+    def search_similar_chunks(self, query: str, top_k: int) -> List[str]:
         """유사한 청크 검색"""
-        if top_k is None:
-            top_k = Config.SEARCH_TOP_K
         
-        # 최대 검색 결과 수 제한 적용
-        if top_k > Config.SEARCH_MAX_TOP_K:
-            top_k = Config.SEARCH_MAX_TOP_K
-            
         print(f"🔍 지식 베이스 '{self.kb_name}'에서 키워드 '{query}' 검색 중... (top_k={top_k})")
         
         try:
@@ -68,15 +62,8 @@ class VectorStore:
                 print("❌ 지식 베이스가 비어있습니다.")
                 return []
             
-            # 포괄적 검색 모드가 활성화된 경우, 더 많은 결과 검색
-            if Config.SEARCH_ENABLE_COMPREHENSIVE:
-                # 전체 문서의 80% 또는 설정된 top_k 중 더 큰 값 사용
-                comprehensive_top_k = max(top_k, int(collection_count * 0.8))
-                actual_top_k = min(comprehensive_top_k, collection_count)
-                print(f"📖 포괄적 검색 모드: {actual_top_k}개 청크 검색 (전체 {collection_count}개 중)")
-            else:
-                # 실제 검색할 결과 수 조정 (전체 청크 수보다 많을 수 없음)
-                actual_top_k = min(top_k, collection_count)
+            # 실제 검색할 결과 수 조정 (전체 청크 수보다 많을 수 없음)
+            actual_top_k = min(top_k, collection_count)
             
             results = self.collection.query(
                 query_texts=[query],
@@ -93,9 +80,6 @@ class VectorStore:
                 for i, (chunk, distance) in enumerate(zip(chunks, distances)):
                     if distance <= Config.SEARCH_SIMILARITY_THRESHOLD:
                         filtered_chunks.append(chunk)
-                    # 포괄적 검색 모드에서는 중단하지 않고 모든 결과 확인
-                    elif not Config.SEARCH_ENABLE_COMPREHENSIVE:
-                        break  # 일반 모드에서만 중단
                 
                 print(f"📚 {len(filtered_chunks)}개 관련 청크 발견 (총 {len(chunks)}개 검색 결과 중)")
                 return filtered_chunks

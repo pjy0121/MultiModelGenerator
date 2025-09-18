@@ -15,9 +15,11 @@ export enum LLMProvider {
 }
 
 export enum SearchIntensity {
+  VERY_LOW = "very_low",
   LOW = "low",      
   MEDIUM = "medium", 
-  HIGH = "high"     
+  HIGH = "high",
+  VERY_HIGH = "very_high"
 }
 
 // ==================== 노드 기반 워크플로우 핵심 타입들 ====================
@@ -74,6 +76,7 @@ export interface NodeData extends Record<string, unknown> {
   model_type?: string;        // LLM 노드용
   llm_provider?: LLMProvider; // LLM 노드용
   prompt?: string;            // LLM 노드용 프롬프트
+  output_format?: string;     // LLM 노드용 출력 형식
   isExecuting?: boolean;      // 실행 상태 표시용
   isCompleted?: boolean;      // 완료 상태 표시용
 }

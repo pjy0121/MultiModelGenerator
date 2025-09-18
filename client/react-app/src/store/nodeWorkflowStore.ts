@@ -23,6 +23,11 @@ interface NodeWorkflowState {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   
+  // ReactFlow 뷰포트 상태
+  viewport: { x: number; y: number; zoom: number } | null;
+  currentViewport: { x: number; y: number; zoom: number };
+  isRestoring: boolean; // 복원 상태 플래그
+  
   // 실행 설정
   selectedKnowledgeBase: string;
   searchIntensity: SearchIntensity;
@@ -65,6 +70,20 @@ interface NodeWorkflowState {
   
   loadKnowledgeBases: () => Promise<void>;
   loadAvailableModels: (provider: LLMProvider) => Promise<void>;
+  
+  // 뷰포트 상태 관리
+  setViewport: (viewport: { x: number; y: number; zoom: number }) => void;
+  
+  // 노드 위치 업데이트
+  updateNodePositions: (nodePositions: { id: string; position: { x: number; y: number } }[]) => void;
+  
+  // 워크플로우 저장/복원/Import/Export 기능
+  saveCurrentWorkflow: () => void;
+  restoreWorkflow: () => boolean;
+  resetToInitialState: () => void;
+  exportToJSON: () => void;
+  importFromJSON: (jsonData: string) => boolean;
+  setRestoring: (isRestoring: boolean) => void;
 }
 
 // 노드 생성 헬퍼 함수
@@ -112,7 +131,7 @@ const createWorkflowNode = (nodeType: NodeType, position: { x: number; y: number
 // 초기 노드 생성 함수
 const createInitialNodes = (): WorkflowNode[] => {
   return [
-    createWorkflowNode(NodeType.INPUT, { x: 400, y: 50 }),    // 상단 중앙
+    createWorkflowNode(NodeType.INPUT, { x: 400, y: 100 }),    // 상단 중앙 (더 위로)
     createWorkflowNode(NodeType.OUTPUT, { x: 400, y: 550 })   // 하단 중앙
   ];
 };
@@ -125,6 +144,11 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     // 초기 상태 - input-node와 output-node가 기본으로 생성됨 (연결 없음)
     nodes: initialNodes,
     edges: [],
+    
+    viewport: null,
+    currentViewport: { x: 0, y: 0, zoom: 1 },
+    isRestoring: false, // 복원 상태 초기값
+    
     selectedKnowledgeBase: '',
     searchIntensity: SearchIntensity.MEDIUM,
     isExecuting: false,
@@ -138,6 +162,8 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     nodeExecutionStates: {},
     nodeStreamingOutputs: {},
     nodeExecutionResults: {},
+
+    setRestoring: (isRestoring: boolean) => set({ isRestoring }),
   
   // 노드 관리 액션들
   addNode: async (nodeType: NodeType, position: { x: number; y: number }) => {
@@ -255,6 +281,28 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
   setSearchIntensity: (intensity: SearchIntensity) => {
     set({ searchIntensity: intensity });
   },
+
+  setViewport: (viewport: { x: number; y: number; zoom: number }) => {
+    set({ 
+      viewport,
+      currentViewport: viewport // 실시간으로 현재 뷰포트도 업데이트
+    });
+  },
+  
+  updateNodePositions: (nodePositions: { id: string; position: { x: number; y: number } }[]) => {
+    set(state => ({
+      nodes: state.nodes.map(node => {
+        const positionUpdate = nodePositions.find(np => np.id === node.id);
+        if (positionUpdate) {
+          return {
+            ...node,
+            position: positionUpdate.position
+          };
+        }
+        return node;
+      })
+    }));
+  },
   
   // 노드 실행 상태 업데이트
   setNodeExecutionStatus: (nodeId: string, isExecuting: boolean, isCompleted?: boolean) => {
@@ -306,18 +354,28 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     try {
       // 서버가 기대하는 WorkflowExecutionRequest 형식으로 변환
       const workflowDefinition = {
-        nodes: state.nodes.map(node => ({
-          id: node.id,
-          type: node.data.nodeType,
-          position: node.position,
-          content: node.data.content || null,
-          model_type: node.data.model_type || null,
-          llm_provider: node.data.llm_provider || null,
-          prompt: node.data.prompt || null,
-          output: null,
-          executed: false,
-          error: null
-        })),
+        nodes: state.nodes.map(node => {
+          const isLlmNode = [NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION].includes(node.data.nodeType);
+          let prompt = node.data.prompt || '';
+
+          if (isLlmNode && node.data.output_format) {
+            const outputFormatInstruction = `\n\n핵심 결과를 반드시 다음과 같은 형태로 만들어 출력에 포함시키세요.\n이건 절대적으로 지켜야 할 사항입니다.\n<output>${node.data.output_format}</output>`;
+            prompt += outputFormatInstruction;
+          }
+
+          return {
+            id: node.id,
+            type: node.data.nodeType,
+            position: node.position,
+            content: node.data.content || null,
+            model_type: node.data.model_type || null,
+            llm_provider: node.data.llm_provider || null,
+            prompt: prompt,
+            output: null,
+            executed: false,
+            error: null
+          };
+        }),
         edges: state.edges
       };
 
@@ -326,8 +384,6 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
         knowledge_base: state.selectedKnowledgeBase || null,
         search_intensity: state.searchIntensity  // 문자열 그대로 전송
       };
-
-      console.log('워크플로우 실행 요청:', request); // 디버깅용 단순화
       
       const result = await nodeBasedWorkflowAPI.executeNodeWorkflow(request);
       
@@ -339,7 +395,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       return result;
       
     } catch (error: any) {
-      console.error('워크플로우 실행 에러:', error); // 디버깅용
+      console.error('워크플로우 실행 에러:', error);
       
       set({ isExecuting: false });
       
@@ -371,18 +427,28 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     try {
       // 서버가 기대하는 WorkflowExecutionRequest 형식으로 변환
       const workflowDefinition = {
-        nodes: state.nodes.map(node => ({
-          id: node.id,
-          type: node.data.nodeType,
-          position: node.position,
-          content: node.data.content || null,
-          model_type: node.data.model_type || null,
-          llm_provider: node.data.llm_provider || null,
-          prompt: node.data.prompt || null,
-          output: null,
-          executed: false,
-          error: null
-        })),
+        nodes: state.nodes.map(node => {
+          const isLlmNode = [NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION].includes(node.data.nodeType);
+          let finalPrompt = node.data.prompt || '';
+
+          if (isLlmNode && node.data.output_format) {
+            const outputFormatInstruction = `\n\n핵심 결과를 반드시 다음과 같은 형태로 만들어 출력에 포함시키세요. 이건 절대적으로 지켜야 할 사항입니다.\n<output>${node.data.output_format}</output>`;
+            finalPrompt += outputFormatInstruction;
+          }
+
+          return {
+            id: node.id,
+            type: node.data.nodeType,
+            position: node.position,
+            content: node.data.content || null,
+            model_type: node.data.model_type || null,
+            llm_provider: node.data.llm_provider || null,
+            prompt: finalPrompt,
+            output: null,
+            executed: false,
+            error: null
+          };
+        }),
         edges: state.edges
       };
 
@@ -391,8 +457,6 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
         knowledge_base: state.selectedKnowledgeBase || null,
         search_intensity: state.searchIntensity
       };
-
-      console.log('스트리밍 워크플로우 실행 요청:', request);
       
       // 초기화 - 모든 노드를 idle 상태로 설정
       const initialStates: Record<string, 'idle' | 'executing' | 'completed' | 'error'> = {};
@@ -533,7 +597,6 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
   loadKnowledgeBases: async () => {
     try {
       const knowledgeBases = await workflowAPI.getKnowledgeBases();
-      console.log('로드된 지식베이스:', knowledgeBases); // 디버깅용
       set({ knowledgeBases });
     } catch (error) {
       console.error('지식 베이스 로딩 실패:', error);
@@ -552,6 +615,189 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       set({ availableModels: updatedModels });
     } catch (error) {
       console.error('모델 목록 로딩 실패:', error);
+    }
+  },
+  
+  // 워크플로우 저장/복원/Import/Export 기능 구현
+  saveCurrentWorkflow: () => {
+    const { nodes, edges, selectedKnowledgeBase, searchIntensity, currentViewport } = get();
+    const workflowState = {
+      nodes,
+      edges,
+      selectedKnowledgeBase,
+      searchIntensity,
+      viewport: currentViewport, // 현재 뷰포트 상태 저장
+      savedAt: new Date().toISOString(),
+      version: '1.0'
+    };
+    
+    try {
+      localStorage.setItem('node_workflow_state', JSON.stringify(workflowState));
+    } catch (error) {
+      console.error('워크플로우 저장 실패:', error);
+      message.error('워크플로우 저장에 실패했습니다.');
+    }
+  },
+  
+  restoreWorkflow: () => {
+    try {
+      const savedState = localStorage.getItem('node_workflow_state');
+      if (!savedState) {
+        return false;
+      }
+      
+      const workflowState = JSON.parse(savedState);
+      
+      // 워크플로우 상태 복원
+      const savedViewport = workflowState.viewport || { x: 0, y: 0, zoom: 1 };
+      
+      set({ isRestoring: true }); // 복원 시작
+      
+      set({
+        nodes: workflowState.nodes || [],
+        edges: workflowState.edges || [],
+        selectedKnowledgeBase: workflowState.selectedKnowledgeBase || '',
+        searchIntensity: workflowState.searchIntensity || SearchIntensity.MEDIUM,
+        viewport: savedViewport,
+        currentViewport: savedViewport, // currentViewport도 동일하게 설정
+        // 실행 관련 상태는 초기화
+        isExecuting: false,
+        executionResult: null,
+        nodeExecutionStates: {},
+        nodeStreamingOutputs: {},
+        nodeExecutionResults: {},
+        validationResult: null,
+        validationErrors: []
+      });
+      
+      setTimeout(() => set({ isRestoring: false }), 100); // 복원 완료
+      
+      return true;
+      
+    } catch (error) {
+      console.error('워크플로우 복원 실패:', error);
+      message.error('워크플로우 복원에 실패했습니다.');
+      set({ isRestoring: false }); // 에러 시 복원 상태 해제
+      return false;
+    }
+  },
+  
+  resetToInitialState: () => {
+    // 초기 input-node와 output-node 생성 (createInitialNodes와 동일한 위치)
+    const inputNode = createWorkflowNode(NodeType.INPUT, { x: 600, y: 50 });
+    const outputNode = createWorkflowNode(NodeType.OUTPUT, { x: 600, y: 600 });
+    
+    // input-node에 기본 컨텐츠 설정
+    inputNode.data.content = "";
+    
+    // 모든 상태를 초기화 - 노드들이 화면 중앙에 보이도록 뷰포트 조정
+    const initialViewport = { x: 0, y: 0, zoom: 1 }; // 노드들이 중앙에 보이도록 조정
+    set({
+      nodes: [inputNode, outputNode],
+      edges: [],
+      viewport: initialViewport,
+      currentViewport: initialViewport, // currentViewport도 초기화
+      selectedKnowledgeBase: '',
+      searchIntensity: SearchIntensity.MEDIUM,
+      // 실행 관련 상태 초기화
+      isExecuting: false,
+      executionResult: null,
+      nodeExecutionStates: {},
+      nodeStreamingOutputs: {},
+      nodeExecutionResults: {},
+      validationResult: null,
+      validationErrors: []
+    });
+  },
+  
+  exportToJSON: () => {
+    const { nodes, edges, selectedKnowledgeBase, searchIntensity } = get();
+    const exportData = {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      workflow: {
+        nodes,
+        edges,
+        selectedKnowledgeBase,
+        searchIntensity
+      }
+    };
+    
+    try {
+      const dataStr = JSON.stringify(exportData, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `node_workflow_export_${new Date().getTime()}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      console.log('워크플로우가 JSON 파일로 내보내졌습니다.');
+    } catch (error) {
+      console.error('워크플로우 내보내기 실패:', error);
+      message.error('워크플로우 내보내기에 실패했습니다.');
+    }
+  },
+  
+  importFromJSON: (jsonData: string) => {
+    if (!jsonData.trim()) {
+      message.error('JSON 데이터가 비어있습니다.');
+      return false;
+    }
+    
+    try {
+      const workflowData = JSON.parse(jsonData.trim());
+      
+      // 워크플로우 데이터 구조 검증
+      if (!workflowData.workflow && !workflowData.nodes) {
+        message.error('유효하지 않은 워크플로우 데이터입니다.');
+        return false;
+      }
+      
+      // 노드와 엣지 데이터 추출
+      let nodes = workflowData.nodes || workflowData.workflow?.nodes || [];
+      let edges = workflowData.edges || workflowData.workflow?.edges || [];
+      let selectedKnowledgeBase = workflowData.selectedKnowledgeBase || workflowData.workflow?.selectedKnowledgeBase || '';
+      let searchIntensity = workflowData.searchIntensity || workflowData.workflow?.searchIntensity || SearchIntensity.MEDIUM;
+      
+      // 노드 데이터 검증 및 정규화
+      if (!Array.isArray(nodes)) {
+        message.error('노드 데이터가 올바르지 않습니다.');
+        return false;
+      }
+      
+      // 에지 데이터 검증 및 정규화
+      if (!Array.isArray(edges)) {
+        edges = [];
+      }
+      
+      // 워크플로우 상태 업데이트
+      set({
+        nodes,
+        edges,
+        selectedKnowledgeBase,
+        searchIntensity,
+        // 실행 관련 상태는 초기화
+        isExecuting: false,
+        executionResult: null,
+        nodeExecutionStates: {},
+        nodeStreamingOutputs: {},
+        nodeExecutionResults: {},
+        validationResult: null,
+        validationErrors: []
+      });
+      
+      console.log('워크플로우가 JSON에서 성공적으로 불러와졌습니다.');
+      return true;
+      
+    } catch (error) {
+      console.error('JSON 파싱 오류:', error);
+      message.error('유효하지 않은 JSON 형식입니다.');
+      return false;
     }
   }
   };

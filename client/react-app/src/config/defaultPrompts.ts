@@ -72,6 +72,5 @@ export const OUTPUT_FORMAT_TEMPLATES = {
 // 변수 설명
 export const PROMPT_VARIABLES = {
   '{input_data}': '이전 노드들에서 전달된 데이터가 여기에 삽입됩니다',
-  '{context}': '지식 베이스에서 검색된 관련 문서 내용이 삽입됩니다',
-  '{output_format}': '마크다운 출력 형식 가이드가 삽입됩니다'
+  '{context}': '지식 베이스에서 검색된 관련 문서 내용이 여기에 삽입됩니다'
 };

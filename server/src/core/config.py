@@ -28,10 +28,8 @@ class Config:
     VECTOR_DB_ROOT = "./knowledge_bases"
     
     # 검색 설정 - VectorDB 검색 성능 및 포괄성 제어
-    SEARCH_TOP_K = 50  # 기본 검색 결과 수 (더 많은 문서 검색으로 포괄성 향상)
-    SEARCH_MAX_TOP_K = 100  # 최대 검색 결과 수 (시스템 부하 방지를 위한 상한선)
     SEARCH_SIMILARITY_THRESHOLD = 0.9  # 유사도 임계값 (0.8 → 0.9로 완화하여 더 관대한 검색)
-    SEARCH_ENABLE_COMPREHENSIVE = True  # 포괄적 검색 모드 (전체 문서의 80% 검색, 시간은 오래 걸리지만 더 정확한 결과)
+    SEARCH_ENABLE_COMPREHENSIVE = False  # 포괄적 검색 모드 비활성화
     
     # 출력 설정
     OUTPUT_DIR = "./output"

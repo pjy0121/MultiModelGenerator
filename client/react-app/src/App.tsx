@@ -17,31 +17,38 @@ function App() {
         alignItems: 'center'
       }}>
         <Title level={3} style={{ margin: 0, color: '#1890ff' }}>
-          MultiModelGenerator - 노드 기반 워크플로우
+          Multi Model Generator
         </Title>
       </Header>
       
       <Layout>
         <Sider 
-          width={300} 
+          width={350} 
           style={{ 
             background: '#fff', 
             borderRight: '1px solid #e8e8e8',
-            overflow: 'auto'
+            overflow: 'auto',
+            padding: '16px'
           }}
         >
+          <Title level={5} style={{ marginBottom: '16px', color: '#333' }}>실행 설정</Title>
           <NodeWorkflowControlPanel />
         </Sider>
         
         <Content style={{ 
-          background: '#fff',
-          padding: '16px'
+          background: '#f0f2f5',
+          padding: '16px',
+          display: 'flex',
+          flexDirection: 'column'
         }}>
-          <NodeWorkflowCanvas />
+          <Title level={5} style={{ marginBottom: '16px', color: '#333' }}>워크플로우 구성</Title>
+          <div style={{ flex: 1 }}>
+            <NodeWorkflowCanvas />
+          </div>
         </Content>
         
         <Sider 
-          width={400} 
+          width={800} 
           style={{ 
             background: '#f9f9f9', 
             borderLeft: '1px solid #e8e8e8',

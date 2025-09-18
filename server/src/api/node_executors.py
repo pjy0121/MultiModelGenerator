@@ -7,7 +7,7 @@ import asyncio
 from typing import List, Optional, Dict, Any
 
 from ..core.models import (
-    WorkflowNode, NodeType, NodeExecutionResult, ParsedNodeOutput
+    WorkflowNode, NodeExecutionResult
 )
 from ..core.output_parser import ResultParser
 from ..services.llm_factory import LLMFactory
@@ -26,16 +26,26 @@ class NodeExecutor:
         node: WorkflowNode,
         pre_outputs: List[str],
         knowledge_base: Optional[str] = None,
-        search_intensity: int = 5
+        search_intensity: str = "medium"
     ) -> NodeExecutionResult:
         """노드 타입에 따른 실행 분기"""
+        
+        # search_intensity를 top_k로 변환
+        intensity_map = {
+            "very_low": 5,
+            "low": 10,
+            "medium": 15,
+            "high": 30,
+            "very_high": 50
+        }
+        top_k = intensity_map.get(search_intensity, 15)
         
         try:
             if node.type in ["input-node", "output-node"]:
                 return await self._execute_text_node(node, pre_outputs)
             else:
                 return await self._execute_llm_node(
-                    node, pre_outputs, knowledge_base, search_intensity
+                    node, pre_outputs, knowledge_base, top_k
                 )
         
         except Exception as e:
@@ -92,54 +102,57 @@ class NodeExecutor:
         node: WorkflowNode,
         pre_outputs: List[str],
         knowledge_base: Optional[str],
-        search_intensity: int
+        top_k: int
     ) -> NodeExecutionResult:
         """
         generation-node, ensemble-node, validation-node 실행
         project_reference.md 2-1 ~ 2-8 기준
         """
+        
+        # 1. LLM 클라이언트 가져오기
+        client = self.llm_factory.get_client(node.llm_provider)
+        
+        # 2. 입력 데이터 준비
+        input_data = " ".join(pre_outputs) if pre_outputs else ""
+        
+        # 3. 컨텍스트 검색 (knowledge_base가 있는 경우)
+        context = ""
+        if knowledge_base:
+            vector_store = self.vector_store_service.get_vector_store(knowledge_base)
+            if vector_store:
+                # 검색 키워드 추출 (프롬프트의 핵심 단어 사용)
+                search_keyword = await self._extract_keyword_for_search(client, node.prompt, input_data)
+                
+                # 벡터 DB 검색
+                context_chunks = vector_store.search_similar_chunks(search_keyword, top_k=top_k)
+                context = "\n".join(context_chunks)
+        
+        # 4. 프롬프트 템플릿 채우기
+        final_prompt = self._fill_prompt_template(node.prompt, input_data, context)
+        
+        # 5. LLM 실행
+        llm_output = await client.generate(node.model_type, final_prompt)
+        
+        # 6. 결과 파싱
+        parsed_result = self.result_parser.parse(llm_output)
+        
+        return NodeExecutionResult(
+            node_id=node.id,
+            success=True,
+            description=parsed_result.description,
+            output=parsed_result.output,
+            execution_time=0.0  # 시간 측정은 상위 레벨에서
+        )
         import time
         start_time = time.time()
         
         try:
-            # 2-2. inputs 연결하여 input_data 생성
-            input_data = " ".join(pre_outputs) if pre_outputs else ""
+            # 프롬프트 준비
+            prompt = await self._prepare_llm_prompt(
+                node, pre_outputs, knowledge_base, search_intensity
+            )
             
-            # 2-3. 프롬프트에서 {input_data} 치환
-            prompt = node.prompt or ""
-            prompt = prompt.replace('{input_data}', input_data)
-            
-            # 2-4. knowledge_base 검색 및 {context} 치환 (프롬프트에 {context}가 있을 때만)
-            if knowledge_base and '{context}' in prompt:
-                try:
-                    # 2-4-1. intensity에 따른 top_k 결정
-                    top_k = max(5, min(search_intensity, 50))  # 5~50 범위로 확장
-                    
-                    # 2-4-2. VectorDB 검색
-                    search_results = await self._search_knowledge_base(
-                        knowledge_base, input_data, top_k
-                    )
-                    
-                    # 2-4-3. {context} 치환
-                    context = "\n".join(search_results) if search_results else "No relevant context found."
-                    prompt = prompt.replace('{context}', context)
-                
-                except Exception as e:
-                    # 검색 실패시 빈 컨텍스트로 처리
-                    prompt = prompt.replace('{context}', f"Context search failed: {str(e)}")
-            elif '{context}' in prompt:
-                # 지식베이스는 없지만 프롬프트에 {context}가 있는 경우 빈 컨텍스트로 처리
-                prompt = prompt.replace('{context}', "No knowledge base selected.")
-            
-            # 2-5. {output_format} 치환
-            output_format = '''마크다운으로 자유롭게 작성하되, 다음 노드로 전달할 핵심 내용은 <output> 태그 안에 작성하세요:
-
-<output>
-다음 노드로 전달될 내용
-</output>'''
-            prompt = prompt.replace('{output_format}', output_format)
-            
-            # 2-6. LLM API 호출
+            # LLM API 호출
             if not node.llm_provider or not node.model_type:
                 raise ValueError(f"Node {node.id} missing LLM configuration")
             
@@ -171,6 +184,42 @@ class NodeExecutor:
                 execution_time=execution_time
             )
     
+    async def _prepare_llm_prompt(
+        self,
+        node: WorkflowNode,
+        pre_outputs: List[str],
+        knowledge_base: Optional[str],
+        search_intensity: int
+    ) -> str:
+        """LLM 노드를 위한 프롬프트를 준비하는 헬퍼 함수"""
+        
+        # 입력 데이터 준비
+        input_data = "\n".join(pre_outputs) if pre_outputs else ""
+        
+        # 컨텍스트 검색 (필요한 경우)
+        context = ""
+        prompt_template = node.prompt or ""
+        
+        if knowledge_base and "{context}" in prompt_template:
+            try:
+                top_k = max(5, min(search_intensity, 50))
+                context_results = await self._search_knowledge_base(
+                    knowledge_base, input_data, top_k
+                )
+                context = "\n".join(context_results) if context_results else "No relevant context found."
+            except Exception as e:
+                context = f"Context search failed: {str(e)}"
+        elif "{context}" in prompt_template:
+            context = "No knowledge base selected."
+
+        # 프롬프트 변수 치환
+        formatted_prompt = prompt_template.replace("{input_data}", input_data).replace("{context}", context)
+            
+        if not formatted_prompt.strip():
+            return input_data
+
+        return formatted_prompt
+
     async def _search_knowledge_base(
         self, 
         kb_name: str, 
@@ -271,28 +320,10 @@ class NodeExecutor:
         """LLM 노드 스트리밍 실행"""
         
         try:
-            # 입력 데이터 준비
-            input_data = "\n".join(pre_outputs) if pre_outputs else ""
-            
-            # 컨텍스트 검색 (필요한 경우)
-            context = ""
-            if knowledge_base and "{context}" in (node.prompt or ""):
-                try:
-                    context_results = self.vector_store_service.search(
-                        query=input_data,
-                        collection_name=knowledge_base,
-                        top_k=search_intensity
-                    )
-                    context = "\n".join([result["content"] for result in context_results])
-                except Exception as e:
-                    print(f"Context search failed: {e}")
-            
             # 프롬프트 준비
-            prompt = node.prompt or ""
-            formatted_prompt = prompt.replace("{input_data}", input_data).replace("{context}", context)
-            
-            if not formatted_prompt.strip():
-                formatted_prompt = input_data  # 프롬프트가 없으면 입력 데이터를 그대로 사용
+            formatted_prompt = await self._prepare_llm_prompt(
+                node, pre_outputs, knowledge_base, search_intensity
+            )
             
             # LLM 클라이언트 가져오기
             client = self.llm_factory.get_client(node.llm_provider)
@@ -440,4 +471,4 @@ class ValidationNodeExecutor(NodeExecutor):
         return await self._execute_llm_node(
             node, pre_outputs, knowledge_base, search_intensity
         )
-    
+

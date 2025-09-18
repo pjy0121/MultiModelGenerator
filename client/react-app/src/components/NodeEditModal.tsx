@@ -16,18 +16,13 @@ interface NodeEditModalProps {
   onSave: (nodeId: string, updates: Partial<WorkflowNode['data']>) => void;
 }
 
-export const NodeEditModal: React.FC<NodeEditModalProps> = ({
-  visible,
-  node,
-  onClose,
-  onSave
-}) => {
+const EditForm: React.FC<Omit<NodeEditModalProps, 'visible'>> = ({ node, onClose, onSave }) => {
   const { availableModels, loadAvailableModels } = useNodeWorkflowStore();
   const [form] = Form.useForm();
 
   // 모달이 열릴 때 폼 초기화
   useEffect(() => {
-    if (visible && node) {
+    if (node) {
       const provider = node.data.llm_provider || LLMProvider.GOOGLE;
       
       form.setFieldsValue({
@@ -35,7 +30,8 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
         content: node.data.content || '',
         llm_provider: provider,
         model_type: node.data.model_type || '',
-        prompt: node.data.prompt || ''
+        prompt: node.data.prompt || '',
+        output_format: node.data.output_format || ''
       });
       
       // 해당 provider의 모델이 아직 로드되지 않았을 때 로드
@@ -44,15 +40,14 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
         loadAvailableModels(provider);
       }
     }
-  }, [visible, node?.id]);
+  }, [node, form, availableModels, loadAvailableModels]);
 
   // 모델이 로드될 때 기본 모델 자동 선택
   useEffect(() => {
-    if (visible && node && availableModels.length > 0) {
+    if (node && availableModels.length > 0) {
       const currentProvider = node.data.llm_provider || LLMProvider.GOOGLE;
       const currentModel = node.data.model_type;
       
-      // 모델이 선택되지 않았거나, 현재 provider의 모델이 아닌 경우 기본 모델 선택
       if (!currentModel || !availableModels.some(m => m.value === currentModel && m.provider === currentProvider)) {
         const providerModels = availableModels.filter(model => model.provider === currentProvider);
         
@@ -65,31 +60,30 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
         }
       }
     }
-  }, [availableModels.length, visible, node?.id]); // 의존성 배열 최소화
+  }, [availableModels, node, form]);
 
   // Provider 변경 시 모델 목록 로드 및 기본 모델 선택
   const handleProviderChange = async (provider: LLMProvider) => {
-    // 먼저 모델 초기화
     form.setFieldValue('model_type', '');
-    
-    // 모델 목록 로드
     await loadAvailableModels(provider);
     
-    // 로드 완료 후 기본 모델 선택
-    const providerModels = availableModels.filter(model => model.provider === provider);
-    if (providerModels.length > 0) {
-      const defaultModel = provider === LLMProvider.GOOGLE
-        ? providerModels.find(m => m.value.includes('gemini-2.0-flash')) || providerModels[0]
-        : providerModels.find(m => m.value.includes('gpt-4o-mini')) || providerModels[0];
+    setTimeout(() => {
+      const state = useNodeWorkflowStore.getState();
+      const providerModels = state.availableModels.filter(model => model.provider === provider);
       
-      form.setFieldValue('model_type', defaultModel.value);
-    }
+      if (providerModels.length > 0) {
+        const defaultModel = provider === LLMProvider.GOOGLE
+          ? providerModels.find(m => m.value.includes('gemini-2.0-flash')) || providerModels[0]
+          : providerModels.find(m => m.value.includes('gpt-4o-mini')) || providerModels[0];
+        
+        form.setFieldValue('model_type', defaultModel.value);
+      }
+    }, 100);
   };
 
   // 저장 핸들러
   const handleSave = async () => {
     if (!node) return;
-
     try {
       const values = await form.validateFields();
       onSave(node.id, values);
@@ -105,7 +99,6 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
   const isLLMNode = [NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION].includes(node.data.nodeType);
   const isContentNode = [NodeType.INPUT, NodeType.OUTPUT].includes(node.data.nodeType);
 
-  // 노드 타입별 제목
   const getModalTitle = (nodeType: NodeType) => {
     const titles = {
       [NodeType.INPUT]: "입력 노드 편집",
@@ -120,17 +113,19 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
   return (
     <Modal
       title={getModalTitle(node.data.nodeType)}
-      open={visible}
+      open={true} // 이 컴포넌트는 항상 열려있는 것으로 간주
       onOk={handleSave}
       onCancel={onClose}
       width={600}
       okText="저장"
       cancelText="취소"
+      destroyOnHidden // 모달이 닫힐 때 내부 상태를 완전히 파괴
     >
       <Form
         form={form}
         layout="vertical"
         style={{ marginTop: 16 }}
+        key={node.id}
       >
         {/* 공통 필드: 라벨 */}
         <Form.Item
@@ -206,7 +201,7 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
                 }
               >
                 {availableModels
-                  .filter(model => model.provider === (node.data.llm_provider || LLMProvider.GOOGLE))
+                  .filter(model => model.provider === (form.getFieldValue('llm_provider') || LLMProvider.GOOGLE))
                   .map((model: AvailableModel) => (
                     <Option key={model.value} value={model.value}>
                       <Text strong>{model.label}</Text>
@@ -219,13 +214,48 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
             <Form.Item
               label={
                 <span>
-                  프롬프트 (선택사항)
-                  <Tooltip title="LLM에 전달될 프롬프트입니다. 변수를 사용하여 동적 데이터를 삽입할 수 있습니다. 비워두면 기본 동작을 수행합니다.">
+                  출력 형식
+                  <Tooltip title="LLM이 출력할 내용 중 핵심 결과를 보여줄 형식을 작성하세요. 이 형식으로 출력된 내용이 다음 노드로 전달됩니다.">
                     <InfoCircleOutlined style={{ marginLeft: 4, color: '#1890ff' }} />
                   </Tooltip>
                 </span>
               }
-              name="prompt"
+              name="output_format"
+            >
+              <div>
+                <div style={{ marginBottom: 8, display: 'flex', gap: 8 }}>
+                  <Button 
+                    size="small" 
+                    onClick={() => form.setFieldValue('output_format', '{\n  "requirements": [\n    {\n      "id": "REQ-001",\n      "requirement": "[구체적인 요구사항 내용]"\n      "reference": "[원문 내용과 위치]"\n    }\n  ]\n}')}
+                  >
+                    JSON 예시
+                  </Button>
+                  <Button
+                    size="small" 
+                    onClick={() => form.setFieldValue('output_format', '| ID | 요구사항 | 근거(reference) |\n|---|---|---|\n| REQ-001 | [구체적인 요구사항 내용] | [원문 내용과 위치]\n| REQ-002 | ... | ... |')}
+                  >
+                    마크다운 표 예시
+                  </Button>
+                </div>
+                <Form.Item name="output_format" noStyle>
+                  <TextArea
+                    rows={4}
+                    placeholder="예: 요구사항 목록"
+                    style={{ fontFamily: 'Consolas, "Courier New", monospace' }}
+                  />
+                </Form.Item>
+              </div>
+            </Form.Item>
+
+            <Form.Item
+              label={
+                <span>
+                  프롬프트
+                  <Tooltip title="LLM에 전달될 프롬프트입니다. 미리 정의된 변수를 사용하여 동적으로 데이터를 삽입할 수 있습니다.">
+                    <InfoCircleOutlined style={{ marginLeft: 4, color: '#1890ff' }} />
+                  </Tooltip>
+                </span>
+              }
             >
               <div>
                 <div style={{ marginBottom: 8 }}>
@@ -244,11 +274,13 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
                   </Button>
                 </div>
                 
-                <TextArea
-                  rows={8}
-                  placeholder="프롬프트를 입력하거나 기본 템플릿을 사용하세요. (선택사항)"
-                  style={{ fontFamily: 'Consolas, "Courier New", monospace' }}
-                />
+                <Form.Item name="prompt" noStyle>
+                  <TextArea
+                    rows={8}
+                    placeholder="프롬프트를 입력하세요."
+                    style={{ fontFamily: 'Consolas, "Courier New", monospace' }}
+                  />
+                </Form.Item>
                 
                 <Divider style={{ margin: '12px 0' }} />
                 
@@ -275,4 +307,12 @@ export const NodeEditModal: React.FC<NodeEditModalProps> = ({
       </Form>
     </Modal>
   );
+};
+
+export const NodeEditModal: React.FC<NodeEditModalProps> = ({ visible, node, onClose, onSave }) => {
+  if (!visible || !node) {
+    return null;
+  }
+
+  return <EditForm node={node} onClose={onClose} onSave={onSave} />;
 };
