@@ -55,7 +55,6 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'visible'>> = ({ node, onClose
         output_format: node.data.output_format || '',
         knowledge_base: node.data.knowledge_base || '',
         search_intensity: getDefaultSearchIntensity(),
-        use_rerank: node.data.use_rerank || false,
       });
       
       // 해당 provider의 모델이 아직 로드되지 않았을 때 로드

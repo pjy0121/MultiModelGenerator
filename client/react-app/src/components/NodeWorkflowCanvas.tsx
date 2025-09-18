@@ -257,6 +257,63 @@ export const NodeWorkflowCanvas: React.FC = () => {
     [addStoreEdge, storeNodes, storeEdges]
   );
 
+  // 엣지 재연결 핸들러
+  const onReconnect = useCallback(
+    (oldEdge: Edge, newConnection: Connection) => {
+      const sourceNode = storeNodes.find(n => n.id === newConnection.source);
+      const targetNode = storeNodes.find(n => n.id === newConnection.target);
+
+      if (!sourceNode || !targetNode) {
+        message.error("연결할 소스 또는 타겟 노드를 찾을 수 없습니다.");
+        return;
+      }
+
+      const validation = isConnectionAllowed(sourceNode, targetNode, storeNodes, storeEdges);
+
+      if (validation.allowed) {
+        // 기존 엣지 제거
+        removeEdge(oldEdge.id);
+        
+        // 새 엣지 추가
+        const newEdge: WorkflowEdge = {
+          id: `edge-${newConnection.source}-${newConnection.target}`,
+          source: newConnection.source!,
+          target: newConnection.target!,
+        };
+        addStoreEdge(newEdge);
+        message.success('엣지가 성공적으로 재연결되었습니다.');
+      } else {
+        message.error(validation.reason || '연결 규칙에 위배됩니다. 연결할 수 없습니다.');
+      }
+    },
+    [addStoreEdge, removeEdge, storeNodes, storeEdges]
+  );
+
+  // 엣지 재연결 시작 핸들러  
+  const onReconnectStart = useCallback(
+    (_: React.MouseEvent, edge: Edge) => {
+      // 엣지 재연결이 시작될 때의 로직 (필요시 추가)
+      console.log('Edge reconnect started:', edge.id);
+    },
+    []
+  );
+
+  // 엣지 재연결 종료 핸들러 (허공에 드롭 시 엣지 삭제)
+  const onReconnectEnd = useCallback(
+    (_: MouseEvent | TouchEvent, edge: Edge) => {
+      // 허공에 드롭되면 엣지 삭제
+      setTimeout(() => {
+        const updatedEdge = storeEdges.find(e => e.id === edge.id);
+        if (updatedEdge) {
+          // 연결이 그대로 남아있다면 허공에 드롭된 것으로 간주하고 삭제
+          removeEdge(edge.id);
+          message.info('엣지가 삭제되었습니다.');
+        }
+      }, 100);
+    },
+    [removeEdge, storeEdges]
+  );
+
   // 노드 삭제 핸들러
   const onNodesDelete = useCallback(
     (deletedNodes: any[]) => {
@@ -386,12 +443,16 @@ export const NodeWorkflowCanvas: React.FC = () => {
           onConnect={onConnect}
           onNodesDelete={onNodesDelete}
           onEdgesDelete={onEdgesDelete}
+          onReconnect={onReconnect}
+          onReconnectStart={onReconnectStart}
+          onReconnectEnd={onReconnectEnd}
           nodeTypes={memoizedNodeTypes}
           onInit={onInit}
           onMoveEnd={onViewportChange}
           fitView
           fitViewOptions={{ padding: 0.2 }}
           style={{ background: '#fafafa' }}
+          edgesReconnectable={true}
         >
           <Background />
           <Controls />
