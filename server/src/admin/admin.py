@@ -215,28 +215,26 @@ class KnowledgeBaseAdmin:
     
     def get_chunk_settings(self) -> tuple[int, int]:
         """청크 크기 설정 입력받기"""
-        print("\n📏 청크 크기 설정")
-        print("💡 청크 크기가 클수록 더 많은 컨텍스트를 유지하지만, 검색 정확도가 떨어질 수 있습니다.")
-        print("💡 권장 설정:")
-        print("   - 기본 (6,000자): 균형잡힌 성능")
-        print("   - 작은 청크 (4,000자): 정확한 검색, 많은 청크 수")
-        print("   - 큰 청크 (8,000-10,000자): 풍부한 컨텍스트, 적은 청크 수")
-        print("   - 매우 큰 청크 (12,000-15,000자): 최대 컨텍스트, 매우 적은 청크 수")
+        print("\n📏 청크 크기 설정 (토큰 기반)")
+        print("💡 1 토큰은 약 4자로 계산됩니다.")
+        print("💡 권장 설정 (L=512 tokens, overlap=50%):")
+        print("   - 청크 크기: 2048 자 (512 토큰 * 4)")
+        print("   - 청크 오버랩: 1024 자 (크기의 50%)")
         
         # 청크 크기 입력
         while True:
-            chunk_input = input(f"\n📏 청크 크기를 입력하세요 (기본값: 8000): ").strip()
+            chunk_input = input(f"\n📏 청크 크기를 입력하세요 (기본값: 2048): ").strip()
             if not chunk_input:
-                chunk_size = 8000  # 개선된 기본값
+                chunk_size = 2048
                 break
             
             try:
                 chunk_size = int(chunk_input)
-                if chunk_size < 1000:
-                    print("❌ 청크 크기는 최소 1,000자 이상이어야 합니다.")
+                if chunk_size < 512:
+                    print("❌ 청크 크기는 최소 512자 이상이어야 합니다.")
                     continue
-                elif chunk_size > 20000:
-                    print("❌ 청크 크기는 최대 20,000자까지 권장됩니다.")
+                elif chunk_size > 8192:
+                    print("❌ 청크 크기는 최대 8192자까지 권장됩니다.")
                     continue
                 break
             except ValueError:
@@ -244,9 +242,10 @@ class KnowledgeBaseAdmin:
         
         # 청크 오버랩 입력
         while True:
-            overlap_input = input(f"🔄 청크 오버랩을 입력하세요 (기본값: {min(200, chunk_size // 40)}): ").strip()
+            default_overlap = chunk_size // 2
+            overlap_input = input(f"🔄 청크 오버랩을 입력하세요 (기본값: {default_overlap}, 크기의 50%): ").strip()
             if not overlap_input:
-                chunk_overlap = min(200, chunk_size // 40)  # 청크 크기의 2.5% 또는 200자 중 작은 값
+                chunk_overlap = default_overlap
                 break
             
             try:
@@ -254,8 +253,8 @@ class KnowledgeBaseAdmin:
                 if chunk_overlap < 0:
                     print("❌ 오버랩은 0 이상이어야 합니다.")
                     continue
-                elif chunk_overlap >= chunk_size // 2:
-                    print(f"❌ 오버랩은 청크 크기의 절반({chunk_size // 2}자) 미만이어야 합니다.")
+                elif chunk_overlap >= chunk_size:
+                    print(f"❌ 오버랩은 청크 크기({chunk_size}자)보다 작아야 합니다.")
                     continue
                 break
             except ValueError:

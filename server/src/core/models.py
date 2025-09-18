@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, validator
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from enum import Enum
 
 class NodeType(str, Enum):
@@ -18,7 +18,7 @@ class SearchIntensity(str, Enum):
 
 class AvailableModel(BaseModel):
     """사용 가능한 LLM 모델"""
-    label: str = Field(..., description="모델 라벨")
+    label: str = Field(..., description="모델 이름")
     provider: str = Field(..., description="LLM 제공자")
     disabled: bool = Field(default=False, description="비활성화 여부")
     model_type: str = Field(..., description="모델 타입 (실제 모델 ID)")
@@ -36,9 +36,12 @@ class WorkflowNode(BaseModel):
     llm_provider: Optional[str] = Field(None, description="LLM provider")
     prompt: Optional[str] = Field(None, description="Prompt for LLM nodes")
     output_format: Optional[str] = Field(None, description="Expected output format for LLM nodes")
-    output: Optional[str] = Field(None, description="Execution result")
+    knowledge_base: Optional[str] = Field(None, description="Knowledge base for context search")
+    search_intensity: Optional[str] = Field(None, description="Search intensity for context search")
+    use_rerank: Optional[bool] = Field(False, description="Rerank 사용 여부")  # Rerank 사용 여부 필드 추가
+    output: Optional[Any] = Field(None, description="Execution result")
     executed: bool = Field(default=False)
-    error: Optional[str] = Field(None)
+    error: Optional[str] = Field(None, description="")
 
 class WorkflowEdge(BaseModel):
     id: str = Field(..., description="Edge ID")
