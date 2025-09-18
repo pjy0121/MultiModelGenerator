@@ -77,6 +77,7 @@ export interface NodeData extends Record<string, unknown> {
   llm_provider?: LLMProvider; // LLM 노드용
   prompt?: string;            // LLM 노드용 프롬프트
   output_format?: string;     // LLM 노드용 출력 형식
+  use_rerank?: boolean;       // Rerank 사용 여부
   isExecuting?: boolean;      // 실행 상태 표시용
   isCompleted?: boolean;      // 완료 상태 표시용
 }

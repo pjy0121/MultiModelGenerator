@@ -24,29 +24,15 @@ class NodeExecutor:
     async def execute_node(
         self,
         node: WorkflowNode,
-        pre_outputs: List[str],
-        knowledge_base: Optional[str] = None,
-        search_intensity: str = "medium"
+        pre_outputs: List[str]
     ) -> NodeExecutionResult:
         """노드 타입에 따른 실행 분기"""
-        
-        # search_intensity를 top_k로 변환
-        intensity_map = {
-            "very_low": 5,
-            "low": 10,
-            "medium": 15,
-            "high": 30,
-            "very_high": 50
-        }
-        top_k = intensity_map.get(search_intensity, 15)
         
         try:
             if node.type in ["input-node", "output-node"]:
                 return await self._execute_text_node(node, pre_outputs)
             else:
-                return await self._execute_llm_node(
-                    node, pre_outputs, knowledge_base, top_k
-                )
+                return await self._execute_llm_node(node, pre_outputs)
         
         except Exception as e:
             return NodeExecutionResult(
@@ -100,9 +86,7 @@ class NodeExecutor:
     async def _execute_llm_node(
         self,
         node: WorkflowNode,
-        pre_outputs: List[str],
-        knowledge_base: Optional[str],
-        top_k: int
+        pre_outputs: List[str]
     ) -> NodeExecutionResult:
         """
         generation-node, ensemble-node, validation-node 실행
@@ -115,16 +99,27 @@ class NodeExecutor:
         # 2. 입력 데이터 준비
         input_data = " ".join(pre_outputs) if pre_outputs else ""
         
-        # 3. 컨텍스트 검색 (knowledge_base가 있는 경우)
+        # 3. 컨텍스트 검색 (노드에 knowledge_base가 설정된 경우)
         context = ""
-        if knowledge_base:
-            vector_store = self.vector_store_service.get_vector_store(knowledge_base)
+        if node.knowledge_base:
+            vector_store = self.vector_store_service.get_vector_store(node.knowledge_base)
             if vector_store:
                 # 검색 키워드 추출 (프롬프트의 핵심 단어 사용)
                 search_keyword = await self._extract_keyword_for_search(client, node.prompt, input_data)
                 
-                # 벡터 DB 검색
-                context_chunks = vector_store.search_similar_chunks(search_keyword, top_k=top_k)
+                # Rerank 사용 여부에 따라 다른 검색 API 호출
+                if node.use_rerank:
+                    context_chunks = await vector_store.search_with_rerank(
+                        search_keyword, 
+                        search_intensity=node.search_intensity or "medium",
+                        rerank_provider=node.llm_provider,
+                        rerank_model=node.model_type
+                    )
+                else:
+                    context_chunks = await vector_store.search_without_rerank(
+                        search_keyword, 
+                        search_intensity=node.search_intensity or "medium"
+                    )
                 context = "\n".join(context_chunks)
         
         # 4. 프롬프트 템플릿 채우기

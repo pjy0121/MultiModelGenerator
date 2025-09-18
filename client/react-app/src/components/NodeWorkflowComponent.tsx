@@ -3,7 +3,7 @@ import { Handle, Position } from '@xyflow/react';
 import { Card, Tag, Typography, Button, Popconfirm } from 'antd';
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { NodeType, WorkflowNode } from '../types';
-import { NodeEditModal } from './NodeEditModal';
+import NodeEditModal from './NodeEditModal';
 import { useNodeWorkflowStore } from '../store/nodeWorkflowStore';
 
 const { Text } = Typography;
@@ -126,31 +126,33 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = ({
                 <Tag color={colors.tag} style={{ margin: 0, fontSize: 10 }}>
                   {data.nodeType.replace('-node', '')}
                 </Tag>
-                <Button
-                  size="small"
-                  type="text"
-                  icon={<EditOutlined />}
-                  onClick={handleEdit}
-                  style={{ padding: 0, width: 16, height: 16 }}
-                  title="편집"
-                />
                 {data.nodeType !== NodeType.OUTPUT && (
-                  <Popconfirm
-                    title="노드 삭제"
-                    description={`이 ${data.nodeType}를 삭제하시겠습니까?`}
-                    onConfirm={handleDelete}
-                    okText="삭제"
-                    cancelText="취소"
-                    okType="danger"
-                  >
+                  <div>
                     <Button
                       size="small"
                       type="text"
-                      icon={<DeleteOutlined />}
-                      style={{ padding: 0, width: 16, height: 16, color: '#ff4d4f' }}
-                      title="삭제"
+                      icon={<EditOutlined />}
+                      onClick={handleEdit}
+                      style={{ padding: 0, width: 16, height: 16 }}
+                      title="편집"
                     />
-                  </Popconfirm>
+                    <Popconfirm
+                      title="노드 삭제"
+                      description={`이 ${data.nodeType}를 삭제하시겠습니까?`}
+                      onConfirm={handleDelete}
+                      okText="삭제"
+                      cancelText="취소"
+                      okType="danger"
+                    >
+                      <Button
+                        size="small"
+                        type="text"
+                        icon={<DeleteOutlined />}
+                        style={{ padding: 0, width: 16, height: 16, color: '#ff4d4f' }}
+                        title="삭제"
+                      />
+                    </Popconfirm>
+                  </div>
                 )}
               </div>
             </div>

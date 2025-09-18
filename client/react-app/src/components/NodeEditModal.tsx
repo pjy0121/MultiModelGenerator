@@ -1,9 +1,9 @@
 import React, { useEffect } from 'react';
 import { Modal, Form, Input, Select, Typography, message, Button, Tooltip, Divider } from 'antd';
-import { InfoCircleOutlined, CopyOutlined } from '@ant-design/icons';
-import { NodeType, LLMProvider, WorkflowNode, AvailableModel } from '../types';
+import { CopyOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { NodeType, LLMProvider, WorkflowNode, AvailableModel, SearchIntensity, KnowledgeBase } from '../types';
 import { useNodeWorkflowStore } from '../store/nodeWorkflowStore';
-import { DEFAULT_PROMPTS, PROMPT_VARIABLES } from '../config/defaultPrompts';
+import { DEFAULT_PROMPTS, OUTPUT_FORMAT_TEMPLATES, PROMPT_VARIABLES } from '../config/defaultPrompts';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -17,30 +17,54 @@ interface NodeEditModalProps {
 }
 
 const EditForm: React.FC<Omit<NodeEditModalProps, 'visible'>> = ({ node, onClose, onSave }) => {
-  const { availableModels, loadAvailableModels } = useNodeWorkflowStore();
+  const { availableModels, loadAvailableModels, knowledgeBases, loadKnowledgeBases } = useNodeWorkflowStore();
   const [form] = Form.useForm();
+  const isLLMNode = node ? [NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION].includes(node.data.nodeType) : false;
 
-  // 모달이 열릴 때 폼 초기화
+  // 모달이 열릴 때 폼 초기화 (node.id가 변경될 때만)
   useEffect(() => {
     if (node) {
+      if (isLLMNode) {
+        loadKnowledgeBases();
+      }
+
       const provider = node.data.llm_provider || LLMProvider.GOOGLE;
       
+      // 노드 타입에 따른 기본 검색 강도 설정
+      const getDefaultSearchIntensity = () => {
+        if (node.data.search_intensity) {
+          return node.data.search_intensity; // 이미 설정된 값이 있으면 사용
+        }
+        
+        switch (node.data.nodeType) {
+          case NodeType.VALIDATION:
+            return SearchIntensity.VERY_LOW; // validation-node는 매우 낮음
+          case NodeType.GENERATION:
+          case NodeType.ENSEMBLE:
+          default:
+            return SearchIntensity.MEDIUM; // generation, ensemble는 보통
+        }
+      };
+
       form.setFieldsValue({
         label: node.data.label,
         content: node.data.content || '',
         llm_provider: provider,
         model_type: node.data.model_type || '',
         prompt: node.data.prompt || '',
-        output_format: node.data.output_format || ''
+        output_format: node.data.output_format || '',
+        knowledge_base: node.data.knowledge_base || '',
+        search_intensity: getDefaultSearchIntensity(),
+        use_rerank: node.data.use_rerank || false,
       });
       
       // 해당 provider의 모델이 아직 로드되지 않았을 때 로드
       const currentProviderModels = availableModels.filter(model => model.provider === provider);
-      if (currentProviderModels.length === 0) {
+      if (currentProviderModels.length === 0 && isLLMNode) {
         loadAvailableModels(provider);
       }
     }
-  }, [node, form, availableModels, loadAvailableModels]);
+  }, [node?.id]); // node.id가 변경될 때만 실행
 
   // 모델이 로드될 때 기본 모델 자동 선택
   useEffect(() => {
@@ -96,7 +120,6 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'visible'>> = ({ node, onClose
 
   if (!node) return null;
 
-  const isLLMNode = [NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION].includes(node.data.nodeType);
   const isContentNode = [NodeType.INPUT, NodeType.OUTPUT].includes(node.data.nodeType);
 
   const getModalTitle = (nodeType: NodeType) => {
@@ -127,11 +150,11 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'visible'>> = ({ node, onClose
         style={{ marginTop: 16 }}
         key={node.id}
       >
-        {/* 공통 필드: 라벨 */}
+        {/* 공통 필드: 이름 */}
         <Form.Item
-          label="노드 라벨"
+          label="노드 이름"
           name="label"
-          rules={[{ required: true, message: '노드 라벨을 입력해주세요.' }]}
+          rules={[{ required: true, message: '노드 이름을 입력해주세요.' }]}
         >
           <Input placeholder="노드의 표시명을 입력하세요" />
         </Form.Item>
@@ -212,6 +235,36 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'visible'>> = ({ node, onClose
             </Form.Item>
 
             <Form.Item
+              label="지식 베이스"
+              name="knowledge_base"
+              tooltip="검색에 사용할 지식 베이스를 선택합니다. 선택하지 않으면 지식 베이스를 사용하지 않습니다."
+            >
+              <Select placeholder="지식 베이스 선택" allowClear>
+                {knowledgeBases.map((kb: KnowledgeBase) => (
+                  <Option key={kb.name} value={kb.name}>{kb.name}</Option>
+                ))}
+              </Select>
+            </Form.Item>
+
+            <Form.Item
+              label="검색 강도"
+              name="search_intensity"
+              tooltip="지식 베이스 검색 시 얼마나 많은 관련 문서를 찾을지 결정합니다."
+            >
+              <Select>
+                <Option value={SearchIntensity.VERY_LOW}>매우 낮음 (초기 10개, re-rank 3개)</Option>
+                <Option value={SearchIntensity.LOW}>낮음 (초기 15개, re-rank 4개)</Option>
+                <Option value={SearchIntensity.MEDIUM}>보통 (초기 20개, re-rank 5개)</Option>
+                <Option value={SearchIntensity.HIGH}>높음 (초기 30개, re-rank 10개)</Option>
+                <Option value={SearchIntensity.VERY_HIGH}>매우 높음 (초기 50개, re-rank 15개)</Option>
+              </Select>
+            </Form.Item>
+
+
+
+            <Divider>출력 형식 및 프롬프트</Divider>
+
+            <Form.Item
               label={
                 <span>
                   출력 형식
@@ -226,13 +279,27 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'visible'>> = ({ node, onClose
                 <div style={{ marginBottom: 8, display: 'flex', gap: 8 }}>
                   <Button 
                     size="small" 
-                    onClick={() => form.setFieldValue('output_format', '{\n  "requirements": [\n    {\n      "id": "REQ-001",\n      "requirement": "[구체적인 요구사항 내용]"\n      "reference": "[원문 내용과 위치]"\n    }\n  ]\n}')}
+                    icon={<CopyOutlined />}
+                    onClick={() => {
+                      if (!node) return;
+                      const defaultOutputFormat = OUTPUT_FORMAT_TEMPLATES[node.data.nodeType as keyof typeof OUTPUT_FORMAT_TEMPLATES];
+                      if (defaultOutputFormat) {
+                        form.setFieldValue('output_format', defaultOutputFormat);
+                        message.success('기본 출력 형식이 적용되었습니다.');
+                      }
+                    }}
+                  >
+                    기본 템플릿
+                  </Button>
+                  <Button 
+                    size="small" 
+                    onClick={() => form.setFieldValue('output_format', '{\n  "requirements": [\n    {\n      "id": "REQ-001",\n      "requirement": "[구체적인 요구사항 내용]",\n      "reference": "[원문 내용과 위치]"\n    }\n  ]\n}')}
                   >
                     JSON 예시
                   </Button>
                   <Button
                     size="small" 
-                    onClick={() => form.setFieldValue('output_format', '| ID | 요구사항 | 근거(reference) |\n|---|---|---|\n| REQ-001 | [구체적인 요구사항 내용] | [원문 내용과 위치]\n| REQ-002 | ... | ... |')}
+                    onClick={() => form.setFieldValue('output_format', '| ID | 요구사항 | 근거(reference) |\n|---|---|---|\n| REQ-001 | [구체적인 요구사항 내용] | [원문 내용과 위치] |\n| REQ-002 | ... | ... |')}
                   >
                     마크다운 표 예시
                   </Button>
@@ -240,7 +307,7 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'visible'>> = ({ node, onClose
                 <Form.Item name="output_format" noStyle>
                   <TextArea
                     rows={4}
-                    placeholder="예: 요구사항 목록"
+                    placeholder="핵심 결과의 출력 형식을 입력하세요."
                     style={{ fontFamily: 'Consolas, "Courier New", monospace' }}
                   />
                 </Form.Item>
@@ -251,7 +318,7 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'visible'>> = ({ node, onClose
               label={
                 <span>
                   프롬프트
-                  <Tooltip title="LLM에 전달될 프롬프트입니다. 미리 정의된 변수를 사용하여 동적으로 데이터를 삽입할 수 있습니다.">
+                  <Tooltip title="LLM에 전달할 프롬프트를 입력하세요.">
                     <InfoCircleOutlined style={{ marginLeft: 4, color: '#1890ff' }} />
                   </Tooltip>
                 </span>
@@ -263,6 +330,7 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'visible'>> = ({ node, onClose
                     size="small" 
                     icon={<CopyOutlined />}
                     onClick={() => {
+                      if (!node) return;
                       const defaultPrompt = DEFAULT_PROMPTS[node.data.nodeType as keyof typeof DEFAULT_PROMPTS];
                       if (defaultPrompt) {
                         form.setFieldValue('prompt', defaultPrompt);
@@ -309,10 +377,12 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'visible'>> = ({ node, onClose
   );
 };
 
-export const NodeEditModal: React.FC<NodeEditModalProps> = ({ visible, node, onClose, onSave }) => {
+const NodeEditModal: React.FC<NodeEditModalProps> = ({ visible, node, onClose, onSave }) => {
   if (!visible || !node) {
     return null;
   }
 
   return <EditForm node={node} onClose={onClose} onSave={onSave} />;
 };
+
+export default NodeEditModal;

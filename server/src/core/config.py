@@ -27,9 +27,16 @@ class Config:
     # 벡터 DB 설정 (여러 지식 베이스 지원)
     VECTOR_DB_ROOT = "./knowledge_bases"
     
-    # 검색 설정 - VectorDB 검색 성능 및 포괄성 제어
-    SEARCH_SIMILARITY_THRESHOLD = 0.9  # 유사도 임계값 (0.8 → 0.9로 완화하여 더 관대한 검색)
-    SEARCH_ENABLE_COMPREHENSIVE = False  # 포괄적 검색 모드 비활성화
+    # 검색 설정 - VectorDB 검색 및 재정렬(Re-rank) 제어
+    SEARCH_SIMILARITY_THRESHOLD = 0.85  # 유사도 임계값 (재정렬 전 1차 필터링)
+    
+    SEARCH_INTENSITY_MAP = {
+        "very_low":  {"init": 10, "final": 3},
+        "low":       {"init": 15, "final": 4},
+        "medium":    {"init": 20, "final": 5},
+        "high":      {"init": 30, "final": 7},
+        "very_high": {"init": 40, "final": 10}
+    }
     
     # 출력 설정
     OUTPUT_DIR = "./output"

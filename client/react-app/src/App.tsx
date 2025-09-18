@@ -1,58 +1,61 @@
 import { Layout, Typography } from 'antd';
-import { NodeWorkflowControlPanel } from './components/NodeWorkflowControlPanel';
-import { NodeWorkflowCanvas } from './components/NodeWorkflowCanvas';
+import { useEffect } from 'react';
+import { LLMProvider } from './types';
 import { NodeExecutionResultPanel } from './components/NodeExecutionResultPanel';
+import { NodeWorkflowCanvas } from './components/NodeWorkflowCanvas';
+import { useNodeWorkflowStore } from './store/nodeWorkflowStore';
+import './App.css';
 
 const { Header, Content, Sider } = Layout;
 const { Title } = Typography;
 
 function App() {
+  useEffect(() => {
+    const store = useNodeWorkflowStore.getState();
+    store.loadKnowledgeBases();
+    store.loadAvailableModels(LLMProvider.GOOGLE);
+    store.loadAvailableModels(LLMProvider.OPENAI);
+  }, []);
+
   return (
-    <Layout style={{ height: '100vh' }}>
+    <Layout style={{ height: '100vh', width: '100vw', overflow: 'hidden' }}>
       <Header style={{ 
         background: '#fff', 
-        borderBottom: '1px solid #e8e8e8',
-        padding: '0 24px',
+        padding: '0 24px', 
+        borderBottom: '1px solid #f0f0f0',
         display: 'flex',
-        alignItems: 'center'
+        alignItems: 'center',
+        height: '64px',
+        minHeight: '64px',
+        zIndex: 10
       }}>
-        <Title level={3} style={{ margin: 0, color: '#1890ff' }}>
-          Multi Model Generator
-        </Title>
+        <Title level={4} style={{ margin: 0 }}>Multi-Model Generator</Title>
       </Header>
-      
-      <Layout>
-        <Sider 
-          width={350} 
-          style={{ 
-            background: '#fff', 
-            borderRight: '1px solid #e8e8e8',
-            overflow: 'auto',
-            padding: '16px'
-          }}
-        >
-          <Title level={5} style={{ marginBottom: '16px', color: '#333' }}>실행 설정</Title>
-          <NodeWorkflowControlPanel />
-        </Sider>
-        
+      <Layout style={{ height: 'calc(100vh - 64px)', width: '100%' }}>
         <Content style={{ 
           background: '#f0f2f5',
-          padding: '16px',
+          padding: '0',
           display: 'flex',
-          flexDirection: 'column'
+          flexDirection: 'column',
+          height: '100%',
+          width: '50%',
+          flex: '1 1 50%'
         }}>
-          <Title level={5} style={{ marginBottom: '16px', color: '#333' }}>워크플로우 구성</Title>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, position: 'relative', height: '100%', width: '100%' }}>
             <NodeWorkflowCanvas />
           </div>
         </Content>
         
         <Sider 
-          width={800} 
+          width="50%" 
           style={{ 
             background: '#f9f9f9', 
             borderLeft: '1px solid #e8e8e8',
-            overflow: 'auto'
+            height: '100%',
+            overflowY: 'auto',
+            flex: '1 1 50%',
+            maxWidth: '50%',
+            minWidth: '50%'
           }}
         >
           <NodeExecutionResultPanel />
