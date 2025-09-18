@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional, Union
 from enum import Enum
 
@@ -38,7 +38,6 @@ class WorkflowNode(BaseModel):
     output_format: Optional[str] = Field(None, description="Expected output format for LLM nodes")
     knowledge_base: Optional[str] = Field(None, description="Knowledge base for context search")
     search_intensity: Optional[str] = Field(None, description="Search intensity for context search")
-    use_rerank: Optional[bool] = Field(False, description="Rerank 사용 여부")  # Rerank 사용 여부 필드 추가
     output: Optional[Any] = Field(None, description="Execution result")
     executed: bool = Field(default=False)
     error: Optional[str] = Field(None, description="")
@@ -54,20 +53,7 @@ class WorkflowDefinition(BaseModel):
 
 class WorkflowExecutionRequest(BaseModel):
     workflow: WorkflowDefinition = Field(..., description="Workflow to execute")
-    knowledge_base: Optional[str] = Field(None, description="Knowledge base")
-    search_intensity: Union[str, int] = Field(default="medium", description="Search intensity")
-    
-    @validator('search_intensity', pre=True)
-    def convert_search_intensity(cls, v):
-        """문자열 search_intensity를 정수로 변환"""
-        if isinstance(v, str):
-            intensity_map = {
-                "low": 10,
-                "medium": 20, 
-                "high": 30
-            }
-            return intensity_map.get(v.lower(), 20)  # 기본값: medium(20)
-        return int(v) if v is not None else 20
+    use_rerank: bool = Field(default=False, description="Global rerank setting for all LLM nodes")
 
 class NodeExecutionResult(BaseModel):
     node_id: str = Field(..., description="Node ID")

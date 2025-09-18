@@ -66,7 +66,8 @@ class NodeExecutionEngine:
         self, 
         node: WorkflowNode, 
         workflow: WorkflowDefinition, 
-        stream_queue: asyncio.Queue
+        stream_queue: asyncio.Queue,
+        global_use_rerank: bool = False
     ):
         """단일 노드를 실행하고 스트리밍 출력을 실시간으로 큐에 전송"""
         
@@ -83,7 +84,7 @@ class NodeExecutionEngine:
         
         try:
             # 스트리밍 출력 처리
-            async for chunk in self._execute_node_stream(node, workflow):
+            async for chunk in self._execute_node_stream(node, workflow, global_use_rerank):
                 if chunk["type"] == "stream":
                     accumulated_output += chunk["content"]
                     # 즉시 스트리밍 출력 전송
@@ -165,7 +166,8 @@ class NodeExecutionEngine:
     
     async def execute_workflow(
         self, 
-        workflow: WorkflowDefinition
+        workflow: WorkflowDefinition,
+        global_use_rerank: bool = False
     ) -> WorkflowExecutionResponse:
         """워크플로우 전체 실행"""
         
@@ -204,7 +206,7 @@ class NodeExecutionEngine:
                 for node_id in ready_nodes:
                     node = nodes_map[node_id]
                     task = self._execute_single_node(
-                        node, pre_nodes_map[node_id]
+                        node, pre_nodes_map[node_id], global_use_rerank
                     )
                     execution_tasks.append(task)
                 
@@ -317,7 +319,8 @@ class NodeExecutionEngine:
     async def _execute_single_node(
         self, 
         node: WorkflowNode, 
-        pre_node_ids: List[str]
+        pre_node_ids: List[str],
+        global_use_rerank: bool = False
     ) -> NodeExecutionResult:
         """단일 노드 실행 - NodeExecutor 사용"""
         
@@ -327,7 +330,7 @@ class NodeExecutionEngine:
             
             # NodeExecutor를 통한 실행
             result = await self.node_executor.execute_node(
-                node, pre_outputs
+                node, pre_outputs, global_use_rerank
             )
             
             return result
@@ -351,7 +354,8 @@ class NodeExecutionEngine:
     
     async def execute_workflow_stream(
         self, 
-        workflow: WorkflowDefinition
+        workflow: WorkflowDefinition,
+        global_use_rerank: bool = False
     ):
         """워크플로우 이벤트 기반 병렬 스트리밍 실행 - 각 노드가 완료되는 즉시 다음 단계 진행"""
         
@@ -383,7 +387,7 @@ class NodeExecutionEngine:
                 if node.type == "input-node":
                     task = asyncio.create_task(
                         self._execute_single_node_stream(
-                            node, workflow, global_stream_queue
+                            node, workflow, global_stream_queue, global_use_rerank
                         )
                     )
                     active_tasks[node.id] = task
@@ -425,7 +429,7 @@ class NodeExecutionEngine:
                                     target_node = node_lookup[target_node_id]
                                     task = asyncio.create_task(
                                         self._execute_single_node_stream(
-                                            target_node, workflow, global_stream_queue
+                                            target_node, workflow, global_stream_queue, global_use_rerank
                                         )
                                     )
                                     active_tasks[target_node_id] = task
@@ -472,7 +476,8 @@ class NodeExecutionEngine:
     async def _execute_node_stream(
         self,
         node: WorkflowNode,
-        workflow: WorkflowDefinition
+        workflow: WorkflowDefinition,
+        global_use_rerank: bool = False
     ):
         """개별 노드 스트리밍 실행"""
         
@@ -486,7 +491,7 @@ class NodeExecutionEngine:
             final_result = None
             
             async for chunk in self.node_executor.execute_node_stream(
-                node, workflow, self.node_outputs
+                node, workflow, self.node_outputs, global_use_rerank
             ):
                 if chunk["type"] == "stream":
                     accumulated_output += chunk["content"] 

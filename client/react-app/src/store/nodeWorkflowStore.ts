@@ -128,8 +128,6 @@ const createWorkflowNode = (nodeType: NodeType, position: { x: number; y: number
     } else {
       nodeData.search_intensity = SearchIntensity.MEDIUM; // generation, ensemble: 보통
     }
-    
-    nodeData.use_rerank = false; // Rerank 기본값: 꺼짐
   }
   
   return {
@@ -399,7 +397,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
             prompt: finalPrompt,
             knowledge_base: node.data.knowledge_base || null,
             search_intensity: node.data.search_intensity || null,
-            use_rerank: node.data.use_rerank || false, // Rerank 사용 여부 전달
+
             output: null,
             executed: false,
             error: null
@@ -410,6 +408,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
 
       const request = {
         workflow: workflowDefinition,
+        use_rerank: state.globalUseRerank,
       };
       
       // 초기화 - 모든 노드를 idle 상태로 설정

@@ -1,9 +1,10 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from copy import deepcopy
 import logging
 import json
-import asyncio
+import requests
 
 # Node-based workflow imports
 from ..core.node_execution_engine import NodeExecutionEngine
@@ -48,6 +49,50 @@ async def health():
 async def test():
     return {"message": "Node-based API is working!"}
 
+@app.get("/post")
+def run_workflow(
+    provider: str = Query(..., description="LLM Provider"),
+    model: str = Query(..., description="Model name"),
+    input_text: str = Query(..., description="Input content"),
+):
+    """
+    GET /run?provider=openai&model=gpt-4&input_text=PCIe+Compliance
+    """
+    try:
+        # 1. 템플릿 불러오기
+        with open("C:\\Users\\SpringFrog\\projects\\MultiModelGenerator\\post_param_example.json", "r", encoding="utf-8") as f:
+            template = json.load(f)
+
+        # 2. 값 치환
+        new_data = deepcopy(template)
+        for node in new_data["workflow"]["nodes"]:
+            if node.get("llm_provider") == "google":
+                node["llm_provider"] = provider
+            if node.get("model_type") == "gemini-1.5-flash":
+                node["model_type"] = model
+            if node.get("content") == "Sanitize":
+                node["content"] = input_text
+
+        # 3. POST 요청
+        headers = {"Content-Type": "application/json"}
+        response = requests.post("http://localhost:5001/execute-workflow-stream",
+                                 headers=headers, json=new_data)
+
+        # 4. 결과 반환
+        try:
+            return {
+                "status_code": response.status_code,
+                "response": response.json()
+            }
+        except Exception:
+            return {
+                "status_code": response.status_code,
+                "response": response.text
+            }
+
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.post("/validate-workflow")
 async def validate_workflow(workflow: WorkflowDefinition):
     """워크플로우 유효성 검증 (project_reference.md 연결 조건 기준)"""
@@ -81,7 +126,8 @@ async def execute_workflow(request: WorkflowExecutionRequest):
         
         # 실행
         result = await execution_engine.execute_workflow(
-            workflow=request.workflow
+            workflow=request.workflow,
+            global_use_rerank=request.use_rerank
         )
         
         logger.info(f"Workflow execution completed. Success: {result.success}")
@@ -116,7 +162,8 @@ async def execute_workflow_stream(request: WorkflowExecutionRequest):
             
             # 스트리밍으로 워크플로우 실행
             async for chunk in execution_engine.execute_workflow_stream(
-                workflow=request.workflow
+                workflow=request.workflow,
+                global_use_rerank=request.use_rerank
             ):
                 yield f"data: {json.dumps(chunk)}\n\n"
                 

@@ -24,7 +24,8 @@ class NodeExecutor:
     async def execute_node(
         self,
         node: WorkflowNode,
-        pre_outputs: List[str]
+        pre_outputs: List[str],
+        global_use_rerank: bool = False
     ) -> NodeExecutionResult:
         """노드 타입에 따른 실행 분기"""
         
@@ -32,7 +33,7 @@ class NodeExecutor:
             if node.type in ["input-node", "output-node"]:
                 return await self._execute_text_node(node, pre_outputs)
             else:
-                return await self._execute_llm_node(node, pre_outputs)
+                return await self._execute_llm_node(node, pre_outputs, global_use_rerank)
         
         except Exception as e:
             return NodeExecutionResult(
@@ -87,6 +88,7 @@ class NodeExecutor:
         self,
         node: WorkflowNode,
         pre_outputs: List[str],
+        global_use_rerank: bool = False
     ) -> NodeExecutionResult:
         """
         generation-node, ensemble-node, validation-node 실행
@@ -99,7 +101,7 @@ class NodeExecutor:
         try:
             # 프롬프트 준비
             prompt = await self._prepare_llm_prompt(
-                node, pre_outputs
+                node, pre_outputs, global_use_rerank
             )
             
             # LLM API 호출
@@ -137,7 +139,8 @@ class NodeExecutor:
     async def _prepare_llm_prompt(
         self,
         node: WorkflowNode,
-        pre_outputs: List[str]
+        pre_outputs: List[str],
+        global_use_rerank: bool = False
     ) -> str:
         """LLM 노드를 위한 프롬프트를 준비하는 헬퍼 함수"""
         
@@ -151,7 +154,7 @@ class NodeExecutor:
         if node.knowledge_base and "{context}" in prompt_template:
             try:
                 context_results = await self._search_knowledge_base(
-                    node.knowledge_base, input_data, node.search_intensity
+                    node.knowledge_base, input_data, node.search_intensity, global_use_rerank
                 )
                 context = "\n".join(context_results) if context_results else "No relevant context found."
             except Exception as e:
@@ -171,7 +174,8 @@ class NodeExecutor:
         self, 
         kb_name: str, 
         query: str, 
-        search_intensity: str = "medium"
+        search_intensity: str = "medium",
+        use_rerank: bool = False
     ) -> List[str]:
         """지식베이스 검색 (비동기)"""
         
@@ -179,11 +183,23 @@ class NodeExecutor:
             # VectorStore 인스턴스 가져오기
             vector_store = self.vector_store_service.get_vector_store(kb_name)
             
-            # search_without_rerank 메서드 사용 (비동기)
-            search_results = await vector_store.search_without_rerank(
-                query=query, 
-                search_intensity=search_intensity
-            )
+            # Rerank 사용 여부에 따라 적절한 메서드 호출
+            if use_rerank:
+                # rerank를 사용하는 경우
+                search_results = await vector_store.search_with_rerank(
+                    query=query,
+                    search_intensity=search_intensity,
+                    top_k_initial=50,  # 초기 검색 결과 수
+                    top_k_final=20,   # 최종 rerank 결과 수
+                    rerank_provider="openai",  # 기본 rerank 제공자
+                    rerank_model="gpt-3.5-turbo"  # 기본 rerank 모델
+                )
+            else:
+                # rerank를 사용하지 않는 경우
+                search_results = await vector_store.search_without_rerank(
+                    query=query, 
+                    search_intensity=search_intensity
+                )
             
             # 결과는 이미 문자열 리스트이므로 그대로 반환
             return search_results
@@ -216,7 +232,8 @@ class NodeExecutor:
         self,
         node: WorkflowNode,
         workflow,
-        node_outputs: Dict[str, str]
+        node_outputs: Dict[str, str],
+        global_use_rerank: bool = False
     ):
         """노드 스트리밍 실행"""
         
@@ -247,7 +264,7 @@ class NodeExecutor:
             else:
                 # LLM 노드는 스트리밍 실행
                 async for chunk in self._execute_llm_node_stream(
-                    node, pre_outputs
+                    node, pre_outputs, global_use_rerank
                 ):
                     yield chunk
                     
@@ -260,14 +277,15 @@ class NodeExecutor:
     async def _execute_llm_node_stream(
         self,
         node: WorkflowNode,
-        pre_outputs: List[str]
+        pre_outputs: List[str],
+        global_use_rerank: bool = False
     ):
         """LLM 노드 스트리밍 실행"""
         
         try:
             # 프롬프트 준비
             formatted_prompt = await self._prepare_llm_prompt(
-                node, pre_outputs
+                node, pre_outputs, global_use_rerank
             )
             
             # LLM 클라이언트 가져오기
