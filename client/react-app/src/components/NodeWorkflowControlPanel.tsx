@@ -8,14 +8,14 @@ import {
   Alert, 
   Modal, 
   message,
-  Divider,
-  Row,
-  Col
+  Divider
 } from 'antd';
-import { PlusOutlined, PlayCircleOutlined, WarningOutlined } from '@ant-design/icons';
+import { 
+  PlayCircleOutlined, 
+  WarningOutlined
+} from '@ant-design/icons';
 import { useNodeWorkflowStore } from '../store/nodeWorkflowStore';
 import {
-  NodeType,
   SearchIntensity
 } from '../types';
 
@@ -35,13 +35,13 @@ const NodeWorkflowControlPanel: React.FC = () => {
     validationErrors,
     knowledgeBases,
     
-    addNode,
     setSelectedKnowledgeBase,
     setSearchIntensity,
     validateWorkflow,
     getValidationErrors,
     executeWorkflowStream,
-    loadKnowledgeBases
+    loadKnowledgeBases,
+
   } = useNodeWorkflowStore();
 
   // 컴포넌트 마운트 시 지식 베이스 로드
@@ -49,20 +49,7 @@ const NodeWorkflowControlPanel: React.FC = () => {
     loadKnowledgeBases();
   }, [loadKnowledgeBases]);
 
-  // 노드 추가 핸들러
-  const handleAddNode = (nodeType: NodeType) => {
-    try {
-      // 랜덤 위치에 노드 생성
-      const position = {
-        x: Math.random() * 400 + 100,
-        y: Math.random() * 300 + 100
-      };
-      addNode(nodeType, position);
-      message.success(`${nodeType} 노드가 추가되었습니다.`);
-    } catch (error: any) {
-      message.error(error.message);
-    }
-  };
+
 
   // 워크플로우 실행 핸들러 (스트리밍)
   const handleExecuteWorkflow = async () => {
@@ -154,11 +141,13 @@ const NodeWorkflowControlPanel: React.FC = () => {
            edges.length > 0;
   };
 
+
+
   return (
     <div style={{ padding: '16px' }}>
       <Card size="small">
         <Title level={4} style={{ margin: 0, marginBottom: 16 }}>
-          노드 기반 워크플로우 제어판
+          워크플로우 구성
         </Title>
 
         {/* 검증 에러 표시 */}
@@ -205,72 +194,12 @@ const NodeWorkflowControlPanel: React.FC = () => {
               value={searchIntensity}
               onChange={setSearchIntensity}
             >
-              <Option value={SearchIntensity.LOW}>낮음 (빠른 실행)</Option>
-              <Option value={SearchIntensity.MEDIUM}>보통 (균형)</Option>
-              <Option value={SearchIntensity.HIGH}>높음 (정확도 우선)</Option>
+              <Option value={SearchIntensity.VERY_LOW}>매우 낮음 (5개)</Option>
+              <Option value={SearchIntensity.LOW}>낮음 (10개)</Option>
+              <Option value={SearchIntensity.MEDIUM}>보통 (15개)</Option>
+              <Option value={SearchIntensity.HIGH}>높음 (30개)</Option>
+              <Option value={SearchIntensity.VERY_HIGH}>매우 높음 (50개)</Option>
             </Select>
-          </div>
-
-          <Divider style={{ margin: '12px 0' }} />
-
-          {/* 노드 추가 버튼들 */}
-          <div>
-            <Text strong>노드 추가:</Text>
-            <Row gutter={[8, 8]} style={{ marginTop: 8 }}>
-              <Col span={12}>
-                <Button 
-                  size="small" 
-                  block
-                  icon={<PlusOutlined />}
-                  onClick={() => handleAddNode(NodeType.INPUT)}
-                >
-                  Input 노드
-                </Button>
-              </Col>
-              <Col span={12}>
-                <Button 
-                  size="small" 
-                  block
-                  icon={<PlusOutlined />}
-                  onClick={() => handleAddNode(NodeType.GENERATION)}
-                >
-                  Generation 노드
-                </Button>
-              </Col>
-              <Col span={12}>
-                <Button 
-                  size="small" 
-                  block
-                  icon={<PlusOutlined />}
-                  onClick={() => handleAddNode(NodeType.ENSEMBLE)}
-                >
-                  Ensemble 노드
-                </Button>
-              </Col>
-              <Col span={12}>
-                <Button 
-                  size="small" 
-                  block
-                  icon={<PlusOutlined />}
-                  onClick={() => handleAddNode(NodeType.VALIDATION)}
-                >
-                  Validation 노드
-                </Button>
-              </Col>
-              {/* Output 노드는 추가 버튼을 숨김 - project_reference.md 규칙 */}
-              {nodes.filter(node => node.data.nodeType === NodeType.OUTPUT).length === 0 && (
-                <Col span={24}>
-                  <Button 
-                    size="small" 
-                    block
-                    icon={<PlusOutlined />}
-                    onClick={() => handleAddNode(NodeType.OUTPUT)}
-                  >
-                    Output 노드
-                  </Button>
-                </Col>
-              )}
-            </Row>
           </div>
 
           <Divider style={{ margin: '12px 0' }} />

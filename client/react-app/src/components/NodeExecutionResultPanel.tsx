@@ -1,6 +1,6 @@
-import React from 'react';
-import { Card, Typography, Alert, Button, Space } from 'antd';
-import { FileExcelOutlined, FileTextOutlined } from '@ant-design/icons';
+import React, { useState } from 'react';
+import { Card, Typography, Alert, Button, Space, Modal } from 'antd';
+import { FileExcelOutlined, FileTextOutlined, ExpandOutlined } from '@ant-design/icons';
 import * as XLSX from 'xlsx';
 import { useNodeWorkflowStore } from '../store/nodeWorkflowStore';
 
@@ -81,6 +81,8 @@ const TableDownloadButtons: React.FC<TableDownloadButtonsProps> = ({
   dataRows, 
   tableIndex 
 }) => {
+  const [isModalVisible, setIsModalVisible] = useState(false);
+
   const handleDownloadExcel = () => {
     const filename = `table_${tableIndex + 1}_${getCurrentTimestamp()}.xlsx`;
     downloadUtils.downloadExcel(headerRow, dataRows, filename);
@@ -99,46 +101,103 @@ const TableDownloadButtons: React.FC<TableDownloadButtonsProps> = ({
   };
 
   return (
-    <div style={{ 
-      margin: '8px 0',
-      padding: '8px',
-      backgroundColor: '#f8f9fa',
-      borderRadius: '4px',
-      border: '1px solid #e9ecef'
-    }}>
-      <Space size="small">
-        <Text strong style={{ fontSize: '11px', color: '#666' }}>
-          표 다운로드:
-        </Text>
+    <>
+      <div style={{ 
+        margin: '8px 0',
+        padding: '8px',
+        backgroundColor: '#f8f9fa',
+        borderRadius: '4px',
+        border: '1px solid #e9ecef',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
+        <Space size="small">
+          <Text strong style={{ fontSize: '11px', color: '#666' }}>
+            표 다운로드:
+          </Text>
+          <Button
+            type="link"
+            size="small"
+            icon={<FileExcelOutlined />}
+            onClick={handleDownloadExcel}
+            style={{ padding: '2px 8px', height: 'auto', fontSize: '11px' }}
+          >
+            Excel
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            icon={<FileTextOutlined />}
+            onClick={handleDownloadTXT}
+            style={{ padding: '2px 8px', height: 'auto', fontSize: '11px' }}
+          >
+            TXT
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            icon={<FileTextOutlined />}
+            onClick={handleDownloadMD}
+            style={{ padding: '2px 8px', height: 'auto', fontSize: '11px' }}
+          >
+            MD
+          </Button>
+        </Space>
         <Button
           type="link"
           size="small"
-          icon={<FileExcelOutlined />}
-          onClick={handleDownloadExcel}
+          icon={<ExpandOutlined />}
+          onClick={() => setIsModalVisible(true)}
           style={{ padding: '2px 8px', height: 'auto', fontSize: '11px' }}
         >
-          Excel
+          크게 보기
         </Button>
-        <Button
-          type="link"
-          size="small"
-          icon={<FileTextOutlined />}
-          onClick={handleDownloadTXT}
-          style={{ padding: '2px 8px', height: 'auto', fontSize: '11px' }}
-        >
-          TXT
-        </Button>
-        <Button
-          type="link"
-          size="small"
-          icon={<FileTextOutlined />}
-          onClick={handleDownloadMD}
-          style={{ padding: '2px 8px', height: 'auto', fontSize: '11px' }}
-        >
-          MD
-        </Button>
-      </Space>
-    </div>
+      </div>
+      <Modal
+        title={`표 크게 보기 (테이블 ${tableIndex + 1})`}
+        visible={isModalVisible}
+        onOk={() => setIsModalVisible(false)}
+        onCancel={() => setIsModalVisible(false)}
+        width="90vw"
+        footer={null}
+        bodyStyle={{ maxHeight: '80vh', overflowY: 'auto' }}
+      >
+        <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '14px' }}>
+          <thead>
+            <tr>
+              {headerRow.map((cell, idx) => (
+                <th key={idx} style={{
+                  border: '1px solid #d9d9d9',
+                  padding: '12px',
+                  background: '#f5f5f5',
+                  fontWeight: 600,
+                  textAlign: 'left'
+                }}>
+                  {cell}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {dataRows.map((row, rowIdx) => (
+              <tr key={rowIdx}>
+                {row.map((cell, cellIdx) => (
+                  <td key={cellIdx} style={{
+                    border: '1px solid #d9d9d9',
+                    padding: '12px',
+                    verticalAlign: 'top',
+                    wordBreak: 'break-word'
+                  }}>
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Modal>
+    </>
   );
 };
 
@@ -637,12 +696,6 @@ export const NodeExecutionResultPanel: React.FC = () => {
                             )}
                           </div>
                         )}
-                        {executionResult.execution_time && executionResult.execution_time > 0 && (
-                          <Text style={{ marginLeft: 8, color: '#999', fontSize: 10 }}>
-                            ({executionResult.execution_time.toFixed(2)}초)
-                          </Text>
-                        )}
-
                       </div>
                     ) : (
                       <Text style={{ color: '#ff4d4f' }}>

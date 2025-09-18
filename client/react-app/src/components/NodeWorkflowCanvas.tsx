@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
   ReactFlow,
   Background,
@@ -12,12 +12,29 @@ import {
   NodeTypes
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { message } from 'antd';
-
-import { NodeWorkflowComponent } from './NodeWorkflowComponent';
+import { 
+  message, 
+  Button, 
+  Modal, 
+  Input, 
+  Typography 
+} from 'antd';
+import {
+  FileTextOutlined,
+  RobotOutlined,
+  BranchesOutlined,
+  CheckCircleOutlined,
+  SaveOutlined,
+  ReloadOutlined,
+  ClearOutlined,
+  DownloadOutlined,
+  UploadOutlined
+} from '@ant-design/icons';import { NodeWorkflowComponent } from './NodeWorkflowComponent';
 import { useNodeWorkflowStore } from '../store/nodeWorkflowStore';
 import { WorkflowEdge, NodeType } from '../types';
 import { isConnectionAllowed } from '../utils/nodeWorkflowValidation';
+
+
 
 // 노드 타입 정의
 const nodeTypes: NodeTypes = {
@@ -28,60 +45,85 @@ export const NodeWorkflowCanvas: React.FC = () => {
   const { 
     nodes: storeNodes, 
     edges: storeEdges, 
+    viewport, // 스토어의 뷰포트 상태
+    isRestoring, // 복원 상태
     addEdge: addStoreEdge,
     removeEdge,
     removeNode,
-    nodeExecutionStates
+    currentViewport, // 실시간 뷰포트 상태
+    
+    // 노드 추가와 워크플로우 관리 함수들
+    addNode,
+    saveCurrentWorkflow,
+    restoreWorkflow,
+    resetToInitialState,
+    exportToJSON,
+    importFromJSON,
+    setViewport,
+    updateNodePositions
   } = useNodeWorkflowStore();
+  
+  // 워크플로우 관리 상태
+  const [importModalVisible, setImportModalVisible] = useState(false);
+  const [jsonText, setJsonText] = useState('');
 
   // ReactFlow 인스턴스 레퍼런스
   const [reactFlowInstance, setReactFlowInstance] = React.useState<any>(null);
-  const [currentViewport, setCurrentViewport] = React.useState({ x: 0, y: 0, zoom: 1 });
+  
+  // 자동 복원 상태 관리
+  const [hasAutoRestored, setHasAutoRestored] = React.useState(false);
 
   // ReactFlow 초기화 핸들러
   const onInit = useCallback((instance: any) => {
     setReactFlowInstance(instance);
-    // 초기 뷰포트 상태 설정
-    const viewport = instance.getViewport();
-    setCurrentViewport(viewport);
-  }, []);
+    
+    // 앱 시작 시 자동 복원 (인스턴스 생성 후 1회만)
+    if (!hasAutoRestored) {
+      const success = restoreWorkflow();
+      if (success) {
+        // 복원된 뷰포트를 잠시 후 적용 (ReactFlow 초기화 보장)
+        setTimeout(() => {
+          const { viewport } = useNodeWorkflowStore.getState();
+          if (viewport) {
+            instance.setViewport(viewport);
+          }
+        }, 50);
+      }
+      setHasAutoRestored(true);
+    }
+  }, [restoreWorkflow, hasAutoRestored]);
 
   // ReactFlow용 상태 (스토어와 동기화)
   const [nodes, setNodes, onNodesChange] = useNodesState(storeNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(storeEdges);
 
+  // 스토어의 뷰포트가 변경되면 ReactFlow에 적용 (복원 시에만)
+  useEffect(() => {
+    if (reactFlowInstance && viewport && isRestoring) {
+      const currentReactFlowViewport = reactFlowInstance.getViewport();
+      // 뷰포트가 실제로 다를 때만 업데이트하여 무한 루프 방지
+      if (
+        Math.abs(currentReactFlowViewport.x - viewport.x) > 1 ||
+        Math.abs(currentReactFlowViewport.y - viewport.y) > 1 ||
+        Math.abs(currentReactFlowViewport.zoom - viewport.zoom) > 0.01
+      ) {
+        reactFlowInstance.setViewport(viewport);
+      }
+    }
+  }, [viewport, reactFlowInstance, isRestoring]);
+
   // 메모이제이션으로 불필요한 재계산 방지
   const memoizedNodeTypes = React.useMemo(() => nodeTypes, []);
 
-  // 출력 노드 고정 위치 (하단 중앙)
-  const getFixedOutputPosition = (viewport = { x: 0, y: 0, zoom: 1 }) => {
-    // 캔버스 크기 기준 (700px 높이)
-    const canvasHeight = 700;
-    const canvasWidth = 800; // 추정값
-    
-    // 뷰포트를 고려한 실제 가시 영역에서의 위치 계산
-    const visibleCenterX = (-viewport.x + canvasWidth/2) / viewport.zoom;
-    const visibleBottomY = (-viewport.y + canvasHeight - 100) / viewport.zoom; // 하단에서 100px 위
-    
-    return { x: visibleCenterX - 100, y: visibleBottomY }; // 노드 크기 고려
-  };
-
-  // 입력 노드 고정 위치 (상단 중앙)
-  const getFixedInputPosition = (viewport = { x: 0, y: 0, zoom: 1 }) => {
-    const canvasWidth = 800; // 추정값
-    
-    // 뷰포트를 고려한 실제 가시 영역에서의 위치 계산
-    const visibleCenterX = (-viewport.x + canvasWidth/2) / viewport.zoom;
-    const visibleTopY = (-viewport.y + 50) / viewport.zoom; // 상단에서 50px 아래
-    
-    return { x: visibleCenterX - 100, y: visibleTopY }; // 노드 크기 고려
-  };
-
-  // 뷰포트 변화 감지 및 상태 업데이트 (디바운스 적용)
+  // 뷰포트 변화 감지 및 상태 업데이트 (더 민감한 감지)
   const onViewportChange = useCallback((newViewport: any) => {
-    // 뷰포트 상태만 업데이트, 노드 위치는 useEffect에서 처리
-    setCurrentViewport(newViewport);
-  }, []);
+    // currentViewport와 비교하여 변경 감지
+    if (Math.abs(newViewport.zoom - currentViewport.zoom) > 0.005 ||  // 줌 변경을 더 민감하게
+        Math.abs(newViewport.x - currentViewport.x) > 2 ||          // x 변경을 더 민감하게
+        Math.abs(newViewport.y - currentViewport.y) > 2) {          // y 변경을 더 민감하게
+      setViewport(newViewport);
+    }
+  }, [setViewport, currentViewport]);
 
   // 노드 변경 핸들러 (출력 노드만 이동 불가)
   const onNodesChangeWithFixed = useCallback((changes: any[]) => {
@@ -95,90 +137,83 @@ export const NodeWorkflowCanvas: React.FC = () => {
       }
       return true;
     });
+    
     onNodesChange(filteredChanges);
+    
+    // 실시간 store 업데이트는 제거 - 저장할 때만 동기화
   }, [onNodesChange, nodes]);
 
-  // 노드 스타일을 메모이제이션으로 최적화
-  const getNodeStyle = React.useCallback((nodeId: string) => {
-    const executionState = nodeExecutionStates[nodeId] || 'idle';
+
+
+  // 노드 동기화 - 무한 루프 방지를 위한 안전한 로직
+  const prevStoreNodesRef = React.useRef(storeNodes);
+  
+  React.useEffect(() => {
+    // store 노드가 실제로 변경되지 않았으면 업데이트하지 않음 (무한 루프 방지)
+    if (prevStoreNodesRef.current === storeNodes) {
+      return;
+    }
     
-    return {
-      backgroundColor: '#ffffff',
-      color: '#000',
-      border: 
-        executionState === 'executing' ? '3px solid #ff4d4f' : // 실행 중: 빨간색으로 변경
-        '2px solid #d9d9d9', // 나머지는 기본 색상
-      boxShadow: 
-        executionState === 'executing' ? '0 0 20px rgba(255, 77, 79, 0.6), 0 0 40px rgba(255, 77, 79, 0.3)' : // 실행 중: 빨간색 글로우
-        '0 2px 8px rgba(0,0,0,0.1)', // 나머지는 기본 그림자
-      transition: 'all 0.3s ease-in-out',
-      animation: 
-        executionState === 'executing' ? 'pulse-glow 2s infinite' :
-        'none' // 완료/에러 애니메이션 제거
-    };
-  }, [nodeExecutionStates]);
-
-  // 스토어 노드가 변경되면 로컬 상태 업데이트 (스타일 제외)
-  React.useEffect(() => {
-    setNodes(currentNodes => {
-      const updatedNodes = storeNodes.map(storeNode => {
-        const existingNode = currentNodes.find(node => node.id === storeNode.id);
-        
-        // 출력 노드는 고정 위치
-        if (storeNode.data?.nodeType === NodeType.OUTPUT) {
-          return { 
-            ...storeNode, 
-            position: getFixedOutputPosition(currentViewport), 
-            draggable: false
-          };
-        }
-        
-        // 입력 노드도 고정 위치
-        if (storeNode.data?.nodeType === NodeType.INPUT) {
-          return { 
-            ...storeNode, 
-            position: getFixedInputPosition(currentViewport), 
-            draggable: false
-          };
-        }
-        
-        // 다른 노드들은 기존 위치 유지
-        return existingNode 
-          ? { ...storeNode, position: existingNode.position }
-          : storeNode;
-      });
-      return updatedNodes;
+    if (!hasAutoRestored) {
+      // 자동 복원 중에는 store의 노드를 그대로 사용
+      setNodes(storeNodes);
+      prevStoreNodesRef.current = storeNodes;
+      return;
+    }
+    
+    // 노드 변경 사항 감지 (개수, ID, 데이터 변경)
+    const currentIds = new Set(prevStoreNodesRef.current.map(n => n.id));
+    const newIds = new Set(storeNodes.map(n => n.id));
+    
+    // 1. 노드 개수나 ID 변경 확인
+    const hasStructuralChanges = currentIds.size !== newIds.size || 
+                                [...currentIds].some(id => !newIds.has(id)) ||
+                                [...newIds].some(id => !currentIds.has(id));
+    
+    // 2. 기존 노드의 데이터 변경 확인 (label, model 등)
+    const hasDataChanges = !hasStructuralChanges && storeNodes.some(storeNode => {
+      const prevNode = prevStoreNodesRef.current.find(n => n.id === storeNode.id);
+      if (!prevNode) return false;
+      
+      // 노드 데이터 비교 (data 객체의 내용 비교)
+      return JSON.stringify(prevNode.data) !== JSON.stringify(storeNode.data) ||
+             prevNode.type !== storeNode.type;
     });
-  }, [storeNodes, setNodes, currentViewport]);
+    
+    if (hasStructuralChanges || hasDataChanges) {
+      // 노드가 추가/삭제되거나 데이터가 변경된 경우 동기화 (기존 위치 보존)
+      setNodes(currentReactFlowNodes => {
+        const currentPositions = new Map();
+        currentReactFlowNodes.forEach(node => {
+          currentPositions.set(node.id, node.position);
+        });
 
-  // 노드 실행 상태가 변경되면 스타일만 업데이트
-  React.useEffect(() => {
-    setNodes(currentNodes => 
-      currentNodes.map(node => ({
-        ...node,
-        style: getNodeStyle(node.id)
-      }))
-    );
-  }, [nodeExecutionStates, getNodeStyle, setNodes]);
+        return storeNodes.map(storeNode => {
+          const existingPosition = currentPositions.get(storeNode.id);
+          return {
+            ...storeNode,
+            position: existingPosition || storeNode.position
+          };
+        });
+      });
+    }
+    
+    prevStoreNodesRef.current = storeNodes;
+  }, [storeNodes, setNodes, hasAutoRestored]);
 
   React.useEffect(() => {
     setEdges(storeEdges);
   }, [storeEdges, setEdges]);
 
-  // 뷰포트 보존을 위한 useEffect
+  // 앱 시작시 자동으로 저장된 워크플로우 복원 (마운트시 한 번만)
   React.useEffect(() => {
-    if (reactFlowInstance && currentViewport) {
-      // 노드 추가 후 뷰포트가 변경되지 않도록 명시적으로 설정
-      const currentInstanceViewport = reactFlowInstance.getViewport();
-      if (
-        Math.abs(currentInstanceViewport.x - currentViewport.x) > 1 ||
-        Math.abs(currentInstanceViewport.y - currentViewport.y) > 1 ||
-        Math.abs(currentInstanceViewport.zoom - currentViewport.zoom) > 0.01
-      ) {
-        reactFlowInstance.setViewport(currentViewport);
-      }
+    if (!hasAutoRestored) {
+      restoreWorkflow();
+      setHasAutoRestored(true);
     }
-  }, [storeNodes.length, reactFlowInstance, currentViewport]); // 노드 개수 변화 시 실행
+  }, [hasAutoRestored, restoreWorkflow]);
+
+
 
   // 연결 유효성 검사
   const isValidConnectionCheck = useCallback((connection: Connection) => {
@@ -197,6 +232,29 @@ export const NodeWorkflowCanvas: React.FC = () => {
     
     return validation.allowed;
   }, [storeNodes, storeEdges]);
+
+  // 뷰포트 변경 핸들러 - 디바운싱으로 성능 최적화
+  const viewportTimeoutRef = React.useRef<number | null>(null);
+  const onMoveEnd = useCallback((_event: any, viewport: any) => {
+    // 기존 타이머 클리어
+    if (viewportTimeoutRef.current) {
+      clearTimeout(viewportTimeoutRef.current);
+    }
+    
+    // 300ms 후에 뷰포트 업데이트 (디바운싱)
+    viewportTimeoutRef.current = setTimeout(() => {
+      setViewport(viewport);
+    }, 300);
+  }, [setViewport]);
+
+  // 뷰포트 타이머 정리
+  React.useEffect(() => {
+    return () => {
+      if (viewportTimeoutRef.current) {
+        clearTimeout(viewportTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // 연결 생성 핸들러
   const onConnect = useCallback((params: Connection) => {
@@ -222,7 +280,6 @@ export const NodeWorkflowCanvas: React.FC = () => {
         removeNode(node.id);
       } catch (error: any) {
         // 에러는 이미 store에서 message로 표시됨
-        console.error('노드 삭제 실패:', error.message);
       }
     });
   }, [removeNode]);
@@ -349,8 +406,248 @@ export const NodeWorkflowCanvas: React.FC = () => {
     setEdges(edges => edges.map(e => ({ ...e, selected: false })));
   }, [removeEdge, setEdges]);
 
+  // 노드 추가 핸들러 - 현재 뷰포트 중심에 생성
+  const handleAddNode = (nodeType: string) => {
+    // 현재 뷰포트 중심 근처에 새 노드 배치
+    const viewport = reactFlowInstance?.getViewport() || { x: 0, y: 0, zoom: 1 };
+    const centerX = (-viewport.x + 400) / viewport.zoom;  // 화면 중심 X
+    const centerY = (-viewport.y + 300) / viewport.zoom;  // 화면 중심 Y
+    
+    // 중심 근처에 약간의 랜덤 오프셋 추가
+    const position = { 
+      x: centerX + (Math.random() - 0.5) * 200, 
+      y: centerY + (Math.random() - 0.5) * 200 
+    };
+    
+    // 문자열을 올바른 NodeType enum으로 변환
+    const nodeTypeMap: { [key: string]: NodeType } = {
+      'input': NodeType.INPUT,
+      'generation': NodeType.GENERATION,
+      'ensemble': NodeType.ENSEMBLE,
+      'validation': NodeType.VALIDATION,
+      'output': NodeType.OUTPUT
+    };
+    
+    const actualNodeType = nodeTypeMap[nodeType] || NodeType.INPUT;
+    
+    addNode(actualNodeType, position);
+  };
+
+  // 워크플로우 관리 핸들러
+  const handleSaveWorkflow = useCallback(() => {
+    // 현재 뷰포트와 노드 위치를 store에 업데이트하고 저장
+    if (reactFlowInstance) {
+      const currentViewportState = reactFlowInstance.getViewport();
+      const currentReactFlowNodes = reactFlowInstance.getNodes();
+      
+      // store 상태 즉시 업데이트
+      setViewport(currentViewportState);
+      const nodePositions = currentReactFlowNodes.map((rfNode: any) => ({
+        id: rfNode.id,
+        position: rfNode.position
+      }));
+      updateNodePositions(nodePositions);
+    }
+    
+    // 저장 실행
+    saveCurrentWorkflow();
+    message.success('워크플로우가 저장되었습니다.');
+  }, [reactFlowInstance, setViewport, updateNodePositions, saveCurrentWorkflow]);
+
+  const handleRestoreWorkflow = useCallback(() => {
+    const success = restoreWorkflow();
+    if (success) {
+      message.success('워크플로우가 복원되었습니다.');
+      
+      // ReactFlow 상태를 store와 동기화 (뷰포트 복원)
+      if (reactFlowInstance) {
+        // 복원된 뷰포트를 가져와서 적용
+        const { viewport } = useNodeWorkflowStore.getState();
+        if (viewport) {
+          // 여러 번 시도하여 확실히 적용되도록 함
+          setTimeout(() => {
+            reactFlowInstance.setViewport(viewport);
+          }, 50);
+          setTimeout(() => {
+            reactFlowInstance.setViewport(viewport);
+          }, 150);
+          setTimeout(() => {
+            reactFlowInstance.setViewport(viewport);
+          }, 300);
+        }
+      }
+    } else {
+      message.error('저장된 워크플로우가 없습니다.');
+    }
+  }, [restoreWorkflow, reactFlowInstance]);
+
+  const handleResetWorkflow = useCallback(() => {
+    Modal.confirm({
+      title: '워크플로우 초기화',
+      content: '모든 노드와 연결을 삭제하고 초기 상태로 되돌립니다. 계속하시겠습니까?',
+      okText: '초기화',
+      cancelText: '취소',
+      okType: 'danger',
+      onOk() {
+        resetToInitialState();
+        
+        // 초기화 후 뷰포트를 즉시 적용
+        if (reactFlowInstance) {
+          setTimeout(() => {
+            const { viewport } = useNodeWorkflowStore.getState();
+            if (viewport) {
+              reactFlowInstance.setViewport(viewport);
+            }
+          }, 100);
+        }
+        
+        message.success('워크플로우가 초기 상태로 리셋되었습니다.');
+      },
+    });
+  }, [resetToInitialState, reactFlowInstance]);
+
+  const handleExportWorkflow = useCallback(() => {
+    exportToJSON();
+    message.success('워크플로우가 내보내기되었습니다.');
+  }, [exportToJSON]);
+
+  const handleImportWorkflow = useCallback(() => {
+    try {
+      const success = importFromJSON(jsonText);
+      if (success) {
+        message.success('워크플로우가 가져오기되었습니다.');
+        setImportModalVisible(false);
+        setJsonText('');
+      } else {
+        message.error('유효하지 않은 워크플로우 데이터입니다.');
+      }
+    } catch (error) {
+      message.error('JSON 형식이 올바르지 않습니다.');
+    }
+  }, [importFromJSON, jsonText]);
+
+  // 반응형 캔버스 래퍼
+  const reactFlowWrapper = useRef<HTMLDivElement>(null);
+
+  // 초기 노드를 Canvas 중앙에 배치
+  useEffect(() => {
+    if (reactFlowWrapper.current && storeNodes.length > 0) {
+      const { width } = reactFlowWrapper.current.getBoundingClientRect();
+      const centerX = width / 2 - 75; // 노드 너비(150px)의 절반을 빼서 중앙 정렬
+
+      const initialNodes = storeNodes.filter(
+        (n) => n.data.nodeType === NodeType.INPUT || n.data.nodeType === NodeType.OUTPUT
+      );
+
+      if (initialNodes.length > 0) {
+        const nodePositions = initialNodes.map(node => ({
+          id: node.id,
+          position: {
+            x: centerX,
+            y: node.data.nodeType === NodeType.INPUT ? 100 : 550,
+          },
+        }));
+        updateNodePositions(nodePositions);
+      }
+    }
+  }, []); // 컴포넌트 마운트 시 한 번만 실행
+
   return (
-    <div style={{ width: '100%', height: '700px', border: '1px solid #d9d9d9', borderRadius: '6px' }}>
+    <div style={{ width: '100%', height: '700px', border: '1px solid #d9d9d9', borderRadius: '6px', position: 'relative' }} ref={reactFlowWrapper}>
+      {/* 상단 오버레이 - 노드 추가 */}
+      <div style={{
+        position: 'absolute',
+        top: '10px',
+        left: '10px',
+        zIndex: 1000,
+        display: 'flex',
+        gap: '8px',
+        background: 'rgba(255, 255, 255, 0.9)',
+        padding: '8px',
+        borderRadius: '6px',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+      }}>
+        <Button 
+          size="small" 
+          icon={<FileTextOutlined />}
+          onClick={() => handleAddNode('input')}
+        >
+          입력 노드
+        </Button>
+        <Button 
+          size="small" 
+          icon={<RobotOutlined />}
+          onClick={() => handleAddNode('generation')}
+        >
+          생성 노드
+        </Button>
+        <Button 
+          size="small" 
+          icon={<BranchesOutlined />}
+          onClick={() => handleAddNode('ensemble')}
+        >
+          앙상블 노드
+        </Button>
+        <Button 
+          size="small" 
+          icon={<CheckCircleOutlined />}
+          onClick={() => handleAddNode('validation')}
+        >
+          검증 노드
+        </Button>
+      </div>
+
+      {/* 상단 오른쪽 오버레이 - 워크플로우 관리 */}
+      <div style={{
+        position: 'absolute',
+        top: '10px',
+        right: '10px',
+        zIndex: 1000,
+        display: 'flex',
+        gap: '8px',
+        background: 'rgba(255, 255, 255, 0.9)',
+        padding: '8px',
+        borderRadius: '6px',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+      }}>
+        <Button 
+          size="small" 
+          icon={<SaveOutlined />}
+          onClick={handleSaveWorkflow}
+        >
+          저장
+        </Button>
+        <Button 
+          size="small" 
+          icon={<ReloadOutlined />}
+          onClick={handleRestoreWorkflow}
+        >
+          복원
+        </Button>
+        <Button 
+          size="small" 
+          icon={<ClearOutlined />}
+          onClick={handleResetWorkflow}
+          danger
+        >
+          초기화
+        </Button>
+        <Button 
+          size="small" 
+          icon={<DownloadOutlined />}
+          onClick={handleExportWorkflow}
+        >
+          내보내기
+        </Button>
+        <Button 
+          size="small" 
+          icon={<UploadOutlined />}
+          onClick={() => setImportModalVisible(true)}
+        >
+          가져오기
+        </Button>
+      </div>
+
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -364,16 +661,16 @@ export const NodeWorkflowCanvas: React.FC = () => {
         onNodesDelete={onNodesDelete}
         onInit={onInit}
         onViewportChange={onViewportChange}
+        onMoveEnd={onMoveEnd}
         nodeTypes={memoizedNodeTypes}
         fitView={false}
-        snapToGrid
-        snapGrid={[15, 15]}
+        snapToGrid={false}
         defaultViewport={{ x: 0, y: 0, zoom: 1 }}
         minZoom={0.5}
-        maxZoom={2}
+        maxZoom={2 }
         deleteKeyCode={['Delete']}
         multiSelectionKeyCode={['Meta', 'Ctrl']}
-        panOnDrag={false}
+        panOnDrag={true}
         zoomOnScroll={true}
         zoomOnPinch={true}
         zoomOnDoubleClick={false}
@@ -383,6 +680,8 @@ export const NodeWorkflowCanvas: React.FC = () => {
         elementsSelectable={true}
         autoPanOnConnect={false}
         autoPanOnNodeDrag={false}
+        selectNodesOnDrag={false}
+        proOptions={{ hideAttribution: true }}
       >
         <Background color="#f0f2f5" gap={15} />
         <Controls />
@@ -419,6 +718,31 @@ export const NodeWorkflowCanvas: React.FC = () => {
           • 마우스 휠로 줌 인/아웃 가능
         </div>
       </ReactFlow>
+
+      {/* JSON 가져오기 모달 */}
+      <Modal
+        title="워크플로우 가져오기"
+        open={importModalVisible}
+        onOk={handleImportWorkflow}
+        onCancel={() => {
+          setImportModalVisible(false);
+          setJsonText('');
+        }}
+        okText="가져오기"
+        cancelText="취소"
+      >
+        <div style={{ marginBottom: '16px' }}>
+          <Typography.Text type="secondary">
+            워크플로우 JSON 데이터를 붙여넣으세요:
+          </Typography.Text>
+        </div>
+        <Input.TextArea
+          value={jsonText}
+          onChange={(e) => setJsonText(e.target.value)}
+          placeholder="JSON 데이터를 여기에 붙여넣으세요..."
+          rows={10}
+        />
+      </Modal>
     </div>
   );
 };

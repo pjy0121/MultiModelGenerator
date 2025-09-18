@@ -202,7 +202,7 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = ({
             {isContentNode && (
               <div>
                 <Text style={{ fontSize: 10, color: '#666' }}>
-                  {data.content && data.content.length > 50 
+                  { data.content && data.content.length > 50 
                     ? `${data.content.substring(0, 50)}...` 
                     : data.content || 'Content not set!'
                   }
