@@ -86,65 +86,20 @@ class NodeExecutor:
     async def _execute_llm_node(
         self,
         node: WorkflowNode,
-        pre_outputs: List[str]
+        pre_outputs: List[str],
     ) -> NodeExecutionResult:
         """
         generation-node, ensemble-node, validation-node 실행
         project_reference.md 2-1 ~ 2-8 기준
         """
-        
-        # 1. LLM 클라이언트 가져오기
-        client = self.llm_factory.get_client(node.llm_provider)
-        
-        # 2. 입력 데이터 준비
-        input_data = " ".join(pre_outputs) if pre_outputs else ""
-        
-        # 3. 컨텍스트 검색 (노드에 knowledge_base가 설정된 경우)
-        context = ""
-        if node.knowledge_base:
-            vector_store = self.vector_store_service.get_vector_store(node.knowledge_base)
-            if vector_store:
-                # 검색 키워드 추출 (프롬프트의 핵심 단어 사용)
-                search_keyword = await self._extract_keyword_for_search(client, node.prompt, input_data)
-                
-                # Rerank 사용 여부에 따라 다른 검색 API 호출
-                if node.use_rerank:
-                    context_chunks = await vector_store.search_with_rerank(
-                        search_keyword, 
-                        search_intensity=node.search_intensity or "medium",
-                        rerank_provider=node.llm_provider,
-                        rerank_model=node.model_type
-                    )
-                else:
-                    context_chunks = await vector_store.search_without_rerank(
-                        search_keyword, 
-                        search_intensity=node.search_intensity or "medium"
-                    )
-                context = "\n".join(context_chunks)
-        
-        # 4. 프롬프트 템플릿 채우기
-        final_prompt = self._fill_prompt_template(node.prompt, input_data, context)
-        
-        # 5. LLM 실행
-        llm_output = await client.generate(node.model_type, final_prompt)
-        
-        # 6. 결과 파싱
-        parsed_result = self.result_parser.parse(llm_output)
-        
-        return NodeExecutionResult(
-            node_id=node.id,
-            success=True,
-            description=parsed_result.description,
-            output=parsed_result.output,
-            execution_time=0.0  # 시간 측정은 상위 레벨에서
-        )
+
         import time
         start_time = time.time()
         
         try:
             # 프롬프트 준비
             prompt = await self._prepare_llm_prompt(
-                node, pre_outputs, knowledge_base, search_intensity
+                node, pre_outputs
             )
             
             # LLM API 호출
@@ -182,9 +137,7 @@ class NodeExecutor:
     async def _prepare_llm_prompt(
         self,
         node: WorkflowNode,
-        pre_outputs: List[str],
-        knowledge_base: Optional[str],
-        search_intensity: int
+        pre_outputs: List[str]
     ) -> str:
         """LLM 노드를 위한 프롬프트를 준비하는 헬퍼 함수"""
         
@@ -195,11 +148,10 @@ class NodeExecutor:
         context = ""
         prompt_template = node.prompt or ""
         
-        if knowledge_base and "{context}" in prompt_template:
+        if node.knowledge_base and "{context}" in prompt_template:
             try:
-                top_k = max(5, min(search_intensity, 50))
                 context_results = await self._search_knowledge_base(
-                    knowledge_base, input_data, top_k
+                    node.knowledge_base, input_data, node.search_intensity
                 )
                 context = "\n".join(context_results) if context_results else "No relevant context found."
             except Exception as e:
@@ -219,20 +171,22 @@ class NodeExecutor:
         self, 
         kb_name: str, 
         query: str, 
-        top_k: int
+        search_intensity: str = "medium"
     ) -> List[str]:
         """지식베이스 검색 (비동기)"""
         
         try:
-            # VectorStoreService 사용 (search 메서드는 동기)
-            search_results = self.vector_store_service.search(
+            # VectorStore 인스턴스 가져오기
+            vector_store = self.vector_store_service.get_vector_store(kb_name)
+            
+            # search_without_rerank 메서드 사용 (비동기)
+            search_results = await vector_store.search_without_rerank(
                 query=query, 
-                collection_name=kb_name, 
-                top_k=top_k
+                search_intensity=search_intensity
             )
             
-            # 검색 결과에서 content 추출
-            return [result["content"] for result in search_results]
+            # 결과는 이미 문자열 리스트이므로 그대로 반환
+            return search_results
             
         except Exception as e:
             raise Exception(f"Knowledge base search failed: {str(e)}")
@@ -262,9 +216,7 @@ class NodeExecutor:
         self,
         node: WorkflowNode,
         workflow,
-        node_outputs: Dict[str, str],
-        knowledge_base: Optional[str] = None,
-        search_intensity: int = 5
+        node_outputs: Dict[str, str]
     ):
         """노드 스트리밍 실행"""
         
@@ -295,7 +247,7 @@ class NodeExecutor:
             else:
                 # LLM 노드는 스트리밍 실행
                 async for chunk in self._execute_llm_node_stream(
-                    node, pre_outputs, knowledge_base, search_intensity
+                    node, pre_outputs
                 ):
                     yield chunk
                     
@@ -308,16 +260,14 @@ class NodeExecutor:
     async def _execute_llm_node_stream(
         self,
         node: WorkflowNode,
-        pre_outputs: List[str],
-        knowledge_base: Optional[str] = None,
-        search_intensity: int = 5
+        pre_outputs: List[str]
     ):
         """LLM 노드 스트리밍 실행"""
         
         try:
             # 프롬프트 준비
             formatted_prompt = await self._prepare_llm_prompt(
-                node, pre_outputs, knowledge_base, search_intensity
+                node, pre_outputs
             )
             
             # LLM 클라이언트 가져오기
@@ -429,12 +379,10 @@ class GenerationNodeExecutor(NodeExecutor):
     async def execute(
         self,
         node: WorkflowNode,
-        pre_outputs: List[str],
-        knowledge_base: Optional[str] = None,
-        search_intensity: int = 5
-    ) -> NodeExecutionResult:
+        pre_outputs: List[str]
+     ) -> NodeExecutionResult:
         return await self._execute_llm_node(
-            node, pre_outputs, knowledge_base, search_intensity
+            node, pre_outputs
         )
 
 
@@ -444,12 +392,10 @@ class EnsembleNodeExecutor(NodeExecutor):
     async def execute(
         self,
         node: WorkflowNode,
-        pre_outputs: List[str],
-        knowledge_base: Optional[str] = None,
-        search_intensity: int = 5
+        pre_outputs: List[str]
     ) -> NodeExecutionResult:
         return await self._execute_llm_node(
-            node, pre_outputs, knowledge_base, search_intensity
+            node, pre_outputs
         )
 
 
@@ -459,11 +405,8 @@ class ValidationNodeExecutor(NodeExecutor):
     async def execute(
         self,
         node: WorkflowNode,
-        pre_outputs: List[str],
-        knowledge_base: Optional[str] = None,
-        search_intensity: int = 5
+        pre_outputs: List[str]
     ) -> NodeExecutionResult:
         return await self._execute_llm_node(
-            node, pre_outputs, knowledge_base, search_intensity
+            node, pre_outputs
         )
-

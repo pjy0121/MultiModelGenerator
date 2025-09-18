@@ -104,8 +104,8 @@ export const OUTPUT_FORMAT_TEMPLATES = {
   
   'ensemble-node': `| ID | 요구사항 (Requirement) | 근거(Reference) | 검증 상태 |
 |---|---|---|---|
-| REQ-001 | [구체적인 요구사항 내용] | [원문 내용과 위치] | unchecked |
-| REQ-002 | ... | ... | unchecked |`,
+| REQ-001 | [구체적인 요구사항 내용] | [원문 내용과 위치] | unchecked/duplicated |
+| REQ-002 | ... | ... | unchecked/duplicated |`,
 
   'validation-node': `| ID | 요구사항 (Requirement) | 근거(reference) | 검증 상태 |
 |---|---|---|---|

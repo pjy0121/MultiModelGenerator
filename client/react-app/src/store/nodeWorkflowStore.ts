@@ -40,6 +40,7 @@ interface NodeWorkflowState {
   nodeExecutionStates: Record<string, 'idle' | 'executing' | 'completed' | 'error'>;
   nodeStreamingOutputs: Record<string, string>;
   nodeExecutionResults: Record<string, { success: boolean; description?: string; error?: string; execution_time?: number; }>;
+  nodeStartOrder: string[]; // 노드 실행 시작 순서 추적
   
   // 검증 상태
   validationResult: ValidationResult | null;
@@ -65,7 +66,6 @@ interface NodeWorkflowState {
   validateWorkflow: () => boolean;
   getValidationErrors: () => string[];
   
-  executeWorkflow: () => Promise<NodeBasedWorkflowResponse>;
   executeWorkflowStream: (onStreamUpdate: (data: any) => void) => Promise<void>;
   
   loadKnowledgeBases: () => Promise<void>;
@@ -167,8 +167,15 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     isExecuting: false,
     executionResult: null,
     
-    // 전역 Rerank 설정 (기본값: false)
-    globalUseRerank: false,
+    // 전역 Rerank 설정 (로컬 스토리지에서 로드, 기본값: false)
+    globalUseRerank: (() => {
+      try {
+        const saved = localStorage.getItem('globalUseRerank');
+        return saved ? JSON.parse(saved) : false;
+      } catch {
+        return false;
+      }
+    })(),
     
     validationResult: null,
     validationErrors: [],
@@ -179,6 +186,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     nodeExecutionStates: {},
     nodeStreamingOutputs: {},
     nodeExecutionResults: {},
+    nodeStartOrder: [], // 노드 실행 시작 순서
 
     setRestoring: (isRestoring: boolean) => set({ isRestoring }),
   
@@ -332,6 +340,12 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
   // 전역 Rerank 설정 관리
   setGlobalUseRerank: (useRerank: boolean) => {
     set({ globalUseRerank: useRerank });
+    // 로컬 스토리지에 저장
+    try {
+      localStorage.setItem('globalUseRerank', JSON.stringify(useRerank));
+    } catch (error) {
+      console.error('Rerank 설정 저장 실패:', error);
+    }
   },
   
   // 검증 액션들
@@ -352,81 +366,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     return get().validationErrors;
   },
   
-  // 워크플로우 실행
-  executeWorkflow: async () => {
-    const state = get();
-    
-    // 실행 전 검증
-    if (!state.validateWorkflow()) {
-      throw new Error('워크플로우 검증 실패. 연결 규칙을 확인해주세요.');
-    }
-
-    set({ isExecuting: true, executionResult: null });
-    
-    try {
-      // 서버가 기대하는 WorkflowExecutionRequest 형식으로 변환
-      const workflowDefinition = {
-        nodes: state.nodes.map(node => {
-          const isLlmNode = [NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION].includes(node.data.nodeType);
-          let prompt = node.data.prompt || '';
-
-          if (isLlmNode && node.data.output_format) {
-            const outputFormatInstruction = `\n\n핵심 결과를 반드시 다음과 같은 형태로 만들어 출력에 포함시키세요.\n이건 절대적으로 지켜야 할 사항입니다.\n<output>${node.data.output_format}</output>`;
-            prompt += outputFormatInstruction;
-          }
-
-          return {
-            id: node.id,
-            type: node.data.nodeType,
-            position: node.position,
-            content: node.data.content || null,
-            model_type: node.data.model_type || null,
-            llm_provider: node.data.llm_provider || null,
-            prompt: prompt,
-            knowledge_base: node.data.knowledge_base || null,
-            search_intensity: node.data.search_intensity || null,
-            use_rerank: state.globalUseRerank, // 전역 Rerank 설정 사용
-            output: null,
-            executed: false,
-            error: null
-          };
-        }),
-        edges: state.edges
-      };
-
-      const request = {
-        workflow: workflowDefinition,
-      };
-      
-      const result = await nodeBasedWorkflowAPI.executeNodeWorkflow(request);
-      
-      set({ 
-        executionResult: result,
-        isExecuting: false 
-      });
-      
-      return result;
-      
-    } catch (error: any) {
-      console.error('워크플로우 실행 에러:', error);
-      
-      set({ isExecuting: false });
-      
-      // 더 자세한 에러 정보 추출
-      let errorMessage = '알 수 없는 오류가 발생했습니다.';
-      if (error.response?.data?.detail) {
-        errorMessage = error.response.data.detail;
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      throw new Error(errorMessage);
-    }
-  },
-
-  // 워크플로우 스트리밍 실행
+  // 워크플로우 스트리밍 실행 (유일한 실행 방법)
   executeWorkflowStream: async (onStreamUpdate: (data: any) => void) => {
     const state = get();
     
@@ -486,7 +426,8 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       set({ 
         nodeExecutionStates: initialStates,
         nodeStreamingOutputs: initialOutputs,
-        nodeExecutionResults: initialResults
+        nodeExecutionResults: initialResults,
+        nodeStartOrder: [] // 스트리밍 실행 시작 시 초기화
       });
       
       // 스트리밍 실행
@@ -499,7 +440,10 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
             nodeExecutionStates: {
               ...state.nodeExecutionStates,
               [chunk.node_id]: 'executing'
-            }
+            },
+            nodeStartOrder: state.nodeStartOrder.includes(chunk.node_id) 
+              ? state.nodeStartOrder 
+              : [...state.nodeStartOrder, chunk.node_id]
           }));
         } else if (chunk.type === 'stream' && chunk.node_id && chunk.content) {
           // 스트리밍 업데이트를 배치로 처리하여 성능 최적화

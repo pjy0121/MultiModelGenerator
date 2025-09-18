@@ -471,42 +471,39 @@ export const NodeExecutionResultPanel: React.FC = () => {
     nodeExecutionStates,
     nodeStreamingOutputs,
     nodeExecutionResults,
+    nodeStartOrder,
   } = useNodeWorkflowStore();
 
-  // 실행 시작 시간 순서대로 노드들을 정렬
+  // 노드 실행 시작 순서대로 정렬 (고정된 순서 유지)
   const getOrderedNodes = () => {
-    // 실행 결과가 있거나 실행 상태가 설정된 노드들 포함
+    // 실행 결과가 있거나 실행 상태가 설정된 노드들만 포함
     const startedNodes = nodes.filter(node => {
       const state = nodeExecutionStates[node.id];
       const hasResult = nodeExecutionResults[node.id];
-      // 실행 결과가 있거나 실행 상태가 idle이 아닌 노드들 포함
       return hasResult || (state && state !== 'idle');
     });
     
-    // store에서 노드 실행 순서를 추적하고 있다면 그 순서 사용
-    if (executionResult?.execution_order) {
-      const orderedNodeIds = executionResult.execution_order;
+    // 노드 시작 순서가 있으면 그 순서를 기준으로 정렬
+    if (nodeStartOrder.length > 0) {
       const orderedNodes: any[] = [];
       
-      // execution_order에 있는 노드들을 순서대로 추가
-      orderedNodeIds.forEach(nodeId => {
+      // 시작 순서에 따라 노드 배치
+      nodeStartOrder.forEach(nodeId => {
         const node = startedNodes.find(n => n.id === nodeId);
         if (node) {
           orderedNodes.push(node);
         }
       });
       
-      // execution_order에 없지만 실행이 시작된 노드들도 추가 (시간순)
-      startedNodes.forEach(node => {
-        if (!orderedNodeIds.includes(node.id)) {
-          orderedNodes.push(node);
-        }
-      });
+      // 시작 순서에 없지만 현재 실행된 노드들을 뒤에 추가 (ID 순)
+      const remainingNodes = startedNodes
+        .filter(node => !nodeStartOrder.includes(node.id))
+        .sort((a, b) => a.id.localeCompare(b.id));
       
-      return orderedNodes;
+      return [...orderedNodes, ...remainingNodes];
     }
     
-    // execution_order가 없으면 ID 순으로 정렬 (실행 시작 시간 추적이 없으므로)
+    // 시작 순서 정보가 없으면 단순히 ID 순으로 정렬
     return startedNodes.sort((a, b) => a.id.localeCompare(b.id));
   };
 
@@ -593,7 +590,7 @@ export const NodeExecutionResultPanel: React.FC = () => {
                   </div>
                 }
               >
-                {/* 스트리밍 출력 (LLM 노드에서 실행 중일 때) */}
+                {/* 스트리밍 출력 (실행 중일 때만 표시) */}
                 {streamingOutput && executionState === 'executing' && (
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 10, color: '#999', marginBottom: 4 }}>
@@ -627,8 +624,8 @@ export const NodeExecutionResultPanel: React.FC = () => {
                   <div style={{ fontSize: 11 }}>
                     {executionResult.success ? (
                       <div>
-                        {/* 스트리밍이 없거나 완료된 경우 최종 결과 표시 */}
-                        {(!streamingOutput || executionState === 'completed') && executionResult.description && (
+                        {/* 완료된 경우 최종 결과 표시 */}
+                        {executionState === 'completed' && executionResult.description && (
                           <div>
                             {/* output-node의 경우 <output></output> 내의 내용만 추출하여 스크롤 가능하게 표시 */}
                             {node.node_type === 'output-node' ? (

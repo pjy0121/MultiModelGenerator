@@ -31,15 +31,16 @@ Server-side execution follows dependency resolution pattern in `src/api/`:
    - Remove completed nodes from queue
 ```
 
-### JSON Output Parsing Pattern
-All LLM nodes must return structured JSON with description/output fields:
-```json
-{
-  "description": "[UI display content]",
-  "output": "[data passed to next node]"
-}
+### Output Parsing Pattern
+LLM nodes can use markdown tag-based output extraction via `<output>...</output>` tags:
+```markdown
+Node response with description...
+
+<output>
+Data passed to next node
+</output>
 ```
-Failed parsing triggers error propagation to client.
+If no tags found, entire response becomes output. Parser in `src/core/output_parser.py` handles extraction.
 
 ### Context Injection Pattern
 LLM nodes receive templated prompts with variable substitution:
@@ -53,7 +54,7 @@ Search intensity determines vector store `top_k` parameter for context retrieval
 ## Key Development Patterns
 
 ### Multi-Provider LLM Factory
-Supports Perplexity, OpenAI, and Google models via unified interface in `src/services/llm_factory.py`:
+Supports OpenAI and Google models via unified interface in `src/services/llm_factory.py`:
 ```python
 client = LLMFactory.get_client(provider)
 models = LLMFactory.get_available_models(provider)
@@ -65,15 +66,15 @@ Nodes are configured with model, provider, prompt, and node type in `src/core/mo
 class NodeConfig(BaseModel):
     id: str
     model_type: str  # LLM model identifier
-    llm_provider: str  # openai/google/perplexity
+    llm_provider: str  # openai/google
     content: str  # for input/output nodes
     # Node types: input-node, generation-node, ensemble-node, validation-node, output-node
 ```
 
 ### API Layer Separation
 - `api_server.py`: REST endpoints and request/response models
-- `layer_executors.py`: Layer-specific execution logic with parsing
-- `layer_engine.py`: Core node execution engine
+- `node_executors.py`: Node-specific execution logic with LLM integration
+- `node_execution_engine.py`: Core workflow execution engine with dependency resolution
 
 ### Client Integration Pattern
 Python client (`client/client_example.py`) demonstrates GET-based workflow execution with file output:
@@ -84,25 +85,35 @@ filename = f"validation_result_{kb_name}_{keyword}_{timestamp}.txt"
 
 ## Essential Commands
 
-### Server Operations
-```bash
-# Start server (from server/ directory)
+### Server Operations (from server/ directory)
+```powershell
+# Install dependencies
+pip install -r requirements.txt
+
+# Start server
 python main.py
 
 # Add knowledge base (admin tool)
 python -m src.admin.admin
 
-# Run with specific Python env
-python -c "import sys; print(sys.executable)"  # Use get_python_executable_details tool instead
+# Environment setup (.env file required)
+# OPENAI_API_KEY=your_key
+# GOOGLE_API_KEY=your_key
 ```
 
+
+
 ### Testing Workflow
-```bash
+```powershell
 # Test full workflow (from client/ directory)  
 python client_example.py
 
 # Check knowledge bases
 curl http://localhost:5001/knowledge-bases
+
+# React frontend (from client/react-app/ directory)
+npm install
+npm run dev
 ```
 
 ## File Organization Conventions
@@ -130,19 +141,19 @@ Canvas automatically connects nodes: Generation → Ensemble → Validation chai
 
 ## Critical Integration Points
 
-### Layer Input/Output Chain
+### Node Input/Output Chain
 Generation outputs feed Ensemble input → Ensemble output feeds first Validation input → Each Validation output feeds next Validation input
 
 ### Context Management
 Vector store searches are enhanced during Validation by extracting requirement keywords and performing additional similarity searches to ensure comprehensive context coverage
 
 ### State Management (Frontend)
-React store (`src/store/workflowStore.ts`) manages complex execution state with step tracking, layer results, and real-time updates during workflow execution
+React store (`src/store/nodeWorkflowStore.ts`) manages complex execution state with step tracking, node results, and real-time updates during workflow execution
 
 ## Environment Dependencies
-- Requires API keys: `PERPLEXITY_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`
+- Requires API keys: `OPENAI_API_KEY`, `GOOGLE_API_KEY`
 - ChromaDB for vector storage
 - FastAPI with CORS for React integration
 - File outputs saved to timestamped `.txt` files (not markdown display)
 
-When working with this codebase, focus on the node execution pipeline, JSON output parsing, and the dependency-driven execution order defined by pre-node/post-node relationships.
+When working with this codebase, focus on the node execution pipeline, markdown tag-based output parsing, and the dependency-driven execution order defined by pre-node/post-node relationships.
