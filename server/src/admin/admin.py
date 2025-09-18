@@ -1,6 +1,7 @@
 import os
 import sys
 import shutil
+import time
 from typing import Dict, Any
 from ..core.config import Config
 from ..services.document_processor import DocumentProcessor
@@ -10,6 +11,13 @@ class KnowledgeBaseAdmin:
     def __init__(self):
         # 루트 디렉토리 생성
         os.makedirs(Config.VECTOR_DB_ROOT, exist_ok=True)
+        self.vector_stores: Dict[str, VectorStore] = {}
+
+    def get_vector_store(self, kb_name: str) -> VectorStore:
+        """VectorStore 인스턴스를 가져오거나 생성합니다 (캐싱 사용)."""
+        if kb_name not in self.vector_stores:
+            self.vector_stores[kb_name] = VectorStore(kb_name)
+        return self.vector_stores[kb_name]
     
     def build_knowledge_base(self, kb_name: str, pdf_path: str, chunk_size: int = 8000, chunk_overlap: int = 200) -> bool:
         """지식 베이스 구축"""
@@ -30,7 +38,7 @@ class KnowledgeBaseAdmin:
         doc_processor = DocumentProcessor(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
         
         # VectorStore 초기화
-        vector_store = VectorStore(kb_name)
+        vector_store = self.get_vector_store(kb_name)
         
         # 1. PDF 텍스트 추출
         print("\n🔍 1단계: PDF 텍스트 추출 중...")
@@ -83,7 +91,7 @@ class KnowledgeBaseAdmin:
             return
         
         for i, kb_name in enumerate(kb_list, 1):
-            vector_store = VectorStore(kb_name)
+            vector_store = self.get_vector_store(kb_name)
             status = vector_store.get_status()
             
             print(f"{i}. 📚 {kb_name}")
@@ -102,7 +110,7 @@ class KnowledgeBaseAdmin:
         print(f"📊 지식 베이스 '{kb_name}' 상태 확인")
         print("=" * 60)
         
-        vector_store = VectorStore(kb_name)
+        vector_store = self.get_vector_store(kb_name)
         status = vector_store.get_status()
         
         if not status['exists'] or status['count'] == 0:
@@ -134,7 +142,7 @@ class KnowledgeBaseAdmin:
     def get_knowledge_base_status(self, kb_name: str) -> Dict[str, Any]:
         """지식 베이스 상태 정보 반환 (admin_tool.py 호환용)"""
         try:
-            vector_store = VectorStore(kb_name)
+            vector_store = self.get_vector_store(kb_name)
             status = vector_store.get_status()
             
             if not status['exists']:
@@ -176,17 +184,39 @@ class KnowledgeBaseAdmin:
         
         print(f"⚠️ 삭제할 지식 베이스: {kb_name}")
         print(f"⚠️ 경로: {kb_path}")
-        confirm = input("⚠️ 정말로 이 지식 베이스를 삭제하시겠습니까? (yes/no): ").strip().lower()
+        confirm = input("⚠️ 정말로 이 지식 베이스를 삭제하시겠습니까? (y/n): ").strip().lower()
         
-        if confirm != 'yes':
+        if confirm != 'y':
             print("❌ 삭제가 취소되었습니다.")
             return
-        
-        try:
-            shutil.rmtree(kb_path)
-            print(f"✅ 지식 베이스 '{kb_name}'이 성공적으로 삭제되었습니다.")
-        except Exception as e:
-            print(f"❌ 삭제 중 오류 발생: {e}")
+
+        # VectorStore 인스턴스가 캐시에 있으면 ChromaDB 클라이언트 연결을 초기화
+        if kb_name in self.vector_stores:
+            try:
+                print(f"🔍 '{kb_name}'의 ChromaDB 클라이언트 연결을 초기화합니다...")
+                vector_store = self.vector_stores[kb_name]
+                vector_store.client.reset()  # 데이터베이스 연결 해제
+                del self.vector_stores[kb_name]
+                print("✅ 클라이언트 연결 초기화 완료.")
+            except Exception as e:
+                print(f"⚠️ 클라이언트 초기화 중 오류 발생: {e}")
+
+        # 파일 시스템에서 디렉토리 삭제 (재시도 로직 추가)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                shutil.rmtree(kb_path)
+                print(f"✅ 지식 베이스 '{kb_name}'이 성공적으로 삭제되었습니다.")
+                return  # 성공 시 함수 종료
+            except PermissionError as e:
+                print(f"❌ 삭제 중 권한 오류 발생 (시도 {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(1)  # 잠시 대기 후 재시도
+                else:
+                    print("❌ 여러 번의 시도 후에도 삭제에 실패했습니다. 파일을 직접 삭제해주세요.")
+            except Exception as e:
+                print(f"❌ 삭제 중 예상치 못한 오류 발생: {e}")
+                break  # 다른 종류의 오류는 재시도하지 않음
     
     def get_valid_kb_name(self) -> str:
         """유효한 지식 베이스 이름 입력받기"""
@@ -213,13 +243,60 @@ class KnowledgeBaseAdmin:
             
             return safe_name
     
-    def get_chunk_settings(self) -> tuple[int, int]:
-        """청크 크기 설정 입력받기"""
-        print("\n📏 청크 크기 설정 (토큰 기반)")
+    def get_chunk_mode(self) -> tuple[int, int]:
+        """청크 모드 선택"""
+        print("\n� Vector DB 청크 모드 선택")
+        print("=" * 60)
+        print("1. 🔍 키워드 검색용")
+        print("   - 작은 청크 (512 tokens = 2048자)")
+        print("   - 높은 overlap (50% = 1024자)")
+        print("   - 💡 사용법: 검색 시 큰 top_k를 사용하세요 (20-50)")
+        print("   - 💡 특징: 정확한 키워드 매칭, 세부 정보 검색에 적합")
+        
+        print("\n2. 📝 문장 검색용")
+        print("   - 큰 청크 (768 tokens = 3072자)")
+        print("   - 낮은 overlap (25% = 768자)")
+        print("   - 💡 사용법: 검색 시 작은 top_k를 사용하세요 (5-15)")
+        print("   - 💡 특징: 문맥 유지, 연관성 높은 긴 문단 검색에 적합")
+        
+        print("\n3. 🛠️ 사용자 정의")
+        print("   - 직접 청크 크기와 overlap 설정")
+        print("=" * 60)
+        
+        while True:
+            choice = input("\n모드를 선택하세요 (1-3): ").strip()
+            
+            if choice == '1':
+                # 키워드 검색용
+                chunk_size = 2048  # 512 tokens * 4
+                chunk_overlap = 1024  # 50%
+                print(f"\n✅ 키워드 검색용 모드 선택됨")
+                print(f"   - 청크 크기: {chunk_size:,}자 (512 tokens)")
+                print(f"   - 오버랩: {chunk_overlap}자 (50%)")
+                print(f"   - 💡 검색 시 top_k 20-50 권장")
+                return chunk_size, chunk_overlap
+                
+            elif choice == '2':
+                # 문장 검색용
+                chunk_size = 3072  # 768 tokens * 4
+                chunk_overlap = 768   # 25%
+                print(f"\n✅ 문장 검색용 모드 선택됨")
+                print(f"   - 청크 크기: {chunk_size:,}자 (768 tokens)")
+                print(f"   - 오버랩: {chunk_overlap}자 (25%)")
+                print(f"   - 💡 검색 시 top_k 5-15 권장")
+                return chunk_size, chunk_overlap
+                
+            elif choice == '3':
+                # 사용자 정의 모드
+                return self.get_custom_chunk_settings()
+                
+            else:
+                print("❌ 올바른 모드를 선택해주세요 (1-3).")
+
+    def get_custom_chunk_settings(self) -> tuple[int, int]:
+        """사용자 정의 청크 크기 설정 입력받기"""
+        print("\n🛠️ 사용자 정의 청크 설정")
         print("💡 1 토큰은 약 4자로 계산됩니다.")
-        print("💡 권장 설정 (L=512 tokens, overlap=50%):")
-        print("   - 청크 크기: 2048 자 (512 토큰 * 4)")
-        print("   - 청크 오버랩: 1024 자 (크기의 50%)")
         
         # 청크 크기 입력
         while True:
@@ -242,8 +319,8 @@ class KnowledgeBaseAdmin:
         
         # 청크 오버랩 입력
         while True:
-            default_overlap = chunk_size // 2
-            overlap_input = input(f"🔄 청크 오버랩을 입력하세요 (기본값: {default_overlap}, 크기의 50%): ").strip()
+            default_overlap = chunk_size // 4  # 25% 기본값
+            overlap_input = input(f"🔄 청크 오버랩을 입력하세요 (기본값: {default_overlap}, 크기의 25%): ").strip()
             if not overlap_input:
                 chunk_overlap = default_overlap
                 break
@@ -260,7 +337,7 @@ class KnowledgeBaseAdmin:
             except ValueError:
                 print("❌ 올바른 숫자를 입력해주세요.")
         
-        print(f"\n✅ 청크 설정: 크기 {chunk_size:,}자, 오버랩 {chunk_overlap}자")
+        print(f"\n✅ 사용자 정의 설정: 크기 {chunk_size:,}자, 오버랩 {chunk_overlap}자")
         return chunk_size, chunk_overlap
 
 def main():
@@ -271,7 +348,7 @@ def main():
     
     while True:
         print("\n📋 메뉴:")
-        print("1. 새 지식 베이스 구축 (청크 크기 설정 가능)")
+        print("1. 새 지식 베이스 구축 (키워드/문장 검색용 모드 선택)")
         print("2. 지식 베이스 목록 보기")
         print("3. 지식 베이스 상태 확인")
         print("4. 지식 베이스 삭제")
@@ -284,8 +361,8 @@ def main():
             pdf_path = input("📄 Spec PDF 파일 경로를 입력하세요: ").strip()
             
             if pdf_path:
-                # 청크 크기 설정 받기
-                chunk_size, chunk_overlap = admin.get_chunk_settings()
+                # 청크 모드 선택
+                chunk_size, chunk_overlap = admin.get_chunk_mode()
                 
                 # 기존 지식 베이스 덮어쓰기 확인
                 if kb_name in Config.get_kb_list():

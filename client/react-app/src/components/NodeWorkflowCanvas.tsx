@@ -64,7 +64,7 @@ export const NodeWorkflowCanvas: React.FC = () => {
     importFromJSON,
     setViewport,
     updateNodePositions,
-    executeWorkflow, // 워크플로우 실행 함수
+    executeWorkflowStream, // 워크플로우 스트리밍 실행 함수
     isExecuting, // 실행 상태
     
     // 전역 Rerank 설정
@@ -75,6 +75,18 @@ export const NodeWorkflowCanvas: React.FC = () => {
   // 워크플로우 관리 상태
   const [importModalVisible, setImportModalVisible] = useState(false);
   const [jsonText, setJsonText] = useState('');
+  
+  // 스트리밍 실행 핸들러
+  const handleStreamingExecution = async () => {
+    try {
+      await executeWorkflowStream(() => {
+        // 스트리밍 데이터는 이미 store에서 처리되므로 추가 처리 불필요
+      });
+    } catch (error) {
+      console.error('스트리밍 실행 오류:', error);
+      message.error(`스트리밍 실행 실패: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
 
   // ReactFlow 인스턴스 레퍼런스
   const [reactFlowInstance, setReactFlowInstance] = React.useState<any>(null);
@@ -358,7 +370,7 @@ export const NodeWorkflowCanvas: React.FC = () => {
           >
             청크 재정렬
           </Checkbox>
-          <Button icon={<PlayCircleOutlined />} type="primary" onClick={executeWorkflow} loading={isExecuting}>
+          <Button icon={<PlayCircleOutlined />} type="primary" onClick={handleStreamingExecution} loading={isExecuting}>
             {isExecuting ? '실행 중...' : '워크플로우 실행'}
           </Button>
         </div>

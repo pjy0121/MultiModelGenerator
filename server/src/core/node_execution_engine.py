@@ -5,7 +5,7 @@ Node execution engine - project_reference.md 기준 의존성 해결 및 병렬 
 import asyncio
 import time
 import logging
-from typing import Dict, List, Set, Optional
+from typing import Dict, List, Set, Optional, AsyncGenerator
 from collections import defaultdict, deque
 
 from ..core.models import (
@@ -38,11 +38,134 @@ class NodeExecutionEngine:
         # NodeExecutor 인스턴스 생성
         self.node_executor = NodeExecutor()
     
+    async def _collect_stream_output(self, stream_queue: asyncio.Queue, expected_completions: int) -> List[Dict]:
+        """스트리밍 출력을 수집하는 헬퍼 메서드"""
+        outputs = []
+        completed_count = 0
+        
+        while completed_count < expected_completions:
+            try:
+                chunk = await asyncio.wait_for(stream_queue.get(), timeout=10.0)  # 긴 타임아웃
+                
+                if chunk["type"] == "_stream_complete":
+                    break
+                    
+                outputs.append(chunk)
+                
+                if chunk["type"] == "node_complete":
+                    completed_count += 1
+                    
+            except asyncio.TimeoutError:
+                # 타임아웃 발생 시 로그 남기고 계속
+                logger.warning(f"Stream timeout waiting for completion ({completed_count}/{expected_completions})")
+                break
+        
+        return outputs
+    
+    async def _execute_single_node_stream(
+        self, 
+        node: WorkflowNode, 
+        workflow: WorkflowDefinition, 
+        stream_queue: asyncio.Queue
+    ):
+        """단일 노드를 실행하고 스트리밍 출력을 실시간으로 큐에 전송"""
+        
+        # 노드 실행 시작 알림
+        await stream_queue.put({
+            "type": "node_start",
+            "node_id": node.id,
+            "node_type": node.type,
+            "message": f"{node.type} 노드 실행 시작"
+        })
+        
+        accumulated_output = ""
+        final_result = None
+        
+        try:
+            # 스트리밍 출력 처리
+            async for chunk in self._execute_node_stream(node, workflow):
+                if chunk["type"] == "stream":
+                    accumulated_output += chunk["content"]
+                    # 즉시 스트리밍 출력 전송
+                    await stream_queue.put({
+                        "type": "stream",
+                        "node_id": node.id,
+                        "content": chunk["content"]
+                    })
+                elif chunk["type"] == "result":
+                    final_result = chunk
+                elif chunk["type"] == "parsed_result":
+                    final_result = chunk
+            
+            # 노드 실행 결과 처리
+            if final_result and final_result.get("success") != False:
+                # 성공한 경우
+                if "output" in final_result:
+                    output_value = final_result.get("output", accumulated_output)
+                elif "result" in final_result:
+                    output_value = final_result.get("result", accumulated_output)
+                else:
+                    output_value = accumulated_output
+                    
+                description_value = accumulated_output if accumulated_output else final_result.get("description", "")
+                    
+                self.node_outputs[node.id] = output_value
+                self.execution_results.append(NodeExecutionResult(
+                    node_id=node.id,
+                    success=True,
+                    output=output_value,
+                    description=description_value,
+                    raw_response=accumulated_output or final_result.get("description", ""),
+                    execution_time=final_result.get("execution_time", 0.0)
+                ))
+                
+                # 즉시 완료 알림 전송
+                await stream_queue.put({
+                    "type": "node_complete",
+                    "node_id": node.id,
+                    "success": True,
+                    "description": description_value,
+                    "execution_time": final_result.get("execution_time", 0.0),
+                    "message": f"{node.type} 노드 실행 완료"
+                })
+            else:
+                # 실패한 경우
+                error_msg = final_result.get("error", "Unknown error") if final_result else "No result"
+                description = final_result.get("description", str(error_msg)) if final_result else str(error_msg)
+                
+                self.execution_results.append(NodeExecutionResult(
+                    node_id=node.id,
+                    success=False,
+                    output=None,
+                    description=description,
+                    error=error_msg,
+                    raw_response=accumulated_output,
+                    execution_time=final_result.get("execution_time", 0.0) if final_result else 0.0
+                ))
+                
+                # 즉시 실패 알림 전송
+                await stream_queue.put({
+                    "type": "node_complete",
+                    "node_id": node.id,
+                    "success": False,
+                    "error": error_msg,
+                    "description": description,
+                    "execution_time": final_result.get("execution_time", 0.0) if final_result else 0.0
+                })
+                
+        except Exception as e:
+            # 예외 발생 시 처리
+            await stream_queue.put({
+                "type": "node_complete",
+                "node_id": node.id,
+                "success": False,
+                "error": str(e),
+                "execution_time": 0.0
+            })
+    
     async def execute_workflow(
         self, 
-        workflow: WorkflowDefinition,
-        knowledge_base: Optional[str] = None,
-        search_intensity: int = 5
+        workflow: WorkflowDefinition
     ) -> WorkflowExecutionResponse:
         """워크플로우 전체 실행"""
         
@@ -81,8 +204,7 @@ class NodeExecutionEngine:
                 for node_id in ready_nodes:
                     node = nodes_map[node_id]
                     task = self._execute_single_node(
-                        node, pre_nodes_map[node_id], 
-                        knowledge_base, search_intensity
+                        node, pre_nodes_map[node_id]
                     )
                     execution_tasks.append(task)
                 
@@ -195,9 +317,7 @@ class NodeExecutionEngine:
     async def _execute_single_node(
         self, 
         node: WorkflowNode, 
-        pre_node_ids: List[str],
-        knowledge_base: Optional[str],
-        search_intensity: int
+        pre_node_ids: List[str]
     ) -> NodeExecutionResult:
         """단일 노드 실행 - NodeExecutor 사용"""
         
@@ -207,7 +327,7 @@ class NodeExecutionEngine:
             
             # NodeExecutor를 통한 실행
             result = await self.node_executor.execute_node(
-                node, pre_outputs, knowledge_base, search_intensity
+                node, pre_outputs
             )
             
             return result
@@ -231,11 +351,9 @@ class NodeExecutionEngine:
     
     async def execute_workflow_stream(
         self, 
-        workflow: WorkflowDefinition,
-        knowledge_base: Optional[str] = None,
-        search_intensity: int = 5
+        workflow: WorkflowDefinition
     ):
-        """워크플로우 스트리밍 실행 - LLM 응답을 실시간으로 전송"""
+        """워크플로우 이벤트 기반 병렬 스트리밍 실행 - 각 노드가 완료되는 즉시 다음 단계 진행"""
         
         start_time = time.time()
         
@@ -246,174 +364,90 @@ class NodeExecutionEngine:
             # 스트리밍 시작 알림
             yield {
                 "type": "start",
-                "message": "워크플로우 실행을 시작합니다.",
+                "message": "워크플로우 이벤트 기반 실행을 시작합니다.",
                 "total_nodes": len(workflow.nodes)
             }
             
             # 의존성 그래프 구축
             pre_nodes_map = self._build_dependency_graph(workflow)
-            
-            # input-node들을 실행 대기 목록에 추가
-            for node in workflow.nodes:
-                if node.type == "input-node":
-                    self.execution_queue.add(node.id)
-            
             node_lookup = {node.id: node for node in workflow.nodes}
             
-            # 메인 실행 루프
-            while self.execution_queue:
-                # 실행 가능한 노드들 찾기
-                ready_nodes = []
-                for node_id in list(self.execution_queue):
-                    pre_nodes = set(pre_nodes_map.get(node_id, []))  # List를 set으로 변환
-                    if pre_nodes.issubset(self.completed_nodes):
-                        ready_nodes.append(node_id)
-                        self.execution_queue.remove(node_id)
-                
-                # 노드 ID 순으로 정렬 (일관된 실행 순서를 위해)
-                ready_nodes.sort()
-                
-                if not ready_nodes:
-                    error_msg = "순환 의존성 또는 블록된 노드가 발견되었습니다."
-                    logger.error(error_msg)
-                    yield {
-                        "type": "error",
-                        "message": error_msg
-                    }
-                    return
-                
-                # project_reference.md 1-2-2, 1-2-3: 병렬 실행 후 완료 대기
-                # 모든 ready_nodes를 먼저 실행하고, 모두 완료될 때까지 기다린 후 post-node 추가
-                completed_in_this_round = []
-                failed_nodes = []
-                
-                for node_id in ready_nodes:
-                    node = node_lookup[node_id]
+            # 전체 스트리밍 출력을 위한 큐
+            global_stream_queue = asyncio.Queue()
+            
+            # 활성 노드 태스크들을 추적
+            active_tasks = {}
+            
+            # input-node들을 먼저 시작
+            for node in workflow.nodes:
+                if node.type == "input-node":
+                    task = asyncio.create_task(
+                        self._execute_single_node_stream(
+                            node, workflow, global_stream_queue
+                        )
+                    )
+                    active_tasks[node.id] = task
+            
+            # 전체 노드 완료 추적
+            total_completed = 0
+            total_nodes = len(workflow.nodes)
+            
+            # 이벤트 기반 실행 루프
+            while total_completed < total_nodes:
+                # 스트리밍 출력 처리
+                try:
+                    chunk = await asyncio.wait_for(global_stream_queue.get(), timeout=0.1)
+                    yield chunk
                     
-                    # 실행 시작하므로 큐에서 제거 (중복 실행 방지)
-                    self.execution_queue.discard(node_id)
-                    
-                    # 노드 실행 시작 알림
-                    yield {
-                        "type": "node_start",
-                        "node_id": node_id,
-                        "node_type": node.type,
-                        "message": f"{node.type} 노드 실행 시작"
-                    }
-                    
-                    accumulated_output = ""
-                    final_result = None
-                    
-                    # 스트리밍 출력 처리
-                    async for chunk in self._execute_node_stream(
-                        node, workflow, knowledge_base, search_intensity
-                    ):
-                        if chunk["type"] == "stream":
-                            accumulated_output += chunk["content"]
-                            yield {
-                                "type": "stream",
-                                "node_id": node_id,
-                                "content": chunk["content"]
-                            }
-                        elif chunk["type"] == "result":
-                            final_result = chunk
-                        elif chunk["type"] == "parsed_result":
-                            final_result = chunk
-                    
-                    # 노드 실행 완료 처리
-                    if final_result:
-                        # 성공한 경우
-                        if final_result.get("success") == True or (
-                            final_result.get("success") != False and (
-                                final_result.get("result") is not None or
-                                final_result.get("output") is not None
-                            )
-                        ):
-                            self.completed_nodes.add(node_id)
-                            self.execution_order.append(node_id)
-                            
-                            # 결과 저장 (다양한 형식 지원)
-                            if "output" in final_result:
-                                output_value = final_result.get("output", accumulated_output)
-                            elif "result" in final_result:
-                                output_value = final_result.get("result", accumulated_output)
-                            else:
-                                output_value = accumulated_output
+                    # 노드 완료 이벤트 처리
+                    if chunk["type"] == "node_complete" and chunk["success"]:
+                        completed_node_id = chunk["node_id"]
+                        total_completed += 1
+                        
+                        # 완료된 노드를 completed_nodes에 추가
+                        self.completed_nodes.add(completed_node_id)
+                        self.execution_order.append(completed_node_id)
+                        
+                        # 즉시 post-node들 확인하고 실행 가능한 노드 시작
+                        for edge in workflow.edges:
+                            if edge.source == completed_node_id:
+                                target_node_id = edge.target
                                 
-                            # description 결정: 텍스트 노드는 final_result에서, LLM 노드는 accumulated_output에서
-                            description_value = accumulated_output if accumulated_output else final_result.get("description", "")
+                                # 이미 실행 중이거나 완료된 노드는 스킵
+                                if (target_node_id in active_tasks or 
+                                    target_node_id in self.completed_nodes):
+                                    continue
                                 
-                            self.node_outputs[node_id] = output_value
-                            self.execution_results.append(NodeExecutionResult(
-                                node_id=node_id,
-                                success=True,
-                                output=output_value,
-                                description=description_value,  # 올바른 description 사용
-                                raw_response=accumulated_output or final_result.get("description", ""),
-                                execution_time=final_result.get("execution_time", 0.0)
-                            ))
-                            
-                            completed_in_this_round.append(node_id)
-                            
-                            yield {
-                                "type": "node_complete",
-                                "node_id": node_id,
-                                "success": True,
-                                "description": description_value,
-                                "execution_time": final_result.get("execution_time", 0.0),
-                                "message": f"{node.type} 노드 실행 완료"
-                            }
-                        else:
-                            # 실패한 경우 (success == False)
-                            error_msg = final_result.get("error", "Unknown error")
-                            description = final_result.get("description", str(error_msg))
-                            
-                            # 실패한 노드도 execution_results에 추가
-                            self.execution_results.append(NodeExecutionResult(
-                                node_id=node_id,
-                                success=False,
-                                output=None,
-                                description=description,
-                                error=error_msg,
-                                raw_response=accumulated_output,
-                                execution_time=final_result.get("execution_time", 0.0)
-                            ))
-                            
-                            failed_nodes.append(node_id)
-                            yield {
-                                "type": "node_complete", 
-                                "node_id": node_id,
-                                "success": False,
-                                "error": error_msg,
-                                "description": description,
-                                "execution_time": final_result.get("execution_time", 0.0)
-                            }
-                    else:
-                        # final_result가 없는 경우
-                        error_msg = "No execution result"
-                        failed_nodes.append(node_id)
+                                # 의존성 체크: 모든 pre-node가 완료되었는지 확인
+                                pre_nodes = set(pre_nodes_map.get(target_node_id, []))
+                                if pre_nodes.issubset(self.completed_nodes):
+                                    # 즉시 노드 실행 시작
+                                    target_node = node_lookup[target_node_id]
+                                    task = asyncio.create_task(
+                                        self._execute_single_node_stream(
+                                            target_node, workflow, global_stream_queue
+                                        )
+                                    )
+                                    active_tasks[target_node_id] = task
+                    
+                    elif chunk["type"] == "node_complete" and not chunk["success"]:
+                        # 실패한 노드가 있으면 전체 워크플로우 중단
                         yield {
-                            "type": "node_complete", 
-                            "node_id": node_id,
-                            "success": False,
-                            "error": error_msg,
-                            "execution_time": 0.0
+                            "type": "error",
+                            "message": f"노드 실행 실패: {chunk['node_id']}"
                         }
-                
-                # 실패한 노드가 있으면 전체 워크플로우 중단
-                if failed_nodes:
-                    yield {
-                        "type": "error",
-                        "message": f"노드 실행 실패: {', '.join(failed_nodes)}"
-                    }
-                    return
-                
-                # 모든 노드가 완료된 후에야 post-node들을 실행 대기 목록에 추가
-                # project_reference.md 1-2-4: 실행이 끝난 노드의 post-node들을 목록에 등록
-                for node_id in completed_in_this_round:
-                    for edge in workflow.edges:
-                        if edge.source == node_id:
-                            self.execution_queue.add(edge.target)
+                        # 모든 활성 태스크 취소
+                        for task in active_tasks.values():
+                            task.cancel()
+                        return
+                        
+                except asyncio.TimeoutError:
+                    # 타임아웃은 정상 - 계속 진행
+                    continue
+            
+            # 모든 활성 태스크 완료 대기
+            if active_tasks:
+                await asyncio.gather(*active_tasks.values(), return_exceptions=True)
             
             # 최종 결과
             total_time = time.time() - start_time
@@ -429,18 +463,16 @@ class NodeExecutionEngine:
             }
             
         except Exception as e:
-            logger.error(f"Workflow execution failed: {str(e)}")
+            logger.error(f"워크플로우 실행 중 오류 발생: {str(e)}")
             yield {
-                "type": "error", 
-                "message": f"Workflow execution failed: {str(e)}"
+                "type": "error",
+                "message": f"워크플로우 실행 오류: {str(e)}"
             }
     
     async def _execute_node_stream(
         self,
         node: WorkflowNode,
-        workflow: WorkflowDefinition,
-        knowledge_base: Optional[str] = None,
-        search_intensity: int = 5
+        workflow: WorkflowDefinition
     ):
         """개별 노드 스트리밍 실행"""
         
@@ -454,7 +486,7 @@ class NodeExecutionEngine:
             final_result = None
             
             async for chunk in self.node_executor.execute_node_stream(
-                node, workflow, self.node_outputs, knowledge_base, search_intensity
+                node, workflow, self.node_outputs
             ):
                 if chunk["type"] == "stream":
                     accumulated_output += chunk["content"] 
