@@ -16,7 +16,7 @@ from ..core.models import (
     KnowledgeBase,
     KnowledgeBaseListResponse
 )
-from ..services.vector_store import VectorStoreService
+from ..services.vector_store_service import VectorStoreService
 from ..services.model_manager import ModelManager
 
 logging.basicConfig(level=logging.INFO)
@@ -126,8 +126,7 @@ async def execute_workflow(request: WorkflowExecutionRequest):
         
         # 실행
         result = await execution_engine.execute_workflow(
-            workflow=request.workflow,
-            global_use_rerank=request.use_rerank
+            workflow=request.workflow
         )
         
         logger.info(f"Workflow execution completed. Success: {result.success}")
@@ -163,7 +162,7 @@ async def execute_workflow_stream(request: WorkflowExecutionRequest):
             # 스트리밍으로 워크플로우 실행
             async for chunk in execution_engine.execute_workflow_stream(
                 workflow=request.workflow,
-                global_use_rerank=request.use_rerank
+                rerank_enabled=request.rerank_enabled
             ):
                 yield f"data: {json.dumps(chunk)}\n\n"
                 
@@ -230,7 +229,24 @@ async def search_knowledge_base(request: dict):
         if not query or not knowledge_base:
             raise HTTPException(status_code=400, detail="Query and knowledge_base are required")
         
-        results = vector_store_service.search(query, knowledge_base, top_k)
+        # top_k를 search_intensity로 매핑 (간단한 매핑)
+        if top_k <= 5:
+            search_intensity = "very_low"
+        elif top_k <= 10:
+            search_intensity = "low" 
+        elif top_k <= 20:
+            search_intensity = "medium"
+        elif top_k <= 30:
+            search_intensity = "high"
+        else:
+            search_intensity = "very_high"
+            
+        results = await vector_store_service.search(
+            kb_name=knowledge_base,
+            query=query,
+            search_intensity=search_intensity,
+            rerank_info=None  # 기본적으로 rerank 비활성화
+        )
         
         return {
             "results": results,

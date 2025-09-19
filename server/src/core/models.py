@@ -16,6 +16,11 @@ class SearchIntensity(str, Enum):
     HIGH = "high"
     VERY_HIGH = "very_high"
 
+class RerankInfo(BaseModel):
+    """Rerank 설정 정보"""
+    provider: str = Field(..., description="rerank 제공자 (openai, google 등)")
+    model: str = Field(..., description="rerank 모델명")
+
 class AvailableModel(BaseModel):
     """사용 가능한 LLM 모델"""
     label: str = Field(..., description="모델 이름")
@@ -53,7 +58,7 @@ class WorkflowDefinition(BaseModel):
 
 class WorkflowExecutionRequest(BaseModel):
     workflow: WorkflowDefinition = Field(..., description="Workflow to execute")
-    use_rerank: bool = Field(default=False, description="Global rerank setting for all LLM nodes")
+    rerank_enabled: bool = Field(default=False, description="Global rerank setting for all LLM nodes")
 
 class NodeExecutionResult(BaseModel):
     node_id: str = Field(..., description="Node ID")

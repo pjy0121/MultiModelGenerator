@@ -37,6 +37,7 @@ class NodeExecutionEngine:
         
         # NodeExecutor 인스턴스 생성
         self.node_executor = NodeExecutor()
+        self._current_rerank_info = None
     
     async def _collect_stream_output(self, stream_queue: asyncio.Queue, expected_completions: int) -> List[Dict]:
         """스트리밍 출력을 수집하는 헬퍼 메서드"""
@@ -67,7 +68,7 @@ class NodeExecutionEngine:
         node: WorkflowNode, 
         workflow: WorkflowDefinition, 
         stream_queue: asyncio.Queue,
-        global_use_rerank: bool = False
+        rerank_enabled: bool
     ):
         """단일 노드를 실행하고 스트리밍 출력을 실시간으로 큐에 전송"""
         
@@ -84,7 +85,7 @@ class NodeExecutionEngine:
         
         try:
             # 스트리밍 출력 처리
-            async for chunk in self._execute_node_stream(node, workflow, global_use_rerank):
+            async for chunk in self._execute_node_stream(node, workflow, rerank_enabled):
                 if chunk["type"] == "stream":
                     accumulated_output += chunk["content"]
                     # 즉시 스트리밍 출력 전송
@@ -167,7 +168,6 @@ class NodeExecutionEngine:
     async def execute_workflow(
         self, 
         workflow: WorkflowDefinition,
-        global_use_rerank: bool = False
     ) -> WorkflowExecutionResponse:
         """워크플로우 전체 실행"""
         
@@ -176,6 +176,9 @@ class NodeExecutionEngine:
         try:
             # 초기화
             self._reset_state()
+            
+            # NodeExecutor를 rerank_info와 함께 재생성
+            self.node_executor = NodeExecutor()
             
             # 의존성 그래프 구축
             pre_nodes_map = self._build_dependency_graph(workflow)
@@ -206,7 +209,7 @@ class NodeExecutionEngine:
                 for node_id in ready_nodes:
                     node = nodes_map[node_id]
                     task = self._execute_single_node(
-                        node, pre_nodes_map[node_id], global_use_rerank
+                        node, pre_nodes_map[node_id], self._current_rerank_info
                     )
                     execution_tasks.append(task)
                 
@@ -319,8 +322,7 @@ class NodeExecutionEngine:
     async def _execute_single_node(
         self, 
         node: WorkflowNode, 
-        pre_node_ids: List[str],
-        global_use_rerank: bool = False
+        pre_node_ids: List[str]
     ) -> NodeExecutionResult:
         """단일 노드 실행 - NodeExecutor 사용"""
         
@@ -330,7 +332,7 @@ class NodeExecutionEngine:
             
             # NodeExecutor를 통한 실행
             result = await self.node_executor.execute_node(
-                node, pre_outputs, global_use_rerank
+                node, pre_outputs
             )
             
             return result
@@ -355,7 +357,7 @@ class NodeExecutionEngine:
     async def execute_workflow_stream(
         self, 
         workflow: WorkflowDefinition,
-        global_use_rerank: bool = False
+        rerank_enabled: bool
     ):
         """워크플로우 이벤트 기반 병렬 스트리밍 실행 - 각 노드가 완료되는 즉시 다음 단계 진행"""
         
@@ -387,7 +389,7 @@ class NodeExecutionEngine:
                 if node.type == "input-node":
                     task = asyncio.create_task(
                         self._execute_single_node_stream(
-                            node, workflow, global_stream_queue, global_use_rerank
+                            node, workflow, global_stream_queue, rerank_enabled
                         )
                     )
                     active_tasks[node.id] = task
@@ -429,7 +431,7 @@ class NodeExecutionEngine:
                                     target_node = node_lookup[target_node_id]
                                     task = asyncio.create_task(
                                         self._execute_single_node_stream(
-                                            target_node, workflow, global_stream_queue, global_use_rerank
+                                            target_node, workflow, global_stream_queue, rerank_enabled
                                         )
                                     )
                                     active_tasks[target_node_id] = task
@@ -477,7 +479,7 @@ class NodeExecutionEngine:
         self,
         node: WorkflowNode,
         workflow: WorkflowDefinition,
-        global_use_rerank: bool = False
+        rerank_enabled: bool
     ):
         """개별 노드 스트리밍 실행"""
         
@@ -491,7 +493,7 @@ class NodeExecutionEngine:
             final_result = None
             
             async for chunk in self.node_executor.execute_node_stream(
-                node, workflow, self.node_outputs, global_use_rerank
+                node, workflow, self.node_outputs, rerank_enabled
             ):
                 if chunk["type"] == "stream":
                     accumulated_output += chunk["content"] 
