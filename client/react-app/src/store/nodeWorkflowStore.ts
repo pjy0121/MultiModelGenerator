@@ -208,7 +208,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     const newNode = createWorkflowNode(nodeType, nodePosition);
     
     // 먼저 노드를 추가
-    set(state => ({
+    set(_ => ({
       nodes: get().nodes.concat(newNode)
     }));
     

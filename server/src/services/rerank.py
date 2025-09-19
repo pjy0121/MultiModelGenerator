@@ -4,7 +4,7 @@ from .llm_factory import LLMFactory
 import json
 
 class ReRanker:
-    def __init__(self, provider: str = 'google', model: str = 'gemini-1.5-flash-latest'):
+    def __init__(self, provider: str, model: str):
         self.llm_factory = LLMFactory()
         # API 요청으로 들어온 provider와 model을 사용
         self.client = self.llm_factory.get_client(provider)

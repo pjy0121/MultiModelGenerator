@@ -5,9 +5,13 @@
 
 import requests
 import json
+import os
 
 def test_search_api():
-    base_url = "http://localhost:5001"
+    # 환경변수 또는 기본값 사용
+    api_host = os.getenv("API_HOST", "localhost")
+    api_port = os.getenv("API_PORT", "5001")
+    base_url = f"http://{api_host}:{api_port}"
     
     print("🔍 지식베이스 검색 API 테스트")
     print("=" * 40)

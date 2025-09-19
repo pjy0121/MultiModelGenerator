@@ -9,6 +9,7 @@ import requests
 # Node-based workflow imports
 from ..core.node_execution_engine import NodeExecutionEngine
 from ..core.workflow_validator import WorkflowValidator
+from ..core.config import Config
 from ..core.models import (
     WorkflowExecutionRequest, 
     WorkflowExecutionResponse,
@@ -75,7 +76,7 @@ def run_workflow(
 
         # 3. POST 요청
         headers = {"Content-Type": "application/json"}
-        response = requests.post("http://localhost:5001/execute-workflow-stream",
+        response = requests.post(f"{Config.API_BASE_URL}/execute-workflow-stream",
                                  headers=headers, json=new_data)
 
         # 4. 결과 반환
@@ -265,8 +266,9 @@ async def get_available_models(provider: str):
     try:
         # Normalize provider
         provider = provider.lower()
-        if provider not in ["openai", "google"]:
-            raise HTTPException(status_code=400, detail="Unsupported provider. Only 'openai' and 'google' are supported.")
+        if provider not in Config.SUPPORTED_LLM_PROVIDERS:
+            supported_providers = ", ".join(Config.SUPPORTED_LLM_PROVIDERS)
+            raise HTTPException(status_code=400, detail=f"Unsupported provider. Only '{supported_providers}' are supported.")
 
         models = ModelManager.get_models_by_provider(provider)
         
