@@ -5,10 +5,14 @@
 
 import requests
 import json
+import os
 from time import sleep
 
 def test_complete_workflow():
-    base_url = "http://localhost:5001"
+    # 환경변수 또는 기본값 사용
+    api_host = os.getenv("API_HOST", "localhost") 
+    api_port = os.getenv("API_PORT", "5001")
+    base_url = f"http://{api_host}:{api_port}"
     
     print("🚀 Node-based Workflow 완전 테스트 시작")
     print("=" * 50)
@@ -134,7 +138,8 @@ def test_complete_workflow():
                 search_results = response.json().get('results', [])
                 print(f"   Found {len(search_results)} results")
                 for i, result in enumerate(search_results[:2]):  # 상위 2개만 표시
-                    content = result.get('content', '')
+                    # result는 문자열이므로 직접 사용
+                    content = result if isinstance(result, str) else str(result)
                     print(f"     {i+1}. {content[:100]}{'...' if len(content) > 100 else ''}")
             else:
                 print(f"   Error: {response.text}")

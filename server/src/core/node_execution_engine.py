@@ -13,6 +13,7 @@ from ..core.models import (
     NodeExecutionResult, WorkflowExecutionResponse
 )
 from ..api.node_executors import NodeExecutor
+from ..core.config import Config
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -35,9 +36,8 @@ class NodeExecutionEngine:
         self.execution_results: List[NodeExecutionResult] = []
         self.execution_order: List[str] = []  # 실행 순서 추적
         
-        # NodeExecutor 인스턴스 생성
+        # 노드 실행자 생성
         self.node_executor = NodeExecutor()
-        self._current_rerank_info = None
     
     async def _collect_stream_output(self, stream_queue: asyncio.Queue, expected_completions: int) -> List[Dict]:
         """스트리밍 출력을 수집하는 헬퍼 메서드"""
@@ -46,7 +46,7 @@ class NodeExecutionEngine:
         
         while completed_count < expected_completions:
             try:
-                chunk = await asyncio.wait_for(stream_queue.get(), timeout=10.0)  # 긴 타임아웃
+                chunk = await asyncio.wait_for(stream_queue.get(), timeout=Config.STREAM_TIMEOUT_LONG)
                 
                 if chunk["type"] == "_stream_complete":
                     break
@@ -86,11 +86,11 @@ class NodeExecutionEngine:
         try:
             # 스트리밍 출력 처리
             async for chunk in self._execute_node_stream(node, workflow, rerank_enabled):
-                if chunk["type"] == "stream":
+                if chunk["type"] == Config.RESPONSE_TYPE_STREAM:
                     accumulated_output += chunk["content"]
                     # 즉시 스트리밍 출력 전송
                     await stream_queue.put({
-                        "type": "stream",
+                        "type": Config.RESPONSE_TYPE_STREAM,
                         "node_id": node.id,
                         "content": chunk["content"]
                     })
@@ -177,8 +177,7 @@ class NodeExecutionEngine:
             # 초기화
             self._reset_state()
             
-            # NodeExecutor를 rerank_info와 함께 재생성
-            self.node_executor = NodeExecutor()
+            # 통합 노드 실행자는 재생성할 필요 없음 (의존성 주입으로 관리됨)
             
             # 의존성 그래프 구축
             pre_nodes_map = self._build_dependency_graph(workflow)
@@ -209,7 +208,7 @@ class NodeExecutionEngine:
                 for node_id in ready_nodes:
                     node = nodes_map[node_id]
                     task = self._execute_single_node(
-                        node, pre_nodes_map[node_id], self._current_rerank_info
+                        node, pre_nodes_map[node_id]
                     )
                     execution_tasks.append(task)
                 
@@ -402,7 +401,7 @@ class NodeExecutionEngine:
             while total_completed < total_nodes:
                 # 스트리밍 출력 처리
                 try:
-                    chunk = await asyncio.wait_for(global_stream_queue.get(), timeout=0.1)
+                    chunk = await asyncio.wait_for(global_stream_queue.get(), timeout=Config.STREAM_TIMEOUT_SHORT)
                     yield chunk
                     
                     # 노드 완료 이벤트 처리
@@ -492,9 +491,13 @@ class NodeExecutionEngine:
             
             final_result = None
             
-            async for chunk in self.node_executor.execute_node_stream(
-                node, workflow, self.node_outputs, rerank_enabled
-            ):
+            # pre-node 출력들 수집
+            pre_outputs = []
+            for edge in workflow.edges:
+                if edge.target == node.id and edge.source in self.node_outputs:
+                    pre_outputs.append(self.node_outputs[edge.source])
+            
+            async for chunk in self.node_executor.execute_node_stream(node, pre_outputs):
                 if chunk["type"] == "stream":
                     accumulated_output += chunk["content"] 
                     yield chunk
