@@ -1,7 +1,7 @@
 from typing import List, Dict, Any
 from openai import OpenAI
 from .llm_client_interface import LLMClientInterface
-from ..core.config import Config
+from ..core.config import API_KEYS
 
 class OpenAIClient(LLMClientInterface):
     """OpenAI API 클라이언트"""
@@ -14,14 +14,18 @@ class OpenAIClient(LLMClientInterface):
     def _initialize_client(self):
         """클라이언트 초기화"""
         try:
-            if not Config.OPENAI_API_KEY:
+            if not API_KEYS["openai"]:
                 raise ValueError("OPENAI_API_KEY가 설정되지 않았습니다.")
                 
             self.client = OpenAI(
-                api_key=Config.OPENAI_API_KEY
+                api_key=API_KEYS["openai"]
             )
         except Exception as e:
             self.client = None
+    
+    def is_available(self) -> bool:
+        """OpenAI API 사용 가능 여부 확인"""
+        return self.client is not None
     
     def chat_completion(
         self, 
@@ -57,7 +61,7 @@ class OpenAIClient(LLMClientInterface):
     
     def is_available(self) -> bool:
         """클라이언트 사용 가능 여부 확인"""
-        return self.client is not None and bool(Config.OPENAI_API_KEY)
+        return self.client is not None and bool(API_KEYS["openai"])
     
     async def chat_completion_stream(
         self, 
@@ -125,3 +129,53 @@ class OpenAIClient(LLMClientInterface):
             
         except Exception as e:
             return []
+    
+    async def generate_response(
+        self, 
+        prompt: str, 
+        model: str, 
+        temperature: float = 0.3, 
+        max_tokens: int = 2000,
+        stream: bool = False
+    ) -> str:
+        """프롬프트를 사용하여 응답 생성"""
+        if not self.client:
+            raise RuntimeError("OpenAI 클라이언트가 초기화되지 않았습니다.")
+        
+        try:
+            messages = [{"role": "user", "content": prompt}]
+            response = self.client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            raise RuntimeError(f"OpenAI API 요청 실패: {e}")
+    
+    async def generate(
+        self, 
+        prompt: str, 
+        model: str, 
+        temperature: float = 0.3, 
+        max_tokens: int = 2000,
+        stream: bool = False
+    ) -> str:
+        """rerank에서 사용하는 generate 메서드"""
+        return await self.generate_response(prompt, model, temperature, max_tokens, stream)
+    
+    def get_model_context_length(self, model: str) -> int:
+        """모델의 최대 컨텍스트 길이 반환"""
+        if "gpt-4" in model:
+            if "turbo" in model or "1106" in model or "0125" in model:
+                return 128000  # GPT-4 Turbo
+            else:
+                return 8192    # GPT-4
+        elif "gpt-3.5-turbo" in model:
+            if "16k" in model:
+                return 16384   # GPT-3.5 Turbo 16k
+            else:
+                return 4096    # GPT-3.5 Turbo
+        else:
+            return 4096        # 기본값

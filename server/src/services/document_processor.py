@@ -3,12 +3,12 @@ import re
 from typing import List, Dict
 from sentence_transformers import SentenceTransformer
 import numpy as np
-from ..core.config import Config
+from ..core.config import VECTOR_DB_CONFIG
 
 class DocumentProcessor:
     def __init__(self, chunk_size: int = None, chunk_overlap: int = None):
-        self.chunk_size = chunk_size or Config.CHUNK_SIZE
-        self.chunk_overlap = chunk_overlap or Config.CHUNK_OVERLAP
+        self.chunk_size = chunk_size or VECTOR_DB_CONFIG["chunk_size"]
+        self.chunk_overlap = chunk_overlap or VECTOR_DB_CONFIG["chunk_overlap"]
         try:
             self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
         except Exception as e:

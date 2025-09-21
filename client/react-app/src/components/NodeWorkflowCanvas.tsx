@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, memo } from 'react';
 import {
   ReactFlow,
   Background,
@@ -39,12 +39,12 @@ import { isConnectionAllowed } from '../utils/nodeWorkflowValidation';
 
 
 
-// 노드 타입 정의
+// 노드 타입 정의 - 메모이제이션으로 재생성 방지
 const nodeTypes: NodeTypes = {
   workflowNode: NodeWorkflowComponent,
 };
 
-export const NodeWorkflowCanvas: React.FC = () => {
+export const NodeWorkflowCanvas: React.FC = memo(() => {
   const { 
     nodes: storeNodes, 
     edges: storeEdges, 
@@ -53,7 +53,7 @@ export const NodeWorkflowCanvas: React.FC = () => {
     addEdge: addStoreEdge,
     removeEdge,
     removeNode,
-    currentViewport, // 실시간 뷰포트 상태
+    // viewport 상태는 viewport로 통합됨
     
     // 노드 추가와 워크플로우 관리 함수들
     addNode,
@@ -139,15 +139,15 @@ export const NodeWorkflowCanvas: React.FC = () => {
   // 뷰포트 변화 감지 및 상태 업데이트 (더 민감한 감지)
   const onViewportChange = useCallback((newViewport: any) => {
     // null 체크 추가
-    if (!newViewport || !currentViewport) return;
+    if (!newViewport || !viewport) return;
     
-    // currentViewport와 비교하여 변경 감지
-    if (Math.abs((newViewport.zoom || 1) - (currentViewport.zoom || 1)) > 0.005 ||  // 줌 변경을 더 민감하게
-        Math.abs((newViewport.x || 0) - (currentViewport.x || 0)) > 2 ||          // x 변경을 더 민감하게
-        Math.abs((newViewport.y || 0) - (currentViewport.y || 0)) > 2) {          // y 변경을 더 민감하게
+    // viewport와 비교하여 변경 감지
+    if (Math.abs((newViewport.zoom || 1) - (viewport.zoom || 1)) > 0.005 ||  // 줌 변경을 더 민감하게
+        Math.abs((newViewport.x || 0) - (viewport.x || 0)) > 2 ||          // x 변경을 더 민감하게
+        Math.abs((newViewport.y || 0) - (viewport.y || 0)) > 2) {          // y 변경을 더 민감하게
       setViewport(newViewport);
     }
-  }, [setViewport, currentViewport]);
+  }, [setViewport, viewport]);
 
   // 노드 변경 핸들러 (출력 노드만 이동 불가)
   const onNodesChangeWithFixed = useCallback((changes: any[]) => {
@@ -497,4 +497,4 @@ export const NodeWorkflowCanvas: React.FC = () => {
       </Modal>
     </div>
   );
-};
+});

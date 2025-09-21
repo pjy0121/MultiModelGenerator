@@ -1,73 +1,119 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback, memo, useRef, useEffect } from 'react';
 import { Card, Typography, Alert, Button, Space, Modal } from 'antd';
 import { FileExcelOutlined, FileTextOutlined, ExpandOutlined } from '@ant-design/icons';
-import * as XLSX from 'xlsx';
 import { useNodeWorkflowStore } from '../store/nodeWorkflowStore';
+import { downloadUtils, getCurrentTimestamp } from '../utils/downloadUtils';
+import { formatMarkdown } from '../utils/markdownUtils';
 
 const { Title, Text } = Typography;
 
-// 파일 다운로드 유틸리티 함수들
-const downloadUtils = {
-  // Excel 파일 생성 및 다운로드
-  downloadExcel: (headerRow: string[], dataRows: string[][], filename: string) => {
-    // 헤더와 데이터를 하나의 배열로 결합
-    const wsData = [headerRow, ...dataRows];
-    
-    // 워크시트 생성
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-    
-    // 워크북 생성
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, '데이터');
-    
-    // 열 너비 자동 조정
-    const colWidths = headerRow.map((_, colIndex) => {
-      const maxLength = Math.max(
-        headerRow[colIndex]?.length || 0,
-        ...dataRows.map(row => row[colIndex]?.length || 0)
-      );
-      return { width: Math.min(Math.max(maxLength + 2, 10), 50) };
-    });
-    ws['!cols'] = colWidths;
-    
-    // 파일 다운로드
-    XLSX.writeFile(wb, filename);
-  },
+// 스트리밍 출력 컴포넌트 (자동 스크롤 기능 포함)
+interface StreamingOutputProps {
+  output: string;
+  isExecuting: boolean;
+}
 
-  // TXT 파일 생성 (탭으로 구분)
-  tableToTXT: (headerRow: string[], dataRows: string[][]): string => {
-    const allRows = [headerRow, ...dataRows];
-    return allRows.map(row => row.join('\t')).join('\n');
-  },
+const StreamingOutput: React.FC<StreamingOutputProps> = memo(({ output, isExecuting }) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const previousOutputLength = useRef<number>(0);
+  const [autoScroll, setAutoScroll] = useState<boolean>(true);
 
-  // 마크다운 테이블 생성
-  tableToMarkdown: (headerRow: string[], dataRows: string[][]): string => {
-    const headerLine = '| ' + headerRow.join(' | ') + ' |';
-    const separatorLine = '| ' + headerRow.map(() => '---').join(' | ') + ' |';
-    const dataLines = dataRows.map(row => '| ' + row.join(' | ') + ' |');
-    
-    return [headerLine, separatorLine, ...dataLines].join('\n');
-  },
+  // 사용자가 스크롤 위치를 변경했는지 감지
+  const handleScroll = useCallback(() => {
+    if (scrollRef.current) {
+      const scrollElement = scrollRef.current;
+      const isAtBottom = scrollElement.scrollTop + scrollElement.clientHeight >= scrollElement.scrollHeight - 10;
+      
+      // 사용자가 맨 아래로 스크롤하면 자동 스크롤 재활성화
+      if (isAtBottom) {
+        setAutoScroll(true);
+      } else {
+        // 사용자가 위로 스크롤하면 자동 스크롤 비활성화
+        setAutoScroll(false);
+      }
+    }
+  }, []);
 
-  // 파일 다운로드
-  downloadFile: (content: string, filename: string, mimeType: string) => {
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  // 스트리밍 출력이 업데이트될 때마다 스크롤을 맨 아래로 이동
+  useEffect(() => {
+    if (scrollRef.current && output && isExecuting && autoScroll) {
+      const scrollElement = scrollRef.current;
+      const currentOutputLength = output.length;
+      
+      // 새로운 콘텐츠가 추가되었을 때만 스크롤
+      if (currentOutputLength > previousOutputLength.current) {
+        // requestAnimationFrame을 사용해서 DOM 업데이트 후에 스크롤
+        requestAnimationFrame(() => {
+          scrollElement.scrollTop = scrollElement.scrollHeight;
+        });
+        
+        previousOutputLength.current = currentOutputLength;
+      }
+    }
+  }, [output, isExecuting, autoScroll]);
+
+  // 실행이 시작될 때 자동 스크롤 활성화 및 길이 초기화
+  useEffect(() => {
+    if (isExecuting) {
+      setAutoScroll(true);
+      previousOutputLength.current = 0;
+    }
+  }, [isExecuting]);
+
+  if (!output || !isExecuting) {
+    return null;
   }
-};
 
-// 현재 타임스탬프 생성
-const getCurrentTimestamp = (): string => {
-  const now = new Date();
-  return now.toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '_');
-};
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ 
+        fontSize: 10, 
+        color: '#999', 
+        marginBottom: 4,
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
+        <span>실시간 출력:</span>
+        {!autoScroll && (
+          <span style={{ 
+            fontSize: 9, 
+            color: '#ff8c00', 
+            fontStyle: 'italic',
+            cursor: 'pointer'
+          }} onClick={() => setAutoScroll(true)}>
+            자동 스크롤 중지됨 (클릭하여 재개)
+          </span>
+        )}
+      </div>
+      <div 
+        ref={scrollRef}
+        onScroll={handleScroll}
+        style={{ 
+          padding: 8,
+          backgroundColor: '#f6f6f6',
+          border: '1px solid #d9d9d9',
+          borderRadius: 4,
+          maxHeight: 200,
+          overflowY: 'auto',
+          scrollBehavior: 'smooth' // 부드러운 스크롤 적용
+        }}
+      >
+        <div 
+          style={{ 
+            margin: 0, 
+            fontSize: 11,
+            color: '#333',
+            lineHeight: 1.4
+          }}
+          dangerouslySetInnerHTML={{
+            __html: formatMarkdown(output || '')
+          }}
+        />
+      </div>
+    </div>
+  );
+});
 
 // 테이블 다운로드 컴포넌트
 interface TableDownloadButtonsProps {
@@ -76,29 +122,32 @@ interface TableDownloadButtonsProps {
   tableIndex: number;
 }
 
-const TableDownloadButtons: React.FC<TableDownloadButtonsProps> = ({ 
+const TableDownloadButtons: React.FC<TableDownloadButtonsProps> = memo(({ 
   headerRow, 
   dataRows, 
   tableIndex 
 }) => {
   const [isModalVisible, setIsModalVisible] = useState(false);
 
-  const handleDownloadExcel = () => {
+  const handleDownloadExcel = useCallback(() => {
     const filename = `table_${tableIndex + 1}_${getCurrentTimestamp()}.xlsx`;
     downloadUtils.downloadExcel(headerRow, dataRows, filename);
-  };
+  }, [headerRow, dataRows, tableIndex]);
 
-  const handleDownloadTXT = () => {
+  const handleDownloadTXT = useCallback(() => {
     const txtContent = downloadUtils.tableToTXT(headerRow, dataRows);
     const filename = `table_${tableIndex + 1}_${getCurrentTimestamp()}.txt`;
     downloadUtils.downloadFile(txtContent, filename, 'text/plain;charset=utf-8;');
-  };
+  }, [headerRow, dataRows, tableIndex]);
 
-  const handleDownloadMD = () => {
+  const handleDownloadMD = useCallback(() => {
     const mdContent = downloadUtils.tableToMarkdown(headerRow, dataRows);
     const filename = `table_${tableIndex + 1}_${getCurrentTimestamp()}.md`;
     downloadUtils.downloadFile(mdContent, filename, 'text/markdown;charset=utf-8;');
-  };
+  }, [headerRow, dataRows, tableIndex]);
+
+  const openModal = useCallback(() => setIsModalVisible(true), []);
+  const closeModal = useCallback(() => setIsModalVisible(false), []);
 
   return (
     <>
@@ -148,7 +197,7 @@ const TableDownloadButtons: React.FC<TableDownloadButtonsProps> = ({
           type="link"
           size="small"
           icon={<ExpandOutlined />}
-          onClick={() => setIsModalVisible(true)}
+          onClick={openModal}
           style={{ padding: '2px 8px', height: 'auto', fontSize: '11px' }}
         >
           크게 보기
@@ -156,12 +205,12 @@ const TableDownloadButtons: React.FC<TableDownloadButtonsProps> = ({
       </div>
       <Modal
         title={`표 크게 보기 (테이블 ${tableIndex + 1})`}
-        visible={isModalVisible}
-        onOk={() => setIsModalVisible(false)}
-        onCancel={() => setIsModalVisible(false)}
+        open={isModalVisible}
+        onOk={closeModal}
+        onCancel={closeModal}
         width="90vw"
         footer={null}
-        bodyStyle={{ maxHeight: '80vh', overflowY: 'auto' }}
+        styles={{ body: { maxHeight: '80vh', overflowY: 'auto' } }}
       >
         <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '14px' }}>
           <thead>
@@ -199,15 +248,15 @@ const TableDownloadButtons: React.FC<TableDownloadButtonsProps> = ({
       </Modal>
     </>
   );
-};
+});
 
 // 다운로드 기능이 포함된 마크다운 렌더러
 interface MarkdownWithDownloadProps {
   content: string;
 }
 
-const MarkdownWithDownload: React.FC<MarkdownWithDownloadProps> = ({ content }) => {
-  const renderContentWithDownload = () => {
+const MarkdownWithDownload: React.FC<MarkdownWithDownloadProps> = memo(({ content }) => {
+  const renderContentWithDownload = useCallback(() => {
     if (!content) return null;
 
     // 테이블이 있는지 확인
@@ -266,7 +315,7 @@ const MarkdownWithDownload: React.FC<MarkdownWithDownloadProps> = ({ content }) 
     }
 
     return elements;
-  };
+  }, [content]);
 
   const renderTableWithDownload = (tableLines: string[], tableIndex: number): React.ReactElement | null => {
     if (tableLines.length < 2) return null;
@@ -350,120 +399,11 @@ const MarkdownWithDownload: React.FC<MarkdownWithDownloadProps> = ({ content }) 
       {renderContentWithDownload()}
     </div>
   );
-};
+});
 
-// 간단한 마크다운 포맷팅 함수
-const formatMarkdown = (text: string): string => {
-  if (!text) return '';
-  
-  let result = text;
-  
-  // 1. 코드 블록 처리 (가장 먼저)
-  result = result.replace(/```([\s\S]*?)```/g, '<pre style="background: #f8f8f8; padding: 12px; border-radius: 6px; border: 1px solid #e1e1e1; margin: 12px 0; overflow-x: auto; font-family: \'Consolas\', \'Monaco\', monospace; font-size: 11px; line-height: 1.5; white-space: pre-wrap;">$1</pre>');
-  
-  // 2. 인라인 코드 처리
-  result = result.replace(/`([^`]+)`/g, '<code style="background: #f1f1f1; padding: 3px 6px; border-radius: 4px; font-family: \'Consolas\', \'Monaco\', monospace; font-size: 10px; color: #e83e8c; border: 1px solid #e9ecef;">$1</code>');
-  
-  // 3. 헤더 처리 (### → ## → #)
-  result = result.replace(/^### (.*$)/gim, '<h3 style="margin: 16px 0 8px 0; font-size: 13px; font-weight: 600; color: #1d39c4; border-bottom: 1px solid #d9d9d9; padding-bottom: 4px; line-height: 1.4;">$1</h3>');
-  result = result.replace(/^## (.*$)/gim, '<h2 style="margin: 20px 0 10px 0; font-size: 14px; font-weight: 600; color: #1d39c4; border-bottom: 2px solid #1d39c4; padding-bottom: 6px; line-height: 1.4;">$1</h2>');
-  result = result.replace(/^# (.*$)/gim, '<h1 style="margin: 24px 0 12px 0; font-size: 16px; font-weight: 600; color: #1d39c4; border-bottom: 3px solid #1d39c4; padding-bottom: 8px; line-height: 1.4;">$1</h1>');
-  
-  // 4. 굵은 텍스트 처리
-  result = result.replace(/\*\*(.*?)\*\*/g, '<strong style="font-weight: 600; color: #262626;">$1</strong>');
-  
-  // 5. 기울임 텍스트 처리 (굵은 텍스트와 겹치지 않도록)
-  result = result.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em style="font-style: italic; color: #595959;">$1</em>');
-  
-  // 6. 리스트 처리
-  result = result.replace(/^\- (.+$)/gim, '<div style="margin: 6px 0; padding-left: 20px; position: relative; line-height: 1.5;"><span style="position: absolute; left: 0; color: #1890ff; font-weight: bold;">•</span>$1</div>');
-  result = result.replace(/^(\d+)\. (.+$)/gim, '<div style="margin: 6px 0; padding-left: 28px; position: relative; line-height: 1.5;"><span style="position: absolute; left: 0; color: #1890ff; font-weight: bold;">$1.</span>$2</div>');
-  
-  // 7. 테이블 처리
-  result = formatTables(result);
-  
-  // 8. 줄바꿈 처리 (마지막)
-  result = result.replace(/\n/g, '<br/>');
-  
-  return result;
-};
 
-// 테이블 포맷팅 함수
-const formatTables = (text: string): string => {
-  const lines = text.split('\n');
-  let result: string[] = [];
-  let inTable = false;
-  let tableRows: string[] = [];
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    
-    // 테이블 행인지 확인 (|로 시작하고 끝나거나, |가 포함됨)
-    if (line.includes('|')) {
-      if (!inTable) {
-        inTable = true;
-        tableRows = [];
-      }
-      tableRows.push(line);
-    } else {
-      // 테이블이 끝남
-      if (inTable) {
-        result.push(convertTableToHTML(tableRows));
-        tableRows = [];
-        inTable = false;
-      }
-      result.push(line);
-    }
-  }
-  
-  // 마지막에 테이블이 있는 경우
-  if (inTable && tableRows.length > 0) {
-    result.push(convertTableToHTML(tableRows));
-  }
-  
-  return result.join('\n');
-};
 
-// HTML 문자열용 테이블 변환 (기존 유지)
-const convertTableToHTML = (tableRows: string[]): string => {
-  if (tableRows.length < 2) return tableRows.join('\n');
-  
-  const processedRows = tableRows.map(row => 
-    row.replace(/^\||\|$/g, '').split('|').map(cell => cell.trim())
-  );
-  
-  let html = '<table style="border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 11px; border: 1px solid #d9d9d9;">';
-  
-  // 헤더 행
-  if (processedRows.length > 0) {
-    html += '<thead><tr>';
-    processedRows[0].forEach(cell => {
-      html += `<th style="border: 1px solid #d9d9d9; padding: 8px 12px; background: #f5f5f5; font-weight: 600; text-align: left; color: #262626;">${cell}</th>`;
-    });
-    html += '</tr></thead>';
-  }
-  
-  // 구분선 행 스킵 (보통 두 번째 행)
-  const dataStartIndex = processedRows.length > 1 && processedRows[1].every(cell => cell.match(/^-+$/)) ? 2 : 1;
-  
-  // 데이터 행들
-  if (processedRows.length > dataStartIndex) {
-    html += '<tbody>';
-    for (let i = dataStartIndex; i < processedRows.length; i++) {
-      html += '<tr>';
-      processedRows[i].forEach(cell => {
-        html += `<td style="border: 1px solid #d9d9d9; padding: 6px 12px; color: #595959; line-height: 1.4;">${cell}</td>`;
-      });
-      html += '</tr>';
-    }
-    html += '</tbody>';
-  }
-  
-  html += '</table>';
-  return html;
-};
-
-export const NodeExecutionResultPanel: React.FC = () => {
+export const NodeExecutionResultPanel: React.FC = memo(() => {
   const {
     nodes,
     isExecuting,
@@ -474,8 +414,8 @@ export const NodeExecutionResultPanel: React.FC = () => {
     nodeStartOrder,
   } = useNodeWorkflowStore();
 
-  // 노드 실행 시작 순서대로 정렬 (고정된 순서 유지)
-  const getOrderedNodes = () => {
+  // 노드 실행 시작 순서대로 정렬 (고정된 순서 유지) - 메모이제이션으로 최적화
+  const orderedNodes = useMemo(() => {
     // 실행 결과가 있거나 실행 상태가 설정된 노드들만 포함
     const startedNodes = nodes.filter(node => {
       const state = nodeExecutionStates[node.id];
@@ -505,9 +445,7 @@ export const NodeExecutionResultPanel: React.FC = () => {
     
     // 시작 순서 정보가 없으면 단순히 ID 순으로 정렬
     return startedNodes.sort((a, b) => a.id.localeCompare(b.id));
-  };
-
-  const orderedNodes = getOrderedNodes();
+  }, [nodes, nodeExecutionStates, nodeExecutionResults, nodeStartOrder]);
 
   return (
     <div style={{ padding: '16px', height: '100%' }}>
@@ -591,33 +529,10 @@ export const NodeExecutionResultPanel: React.FC = () => {
                 }
               >
                 {/* 스트리밍 출력 (실행 중일 때만 표시) */}
-                {streamingOutput && executionState === 'executing' && (
-                  <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 10, color: '#999', marginBottom: 4 }}>
-                      실시간 출력:
-                    </div>
-                    <div style={{ 
-                      padding: 8,
-                      backgroundColor: '#f6f6f6',
-                      border: '1px solid #d9d9d9',
-                      borderRadius: 4,
-                      maxHeight: 200,
-                      overflow: 'auto'
-                    }}>
-                      <div 
-                        style={{ 
-                          margin: 0, 
-                          fontSize: 11,
-                          color: '#333',
-                          lineHeight: 1.4
-                        }}
-                        dangerouslySetInnerHTML={{
-                          __html: formatMarkdown(streamingOutput || '')
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
+                <StreamingOutput 
+                  output={streamingOutput || ''} 
+                  isExecuting={executionState === 'executing'} 
+                />
                 
                 {/* 실행 결과 표시 */}
                 {executionResult && (
@@ -627,10 +542,20 @@ export const NodeExecutionResultPanel: React.FC = () => {
                         {/* 완료된 경우 최종 결과 표시 */}
                         {executionState === 'completed' && executionResult.description && (
                           <div>
-                            {/* output-node의 경우 <output></output> 내의 내용만 추출하여 스크롤 가능하게 표시 */}
+                            {/* output-node의 경우 <output></output> 또는 <출력></출력> 내의 내용만 추출하여 스크롤 가능하게 표시 */}
                             {node.node_type === 'output-node' ? (
                               (() => {
-                                const outputMatch = executionResult.description?.match(/<output>([\s\S]*?)<\/output>/);
+                                const outputPatterns = [
+                                  /<output>([\s\S]*?)<\/output>/i,
+                                  /<출력>([\s\S]*?)<\/출력>/i
+                                ];
+                                
+                                let outputMatch = null;
+                                for (const pattern of outputPatterns) {
+                                  outputMatch = executionResult.description?.match(pattern);
+                                  if (outputMatch) break;
+                                }
+                                
                                 const outputContent = outputMatch ? outputMatch[1].trim() : executionResult.description;
                                 
                                 return (
@@ -748,4 +673,4 @@ export const NodeExecutionResultPanel: React.FC = () => {
       )}
     </div>
   );
-};
+});

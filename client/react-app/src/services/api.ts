@@ -1,12 +1,11 @@
 import axios from 'axios';
 import { 
-  NodeBasedWorkflowResponse,
-  KnowledgeBase,
-  AvailableModel,
-  LLMProvider
-} from '../types';
-
-export const api = axios.create({
+  NodeBasedWorkflowResponse, 
+  KnowledgeBase, 
+  AvailableModel, 
+  LLMProvider,
+  WorkflowExecutionRequest 
+} from '../types';export const api = axios.create({
   baseURL: 'http://localhost:5001',
   headers: {
     'Content-Type': 'application/json',
@@ -25,13 +24,13 @@ api.interceptors.response.use(
 
 export const nodeBasedWorkflowAPI = {
   // 노드 기반 워크플로우 실행
-  executeNodeWorkflow: async (request: any): Promise<NodeBasedWorkflowResponse> => {
+  executeNodeWorkflow: async (request: WorkflowExecutionRequest): Promise<NodeBasedWorkflowResponse> => {
     const response = await api.post('/execute-workflow', request);
     return response.data;
   },
 
   // 노드 기반 워크플로우 스트리밍 실행
-  executeNodeWorkflowStream: async function* (request: any) {
+  executeNodeWorkflowStream: async function* (request: WorkflowExecutionRequest) {
     const response = await fetch('http://localhost:5001/execute-workflow-stream', {
       method: 'POST',
       headers: {

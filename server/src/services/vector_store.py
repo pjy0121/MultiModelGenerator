@@ -1,13 +1,13 @@
 import chromadb
 import os
 from typing import List, Dict, Optional
-from ..core.config import Config
+from ..core.config import VECTOR_DB_CONFIG, get_kb_path
 from .rerank import ReRanker
 
 class VectorStore:
     def __init__(self, kb_name: str):
         self.kb_name = kb_name
-        self.db_path = Config.get_kb_path(kb_name)
+        self.db_path = get_kb_path(kb_name)
         
         # 지식 베이스 디렉토리 생성
         os.makedirs(self.db_path, exist_ok=True)
@@ -78,7 +78,7 @@ class VectorStore:
             
             filtered_chunks = [
                 chunk for chunk, distance in zip(initial_chunks, distances)
-                if distance <= Config.SEARCH_SIMILARITY_THRESHOLD
+                if distance <= VECTOR_DB_CONFIG["similarity_threshold"]
             ]
             
             print(f"📚 1차 필터링 후 {len(filtered_chunks)}개 관련 청크 발견.")
@@ -96,7 +96,8 @@ class VectorStore:
         rerank_model: str
     ) -> List[str]:
         """유사한 청크 검색 후 LLM으로 재정렬합니다."""
-        search_params = Config.SEARCH_INTENSITY_MAP.get(search_intensity, Config.SEARCH_INTENSITY_MAP["medium"])
+        search_intensity_map = VECTOR_DB_CONFIG["search_intensity_map"]
+        search_params = search_intensity_map.get(search_intensity, search_intensity_map["medium"])
         top_k_init = search_params["init"]
         top_k_final = search_params["final"]
 
@@ -114,7 +115,8 @@ class VectorStore:
 
     async def search_without_rerank(self, query: str, search_intensity: str) -> List[str]:
         """유사한 청크를 검색만 하고 재정렬은 수행하지 않습니다."""
-        search_params = Config.SEARCH_INTENSITY_MAP.get(search_intensity, Config.SEARCH_INTENSITY_MAP["medium"])
+        search_intensity_map = VECTOR_DB_CONFIG["search_intensity_map"]
+        search_params = search_intensity_map.get(search_intensity, search_intensity_map["medium"])
         top_k = search_params["final"]
 
         # 여기서는 초기 검색의 top_k를 최종 결과 개수와 동일하게 설정

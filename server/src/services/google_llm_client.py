@@ -1,14 +1,14 @@
 from typing import List, Dict, Any
 import google.generativeai as genai
 from .llm_client_interface import LLMClientInterface
-from ..core.config import Config
+from ..core.config import API_KEYS
 
 class GoogleLLMClient(LLMClientInterface):
     """Google AI Studio API 클라이언트"""
     
     def __init__(self):
         """Google AI API 클라이언트 초기화"""
-        self.api_key = Config.GOOGLE_API_KEY
+        self.api_key = API_KEYS["google"]
         self.client = None
         
         if genai is None:
@@ -110,6 +110,47 @@ class GoogleLLMClient(LLMClientInterface):
                 
         except Exception as e:
             raise Exception(f"Google AI 응답 생성 실패: {str(e)}")
+    
+    async def generate(
+        self, 
+        prompt: str, 
+        model: str, 
+        temperature: float = 0.3, 
+        max_tokens: int = 2000,
+        stream: bool = False
+    ) -> str:
+        """rerank에서 사용하는 generate 메서드"""
+        if not self.is_available():
+            raise Exception("Google AI API 키가 설정되지 않았습니다.")
+        
+        try:
+            # 모델 이름에 'models/' 접두사가 없으면 추가
+            if not model.startswith('models/'):
+                model = f'models/{model}'
+            
+            # 생성형 모델 초기화
+            genai_model = genai.GenerativeModel(model)
+            
+            # 응답 생성
+            response = genai_model.generate_content(prompt)
+            
+            if response.text:
+                return response.text
+            else:
+                raise Exception("Google AI에서 빈 응답을 받았습니다.")
+                
+        except Exception as e:
+            raise Exception(f"Google AI 응답 생성 실패: {str(e)}")
+    
+    def get_model_context_length(self, model: str) -> int:
+        """모델의 최대 컨텍스트 길이 반환"""
+        # Google AI 모델들의 일반적인 컨텍스트 길이
+        if 'gemini-1.5' in model:
+            return 1000000  # 1M tokens
+        elif 'gemini-1.0-pro' in model or 'gemini-pro' in model:
+            return 30720   # 30K tokens
+        else:
+            return 8192    # 기본값
     
     async def chat_completion_stream(self, model: str, messages: List[Dict[str, Any]], **kwargs):
         """Google AI를 사용하여 스트리밍 채팅 완성"""

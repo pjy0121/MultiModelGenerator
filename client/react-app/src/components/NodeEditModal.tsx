@@ -10,13 +10,13 @@ const { Option } = Select;
 const { Text } = Typography;
 
 interface NodeEditModalProps {
-  visible: boolean;
+  open: boolean;
   node: WorkflowNode | null;
   onClose: () => void;
   onSave: (nodeId: string, updates: Partial<WorkflowNode['data']>) => void;
 }
 
-const EditForm: React.FC<Omit<NodeEditModalProps, 'visible'>> = ({ node, onClose, onSave }) => {
+const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, onSave }) => {
   const { availableModels, loadAvailableModels, knowledgeBases, loadKnowledgeBases } = useNodeWorkflowStore();
   const [form] = Form.useForm();
   const isLLMNode = node ? [NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION].includes(node.data.nodeType) : false;
@@ -251,15 +251,13 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'visible'>> = ({ node, onClose
               tooltip="지식 베이스 검색 시 얼마나 많은 관련 문서를 찾을지 결정합니다."
             >
               <Select>
-                <Option value={SearchIntensity.VERY_LOW}>매우 낮음 (초기 10개, re-rank 3개)</Option>
-                <Option value={SearchIntensity.LOW}>낮음 (초기 15개, re-rank 4개)</Option>
-                <Option value={SearchIntensity.MEDIUM}>보통 (초기 20개, re-rank 5개)</Option>
-                <Option value={SearchIntensity.HIGH}>높음 (초기 30개, re-rank 10개)</Option>
-                <Option value={SearchIntensity.VERY_HIGH}>매우 높음 (초기 50개, re-rank 15개)</Option>
+                <Option value={SearchIntensity.VERY_LOW}>매우 낮음 (초기 10개, re-rank 5개)</Option>
+                <Option value={SearchIntensity.LOW}>낮음 (초기 15개, re-rank 7개)</Option>
+                <Option value={SearchIntensity.MEDIUM}>보통 (초기 20개, re-rank 10개)</Option>
+                <Option value={SearchIntensity.HIGH}>높음 (초기 30개, re-rank 15개)</Option>
+                <Option value={SearchIntensity.VERY_HIGH}>매우 높음 (초기 50개, re-rank 20개)</Option>
               </Select>
             </Form.Item>
-
-
 
             <Divider>출력 형식 및 프롬프트</Divider>
 
@@ -376,8 +374,8 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'visible'>> = ({ node, onClose
   );
 };
 
-const NodeEditModal: React.FC<NodeEditModalProps> = ({ visible, node, onClose, onSave }) => {
-  if (!visible || !node) {
+const NodeEditModal: React.FC<NodeEditModalProps> = ({ open, node, onClose, onSave }) => {
+  if (!open || !node) {
     return null;
   }
 

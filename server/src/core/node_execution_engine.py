@@ -13,7 +13,7 @@ from ..core.models import (
     NodeExecutionResult, WorkflowExecutionResponse
 )
 from ..api.node_executors import NodeExecutor
-from ..core.config import Config
+
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ class NodeExecutionEngine:
         
         while completed_count < expected_completions:
             try:
-                chunk = await asyncio.wait_for(stream_queue.get(), timeout=Config.STREAM_TIMEOUT_LONG)
+                chunk = await asyncio.wait_for(stream_queue.get(), timeout=10.0)
                 
                 if chunk["type"] == "_stream_complete":
                     break
@@ -86,11 +86,11 @@ class NodeExecutionEngine:
         try:
             # 스트리밍 출력 처리
             async for chunk in self._execute_node_stream(node, workflow, rerank_enabled):
-                if chunk["type"] == Config.RESPONSE_TYPE_STREAM:
+                if chunk["type"] == "stream":
                     accumulated_output += chunk["content"]
                     # 즉시 스트리밍 출력 전송
                     await stream_queue.put({
-                        "type": Config.RESPONSE_TYPE_STREAM,
+                        "type": "stream",
                         "node_id": node.id,
                         "content": chunk["content"]
                     })
@@ -168,6 +168,7 @@ class NodeExecutionEngine:
     async def execute_workflow(
         self, 
         workflow: WorkflowDefinition,
+        rerank_enabled: bool
     ) -> WorkflowExecutionResponse:
         """워크플로우 전체 실행"""
         
@@ -208,7 +209,7 @@ class NodeExecutionEngine:
                 for node_id in ready_nodes:
                     node = nodes_map[node_id]
                     task = self._execute_single_node(
-                        node, pre_nodes_map[node_id]
+                        node, pre_nodes_map[node_id], rerank_enabled
                     )
                     execution_tasks.append(task)
                 
@@ -321,7 +322,8 @@ class NodeExecutionEngine:
     async def _execute_single_node(
         self, 
         node: WorkflowNode, 
-        pre_node_ids: List[str]
+        pre_node_ids: List[str],
+        rerank_enabled: bool
     ) -> NodeExecutionResult:
         """단일 노드 실행 - NodeExecutor 사용"""
         
@@ -331,7 +333,7 @@ class NodeExecutionEngine:
             
             # NodeExecutor를 통한 실행
             result = await self.node_executor.execute_node(
-                node, pre_outputs
+                node, pre_outputs, rerank_enabled
             )
             
             return result
@@ -401,7 +403,7 @@ class NodeExecutionEngine:
             while total_completed < total_nodes:
                 # 스트리밍 출력 처리
                 try:
-                    chunk = await asyncio.wait_for(global_stream_queue.get(), timeout=Config.STREAM_TIMEOUT_SHORT)
+                    chunk = await asyncio.wait_for(global_stream_queue.get(), timeout=0.1)
                     yield chunk
                     
                     # 노드 완료 이벤트 처리
@@ -497,7 +499,7 @@ class NodeExecutionEngine:
                 if edge.target == node.id and edge.source in self.node_outputs:
                     pre_outputs.append(self.node_outputs[edge.source])
             
-            async for chunk in self.node_executor.execute_node_stream(node, pre_outputs):
+            async for chunk in self.node_executor.execute_node_stream(node, pre_outputs, rerank_enabled):
                 if chunk["type"] == "stream":
                     accumulated_output += chunk["content"] 
                     yield chunk
