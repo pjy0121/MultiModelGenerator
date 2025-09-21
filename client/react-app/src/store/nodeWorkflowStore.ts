@@ -377,7 +377,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
           let finalPrompt = node.data.prompt || '';
 
           if (isLlmNode && node.data.output_format) {
-            const outputFormatInstruction = `\n\n핵심 결과를 반드시 다음과 같은 형태로 만들어 출력에 포함시키세요. 이건 절대적으로 지켜야 할 사항입니다.\n<output>${node.data.output_format}</output>`;
+            const outputFormatInstruction = `\n\n핵심 결과를 반드시 다음과 같은 형태로 만들어 출력에 포함시키세요. 이건 절대적으로 지켜야 할 사항입니다.\n\n<output>\n${node.data.output_format}\n</output>`;
             finalPrompt += outputFormatInstruction;
           }
 
