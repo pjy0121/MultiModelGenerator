@@ -1,47 +1,40 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any
+from typing import List, Dict, Any, AsyncGenerator, Union, Optional
+
 
 class LLMClientInterface(ABC):
-    """LLM 클라이언트 추상 인터페이스"""
+    """Base interface for all LLM client implementations."""
     
     @abstractmethod
-    def chat_completion(
+    def get_available_models(self) -> List[str]:
+        """Get list of available models for this provider."""
+        pass
+    
+    @abstractmethod
+    async def generate_response(
         self, 
+        prompt: str, 
         model: str, 
-        messages: List[Dict[str, str]], 
-        temperature: float = 0.1,
-        max_tokens: int = 2000
-    ) -> str:
-        """
-        채팅 완성 요청
-        
-        Args:
-            model: 모델 이름
-            messages: 메시지 리스트 [{"role": "user", "content": "..."}]
-            temperature: 창의성 수준 (0.0 ~ 1.0)
-            max_tokens: 최대 토큰 수
-            
-        Returns:
-            생성된 텍스트
-        """
+        temperature: float = 0.3, 
+        max_tokens: int = 2000,
+        stream: bool = False
+    ) -> Union[str, AsyncGenerator[str, None]]:
+        """Generate response from the LLM."""
         pass
     
     @abstractmethod
-    def is_available(self) -> bool:
-        """
-        클라이언트 사용 가능 여부 확인
-        
-        Returns:
-            사용 가능하면 True, 아니면 False
-        """
+    async def generate(
+        self, 
+        prompt: str, 
+        model: str, 
+        temperature: float = 0.3, 
+        max_tokens: int = 2000,
+        stream: bool = False
+    ) -> Union[str, AsyncGenerator[str, None]]:
+        """Alternative interface for generating responses (used by rerank)."""
         pass
     
     @abstractmethod
-    def get_available_models(self) -> List[Dict[str, Any]]:
-        """
-        사용 가능한 모델 목록 반환 (UI 표시용 메타데이터 포함)
-        
-        Returns:
-            모델 정보 딕셔너리 리스트
-        """
+    def get_model_context_length(self, model: str) -> int:
+        """Get the maximum context length for a specific model."""
         pass

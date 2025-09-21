@@ -9,7 +9,7 @@ import requests
 # Node-based workflow imports
 from ..core.node_execution_engine import NodeExecutionEngine
 from ..core.workflow_validator import WorkflowValidator
-from ..core.config import Config
+from ..core.config import SERVER_CONFIG, LLM_CONFIG, get_kb_list
 from ..core.models import (
     WorkflowExecutionRequest, 
     WorkflowExecutionResponse,
@@ -76,7 +76,8 @@ def run_workflow(
 
         # 3. POST 요청
         headers = {"Content-Type": "application/json"}
-        response = requests.post(f"{Config.API_BASE_URL}/execute-workflow-stream",
+        api_base_url = f"http://{SERVER_CONFIG['host']}:{SERVER_CONFIG['port']}"
+        response = requests.post(f"{api_base_url}/execute-workflow-stream",
                                  headers=headers, json=new_data)
 
         # 4. 결과 반환
@@ -127,7 +128,8 @@ async def execute_workflow(request: WorkflowExecutionRequest):
         
         # 실행
         result = await execution_engine.execute_workflow(
-            workflow=request.workflow
+            workflow=request.workflow, 
+            rerank_enabled=request.rerank_enabled
         )
         
         logger.info(f"Workflow execution completed. Success: {result.success}")
@@ -231,9 +233,9 @@ async def search_knowledge_base(request: dict):
             raise HTTPException(status_code=400, detail="Query and knowledge_base are required")
         
         # top_k를 search_intensity로 매핑 (간단한 매핑)
-        if top_k <= 5:
+        if top_k <= 10:
             search_intensity = "very_low"
-        elif top_k <= 10:
+        elif top_k <= 15:
             search_intensity = "low" 
         elif top_k <= 20:
             search_intensity = "medium"
@@ -266,8 +268,8 @@ async def get_available_models(provider: str):
     try:
         # Normalize provider
         provider = provider.lower()
-        if provider not in Config.SUPPORTED_LLM_PROVIDERS:
-            supported_providers = ", ".join(Config.SUPPORTED_LLM_PROVIDERS)
+        if provider not in LLM_CONFIG["supported_providers"]:
+            supported_providers = ", ".join(LLM_CONFIG["supported_providers"])
             raise HTTPException(status_code=400, detail=f"Unsupported provider. Only '{supported_providers}' are supported.")
 
         models = ModelManager.get_models_by_provider(provider)

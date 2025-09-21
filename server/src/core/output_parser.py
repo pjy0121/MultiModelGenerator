@@ -27,14 +27,23 @@ class ResultParser:
         """
         
         try:
-            # <output>...</output> 태그 패턴 찾기
-            output_pattern = r'<output>(.*?)</output>'
-            output_match = re.search(output_pattern, raw_output, re.DOTALL)
+            # <output>...</output> 또는 <출력>...</출력> 태그 패턴 찾기
+            # [\s\S]*? 사용으로 멀티라인 텍스트 안전하게 매칭
+            output_patterns = [
+                r'<output>([\s\S]*?)</output>',
+                r'<출력>([\s\S]*?)</출력>'
+            ]
+            
+            output_match = None
+            for pattern in output_patterns:
+                output_match = re.search(pattern, raw_output, re.IGNORECASE)
+                if output_match:
+                    break
             
             if output_match:
                 # output 태그 내용 추출
                 output = output_match.group(1).strip()
-                
+
                 # description은 전체 텍스트 (스트리밍에서는 사용되지 않음)
                 description = raw_output.strip()
                 
@@ -67,12 +76,20 @@ class ResultParser:
         errors = []
         
         try:
-            # <output>...</output> 태그 패턴 확인
-            output_pattern = r'<output>(.*?)</output>'
-            output_match = re.search(output_pattern, raw_output, re.DOTALL)
+            # <output>...</output> 또는 <출력>...</출력> 태그 패턴 확인
+            output_patterns = [
+                r'<output>([\s\S]*?)</output>',
+                r'<출력>([\s\S]*?)</출력>'
+            ]
+            
+            output_match = None
+            for pattern in output_patterns:
+                output_match = re.search(pattern, raw_output, re.IGNORECASE)
+                if output_match:
+                    break
             
             if not output_match:
-                errors.append("Missing <output>...</output> tags")
+                errors.append("Missing <output>...</output> or <출력>...</출력> tags")
             else:
                 output_content = output_match.group(1).strip()
                 if not output_content:

@@ -9,7 +9,7 @@ from typing import List, Optional, Dict, Any
 
 from ..core.models import WorkflowNode, NodeExecutionResult
 from ..core.output_parser import ResultParser
-from ..core.config import Config
+from ..core.config import LLM_CONFIG
 from ..services.llm_factory import LLMFactory
 from ..services.vector_store_service import VectorStoreService
 
@@ -21,14 +21,14 @@ class NodeExecutor:
         self.llm_factory = LLMFactory()
         self.vector_store_service = VectorStoreService()
         self.result_parser = ResultParser()
-    
-    async def execute_node(self, node: WorkflowNode, pre_outputs: List[str]) -> NodeExecutionResult:
+
+    async def execute_node(self, node: WorkflowNode, pre_outputs: List[str], rerank_enabled: bool) -> NodeExecutionResult:
         """노드 실행"""
         try:
             if self._is_text_node(node.type):
-                return self._execute_text_node(node, pre_outputs)
+                return self._execute_text_node(node, pre_outputs, rerank_enabled)
             else:
-                return await self._execute_llm_node(node, pre_outputs)
+                return await self._execute_llm_node(node, pre_outputs, rerank_enabled)
         except Exception as e:
             return NodeExecutionResult(
                 node_id=node.id,
@@ -37,12 +37,12 @@ class NodeExecutor:
                 execution_time=0.0
             )
     
-    async def execute_node_stream(self, node: WorkflowNode, pre_outputs: List[str]):
+    async def execute_node_stream(self, node: WorkflowNode, pre_outputs: List[str], rerank_enabled: bool):
         """노드 스트리밍 실행"""
         try:
             if self._is_text_node(node.type):
                 # 텍스트 노드는 즉시 결과 반환
-                result = self._execute_text_node(node, pre_outputs)
+                result = self._execute_text_node(node, pre_outputs, rerank_enabled)
                 yield {
                     "type": "result",
                     "success": result.success,
@@ -52,7 +52,7 @@ class NodeExecutor:
                 }
             else:
                 # LLM 노드는 스트리밍 실행
-                async for chunk in self._execute_llm_node_stream(node, pre_outputs):
+                async for chunk in self._execute_llm_node_stream(node, pre_outputs, rerank_enabled):
                     yield chunk
         except Exception as e:
             yield {
@@ -62,11 +62,11 @@ class NodeExecutor:
     
     def _is_text_node(self, node_type: str) -> bool:
         """텍스트 노드 여부 확인"""
-        return node_type in [Config.NODE_TYPE_INPUT, Config.NODE_TYPE_OUTPUT]
+        return node_type in ["input-node", "output-node"]
     
     def _execute_text_node(self, node: WorkflowNode, pre_outputs: List[str]) -> NodeExecutionResult:
         """텍스트 노드 실행 (Input/Output)"""
-        if node.type == Config.NODE_TYPE_INPUT:
+        if node.type == "input-node":
             content = node.content or "입력 데이터가 설정되지 않았습니다."
         else:  # Output node
             content = " ".join(pre_outputs) if pre_outputs else (node.content or "")
@@ -79,12 +79,12 @@ class NodeExecutor:
             execution_time=0.0
         )
     
-    async def _execute_llm_node(self, node: WorkflowNode, pre_outputs: List[str]) -> NodeExecutionResult:
+    async def _execute_llm_node(self, node: WorkflowNode, pre_outputs: List[str], rerank_enabled: bool) -> NodeExecutionResult:
         """LLM 노드 실행 (Generation/Ensemble/Validation)"""
         start_time = time.time()
         
         try:
-            prompt = await self._prepare_prompt(node, pre_outputs)
+            prompt = await self._prepare_prompt(node, pre_outputs, rerank_enabled)
             
             if not node.llm_provider or not node.model_type:
                 raise ValueError(f"Node {node.id} missing LLM configuration")
@@ -111,11 +111,11 @@ class NodeExecutor:
                 execution_time=execution_time
             )
     
-    async def _execute_llm_node_stream(self, node: WorkflowNode, pre_outputs: List[str]):
+    async def _execute_llm_node_stream(self, node: WorkflowNode, pre_outputs: List[str], rerank_enabled: bool):
         """LLM 노드 스트리밍 실행"""
         try:
-            prompt = await self._prepare_prompt(node, pre_outputs)
-            
+            prompt = await self._prepare_prompt(node, pre_outputs, rerank_enabled)
+
             if not node.llm_provider or not node.model_type:
                 raise ValueError(f"Node {node.id} missing LLM configuration")
             
@@ -131,7 +131,7 @@ class NodeExecutor:
                 async for chunk in client.chat_completion_stream(
                     model=node.model_type,
                     messages=messages,
-                    temperature=Config.DEFAULT_LLM_TEMPERATURE
+                    temperature=LLM_CONFIG["default_temperature"]
                 ):
                     if chunk:
                         full_response += chunk
@@ -141,14 +141,15 @@ class NodeExecutor:
                 response = client.chat_completion(
                     model=node.model_type,
                     messages=messages,
-                    temperature=Config.DEFAULT_LLM_TEMPERATURE
+                    temperature=LLM_CONFIG["default_temperature"]
                 )
                 full_response = response
                 
-                for i in range(0, len(response), Config.CHUNK_PROCESSING_SIZE):
-                    chunk = response[i:i+Config.CHUNK_PROCESSING_SIZE]
+                chunk_size = LLM_CONFIG["chunk_processing_size"]
+                for i in range(0, len(response), chunk_size):
+                    chunk = response[i:i+chunk_size]
                     yield {"type": "stream", "content": chunk}
-                    await asyncio.sleep(Config.SIMULATION_SLEEP_INTERVAL)
+                    await asyncio.sleep(LLM_CONFIG["simulation_sleep_interval"])
             
             # 결과 파싱
             if full_response:
@@ -172,7 +173,7 @@ class NodeExecutor:
                 "output": None
             }
     
-    async def _prepare_prompt(self, node: WorkflowNode, pre_outputs: List[str]) -> str:
+    async def _prepare_prompt(self, node: WorkflowNode, pre_outputs: List[str], rerank_enabled: bool) -> str:
         """프롬프트 준비"""
         input_data = "\n".join(pre_outputs) if pre_outputs else ""
         prompt_template = node.prompt or ""
@@ -182,7 +183,7 @@ class NodeExecutor:
         if node.knowledge_base and "{context}" in prompt_template:
             try:
                 rerank_info = None
-                if node.llm_provider and node.model_type:
+                if rerank_enabled and node.llm_provider and node.model_type:
                     rerank_info = {
                         "provider": node.llm_provider,
                         "model": node.model_type

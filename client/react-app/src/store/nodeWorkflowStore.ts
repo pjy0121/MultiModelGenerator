@@ -10,7 +10,8 @@ import {
   NodeBasedWorkflowResponse,
   ValidationResult,
   KnowledgeBase,
-  AvailableModel
+  AvailableModel,
+  StreamChunk
 } from '../types';
 import { nodeBasedWorkflowAPI, workflowAPI } from '../services/api';
 import { validateNodeWorkflow, formatValidationErrors } from '../utils/nodeWorkflowValidation';
@@ -24,9 +25,8 @@ interface NodeWorkflowState {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   
-  // ReactFlow 뷰포트 상태
-  viewport: { x: number; y: number; zoom: number } | null;
-  currentViewport: { x: number; y: number; zoom: number };
+  // ReactFlow 뷰포트 상태 (중복 제거: viewport만 유지)
+  viewport: { x: number; y: number; zoom: number };
   isRestoring: boolean; // 복원 상태 플래그
   
   // 실행 상태
@@ -66,7 +66,7 @@ interface NodeWorkflowState {
   validateWorkflow: () => boolean;
   getValidationErrors: () => string[];
   
-  executeWorkflowStream: (onStreamUpdate: (data: any) => void) => Promise<void>;
+  executeWorkflowStream: (onStreamUpdate: (data: StreamChunk) => void) => Promise<void>;
   
   loadKnowledgeBases: () => Promise<void>;
   loadAvailableModels: (provider: LLMProvider) => Promise<void>;
@@ -144,8 +144,8 @@ const createWorkflowNode = (nodeType: NodeType, position: { x: number; y: number
 // 초기 노드 생성 함수
 const createInitialNodes = (): WorkflowNode[] => {
   return [
-    createWorkflowNode(NodeType.INPUT, { x: 400, y: 100 }),    // 상단 중앙 (더 위로)
-    createWorkflowNode(NodeType.OUTPUT, { x: 400, y: 550 })   // 하단 중앙
+    createWorkflowNode(NodeType.INPUT, { x: 400, y: 50 }),    // 상단 중앙 (더 위로)
+    createWorkflowNode(NodeType.OUTPUT, { x: 400, y: 850 })   // 하단 중앙
   ];
 };
 
@@ -158,8 +158,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     nodes: initialNodes,
     edges: [],
     
-    viewport: null,
-    currentViewport: { x: 0, y: 0, zoom: 1 },
+    viewport: { x: 0, y: 0, zoom: 1 },
     isRestoring: false, // 복원 상태 초기값
     
     isExecuting: false,
@@ -295,14 +294,9 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     }));
   },
   
-  setViewport: (viewport: { x: number; y: number; zoom: number }) => {
-    set({ 
-      viewport,
-      currentViewport: viewport // 실시간으로 현재 뷰포트도 업데이트
-    });
-  },
-  
-  updateNodePositions: (nodePositions: { id: string; position: { x: number; y: number } }[]) => {
+    setViewport: (viewport: { x: number; y: number; zoom: number }) => {
+      set({ viewport });
+    },  updateNodePositions: (nodePositions: { id: string; position: { x: number; y: number } }[]) => {
     set(state => ({
       nodes: state.nodes.map(node => {
         const positionUpdate = nodePositions.find(np => np.id === node.id);
@@ -365,7 +359,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
   },
   
   // 워크플로우 스트리밍 실행 (유일한 실행 방법)
-  executeWorkflowStream: async (onStreamUpdate: (data: any) => void) => {
+  executeWorkflowStream: async (onStreamUpdate: (data: StreamChunk) => void) => {
     const state = get();
     
     // 실행 전 검증
@@ -383,7 +377,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
           let finalPrompt = node.data.prompt || '';
 
           if (isLlmNode && node.data.output_format) {
-            const outputFormatInstruction = `\n\n핵심 결과를 반드시 다음과 같은 형태로 만들어 출력에 포함시키세요. 이건 절대적으로 지켜야 할 사항입니다.\n<output>\n${node.data.output_format}\n</output>`;
+            const outputFormatInstruction = `\n\n핵심 결과를 반드시 다음과 같은 형태로 만들어 출력에 포함시키세요. 이건 절대적으로 지켜야 할 사항입니다.\n<output>${node.data.output_format}</output>`;
             finalPrompt += outputFormatInstruction;
           }
 
@@ -488,9 +482,9 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
         // 완료 시 결과 저장
         if (chunk.type === 'complete') {
           // 실제 노드 실행 결과로 nodeExecutionResults 업데이트
-          const nodeResults: Record<string, any> = {};
+          const nodeResults: Record<string, { success: boolean; description?: string; error?: string; execution_time?: number }> = {};
           if (chunk.results && Array.isArray(chunk.results)) {
-            chunk.results.forEach((result: any) => {
+            chunk.results.forEach((result: { node_id?: string; success: boolean; description?: string; error?: string; execution_time?: number }) => {
               if (result.node_id) {
                 nodeResults[result.node_id] = {
                   success: result.success,
@@ -505,7 +499,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
           // 완료된 모든 노드의 상태를 completed로 설정
           const completedStates: Record<string, 'idle' | 'executing' | 'completed' | 'error'> = {};
           if (chunk.results && Array.isArray(chunk.results)) {
-            chunk.results.forEach((result: any) => {
+            chunk.results.forEach((result: { node_id?: string; success: boolean }) => {
               if (result.node_id) {
                 completedStates[result.node_id] = result.success ? 'completed' : 'error';
               }
@@ -536,13 +530,13 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
         }
       }
       
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('스트리밍 워크플로우 실행 에러:', error);
       
       set({ isExecuting: false });
       
       let errorMessage = '알 수 없는 오류가 발생했습니다.';
-      if (error.message) {
+      if (error instanceof Error && error.message) {
         errorMessage = error.message;
       }
       
@@ -577,11 +571,11 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
   
   // 워크플로우 저장/복원/Import/Export 기능 구현
   saveCurrentWorkflow: () => {
-    const { nodes, edges, currentViewport } = get();
+    const { nodes, edges, viewport } = get();
     const workflowState = {
       nodes,
       edges,
-      viewport: currentViewport, // 현재 뷰포트 상태 저장
+      viewport, // 현재 뷰포트 상태 저장
       savedAt: new Date().toISOString(),
       version: '1.1' // 버전 업데이트
     };
@@ -606,7 +600,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
         nodes: workflowState.nodes || [],
         edges: workflowState.edges || [],
         viewport: savedViewport,
-        currentViewport: savedViewport, // currentViewport도 동일하게 설정
+        // viewport는 이미 위에서 설정됨
         // 실행 관련 상태는 초기화
         isExecuting: false,
         executionResult: null,
@@ -638,7 +632,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       nodes: initialNodes,
       edges: [],
       viewport: initialViewport,
-      currentViewport: initialViewport, // currentViewport도 초기화
+      // viewport는 이미 위에서 설정됨
       // 실행 관련 상태 초기화
       isExecuting: false,
       executionResult: null,
@@ -651,14 +645,14 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
   },
   
   exportToJSON: () => {
-    const { nodes, edges, currentViewport } = get();
+    const { nodes, edges, viewport } = get();
     const exportData = {
       version: '1.1', // 버전 업데이트
       exportedAt: new Date().toISOString(),
       workflow: {
         nodes,
         edges,
-        viewport: currentViewport,
+        viewport,
       }
     };
     
@@ -700,7 +694,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
         nodes,
         edges,
         viewport,
-        currentViewport: viewport,
+        // viewport는 이미 설정됨
         // 실행 관련 상태는 초기화
         isExecuting: false,
         executionResult: null,

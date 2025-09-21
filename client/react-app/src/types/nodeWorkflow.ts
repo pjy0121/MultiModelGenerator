@@ -57,6 +57,23 @@ export interface NodeBasedExecutionResult {
   error?: string;
 }
 
+// 스트림 데이터 타입
+export interface StreamChunk {
+  type: 'node_start' | 'node_streaming' | 'node_complete' | 'workflow_complete';
+  node_id?: string;
+  content?: string;
+  results?: NodeBasedExecutionResult[];
+}
+
+// 워크플로우 실행 요청 타입
+export interface WorkflowExecutionRequest {
+  workflow: {
+    nodes: any[];
+    edges: WorkflowEdge[];
+  };
+  use_rerank: boolean;
+}
+
 export interface NodeBasedWorkflowResponse {
   success: boolean;
   results: NodeBasedExecutionResult[];

@@ -1,5 +1,5 @@
 from typing import List, Dict
-from ..core.config import Config
+
 from .llm_factory import LLMFactory
 import json
 
@@ -24,7 +24,7 @@ class ReRanker:
 
         try:
             # LLM 호출
-            response = await self.client.generate(self.model, prompt)
+            response = await self.client.generate(prompt, self.model)
             
             # LLM 응답 파싱
             reranked_indices = self._parse_rerank_response(response, len(documents))
