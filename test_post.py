@@ -18,7 +18,7 @@ def replace_values(template, provider, model, input_text):
     for node in new_data["workflow"]["nodes"]:
         if node.get("llm_provider") == "google":
             node["llm_provider"] = provider
-        if node.get("model_type") == "gemini-1.5-flash":
+        if node.get("model_type") == "gemini-2.5-pro":
             node["model_type"] = model
         if node.get("content") == "Sanitize":
             node["content"] = input_text

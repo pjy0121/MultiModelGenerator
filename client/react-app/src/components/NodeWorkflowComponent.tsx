@@ -72,11 +72,9 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = memo(
   const getExecutingStyle = useCallback(() => {
     if (isExecuting) {
       return {
-        background: 'linear-gradient(45deg, #e6f7ff, #bae7ff)', // 파란색 그라데이션 배경
-        border: `3px solid #1890ff`, // 두꺼운 파란색 테두리
-        animation: 'pulse 2s infinite', // 펄스 애니메이션
-        transform: 'scale(1.05)', // 살짝 확대
-        boxShadow: '0 4px 12px rgba(24, 144, 255, 0.3)', // 파란색 그림자
+        background: 'linear-gradient(45deg, #fff1f0, #ffccc7)', // 빨간색 그라데이션 배경
+        border: `3px solid #ff4d4f`, // 두꺼운 빨간색 테두리
+        boxShadow: '0 0 20px rgba(255, 77, 79, 0.6), 0 0 40px rgba(255, 77, 79, 0.3)', // 고정된 빨간색 glow
         zIndex: 1000 // 다른 노드들보다 위에 표시
       };
     }
@@ -133,7 +131,7 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = memo(
             boxShadow: selected 
               ? `0 0 0 2px ${colors.border}40` 
               : isExecuting 
-                ? '0 4px 12px rgba(24, 144, 255, 0.3)' 
+                ? '0 4px 12px rgba(255, 77, 79, 0.3)' 
                 : '0 2px 8px rgba(0,0,0,0.1)'
           }}
           title={
@@ -145,7 +143,7 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = memo(
                 {isExecuting && (
                   <LoadingOutlined 
                     style={{ 
-                      color: '#1890ff', 
+                      color: '#ff4d4f', 
                       fontSize: 14,
                       animation: 'spin 1s linear infinite'  
                     }} 
@@ -154,10 +152,10 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = memo(
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <Tag 
-                  color={isExecuting ? 'processing' : colors.tag} 
+                  color={colors.tag} 
                   style={{ margin: 0, fontSize: 10 }}
                 >
-                  {isExecuting ? 'RUNNING' : data.nodeType.replace('-node', '')}
+                  {data.nodeType.replace('-node', '')}
                 </Tag>
                 {data.nodeType !== NodeType.OUTPUT && (
                   <div>

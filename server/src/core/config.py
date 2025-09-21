@@ -33,12 +33,13 @@ VECTOR_DB_CONFIG = {
     "chunk_size": 6000,
     "chunk_overlap": 100,
     "similarity_threshold": 0.85,
+    "search_timeout": 10.0,  # 검색 타임아웃 (초)
     "search_intensity_map": {
-        "very_low":  {"init": 10, "final": 5},
-        "low":       {"init": 15, "final": 7},
-        "medium":    {"init": 20, "final": 10},
-        "high":      {"init": 30, "final": 15},
-        "very_high": {"init": 50, "final": 20}
+        "very_low":  {"init": 8, "final": 3},
+        "low":       {"init": 12, "final": 5},
+        "medium":    {"init": 15, "final": 7},   # 기본값 더 가볍게
+        "high":      {"init": 25, "final": 12},
+        "very_high": {"init": 40, "final": 18}
     }
 }
 

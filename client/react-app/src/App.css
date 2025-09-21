@@ -40,18 +40,15 @@ html, body {
   }
 }
 
-/* 실행 중인 노드 애니메이션 */
+/* 실행 중인 노드 애니메이션 - 크기 변화 없이 glow만 */
 @keyframes pulse {
   0% {
-    transform: scale(1.05);
     opacity: 1;
   }
   50% {
-    transform: scale(1.08);
     opacity: 0.9;
   }
   100% {
-    transform: scale(1.05);
     opacity: 1;
   }
 }
@@ -100,21 +97,7 @@ html, body {
   }
 }
 
-/* 기존 pulse 애니메이션 (레거시 지원용) */
-@keyframes pulse {
-  0% {
-    transform: scale(1);
-    box-shadow: 0 0 15px 3px rgba(255, 77, 79, 0.8);
-  }
-  50% {
-    transform: scale(1.05);
-    box-shadow: 0 0 20px 5px rgba(255, 77, 79, 1);
-  }
-  100% {
-    transform: scale(1);
-    box-shadow: 0 0 15px 3px rgba(255, 77, 79, 0.8);
-  }
-}
+
 
 @media (prefers-reduced-motion: no-preference) {
   a:nth-of-type(2) .logo {
