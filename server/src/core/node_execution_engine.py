@@ -173,6 +173,9 @@ class NodeExecutionEngine:
             # 초기화
             self._reset_state()
             
+            # workflow nodes 저장 (context-node 구분을 위해)
+            self.workflow_nodes = workflow.nodes
+            
             # 통합 노드 실행자는 재생성할 필요 없음 (의존성 주입으로 관리됨)
             
             # 의존성 그래프 구축
@@ -270,6 +273,7 @@ class NodeExecutionEngine:
         self.node_outputs.clear()
         self.execution_results.clear()
         self.execution_order.clear()  # 실행 순서도 초기화
+        self.workflow_nodes = []  # workflow nodes 초기화
     
     def _build_dependency_graph(self, workflow: WorkflowDefinition) -> Dict[str, List[str]]:
         """의존성 그래프 구축 (각 노드의 pre-nodes 맵핑)"""
@@ -323,13 +327,40 @@ class NodeExecutionEngine:
         """단일 노드 실행 - NodeExecutor 사용"""
         
         try:
-            # pre-node들의 출력 수집
-            pre_outputs = [self.node_outputs.get(pre_id, "") for pre_id in pre_node_ids]
+            # pre-node들을 context-node와 일반 노드로 분리
+            context_node_ids = []
+            regular_pre_node_ids = []
             
-            # NodeExecutor를 통한 실행
-            result = await self.node_executor.execute_node(
-                node, pre_outputs, rerank_enabled
-            )
+            for pre_id in pre_node_ids:
+                pre_node = None
+                # workflow에서 pre_node 찾기
+                for wf_node in getattr(self, 'workflow_nodes', []):
+                    if wf_node.id == pre_id:
+                        pre_node = wf_node
+                        break
+                
+                if pre_node and pre_node.type == "context-node":
+                    context_node_ids.append(pre_id)
+                else:
+                    regular_pre_node_ids.append(pre_id)
+            
+            # 각각의 출력 수집
+            context_outputs = [self.node_outputs.get(ctx_id, "") for ctx_id in context_node_ids]
+            pre_outputs = [self.node_outputs.get(pre_id, "") for pre_id in regular_pre_node_ids]
+            
+            # context가 있는 LLM 노드인지 확인
+            if (node.type in ["generation-node", "ensemble-node", "validation-node"] 
+                and context_outputs and hasattr(self.node_executor, 'execute_node_with_context')):
+                # context-aware 실행
+                result = await self.node_executor.execute_node_with_context(
+                    node, pre_outputs, context_outputs, rerank_enabled
+                )
+            else:
+                # 기존 방식으로 실행 (모든 pre_outputs 합쳐서)
+                all_pre_outputs = pre_outputs + context_outputs
+                result = await self.node_executor.execute_node(
+                    node, all_pre_outputs, rerank_enabled
+                )
             
             return result
             
@@ -362,6 +393,9 @@ class NodeExecutionEngine:
         try:
             # 초기화
             self._reset_state()
+            
+            # workflow nodes 저장 (context-node 구분을 위해)
+            self.workflow_nodes = workflow.nodes
             
             # 스트리밍 시작 알림
             yield {
@@ -505,23 +539,53 @@ class NodeExecutionEngine:
             
             final_result = None
             
-            # pre-node 출력들 수집
-            pre_outputs = []
+            # pre-node들을 context-node와 일반 노드로 분리
+            context_node_ids = []
+            regular_pre_node_ids = []
+            
             for edge in workflow.edges:
                 if edge.target == node.id and edge.source in self.node_outputs:
-                    pre_outputs.append(self.node_outputs[edge.source])
+                    # workflow nodes에서 source node 찾기
+                    source_node = None
+                    for wf_node in workflow.nodes:
+                        if wf_node.id == edge.source:
+                            source_node = wf_node
+                            break
+                    
+                    if source_node and source_node.type == "context-node":
+                        context_node_ids.append(edge.source)
+                    else:
+                        regular_pre_node_ids.append(edge.source)
+            
+            # 각각의 출력 수집
+            context_outputs = [self.node_outputs[ctx_id] for ctx_id in context_node_ids]
+            pre_outputs = [self.node_outputs[pre_id] for pre_id in regular_pre_node_ids]
 
-            async for chunk in self.node_executor.execute_node_stream(node, pre_outputs, rerank_enabled):
-                if chunk["type"] == "stream":
-                    accumulated_output += chunk["content"] 
-                    yield chunk
-                elif chunk["type"] == "result":
-                    # 텍스트 노드나 LLM 노드의 최종 결과
-                    final_result = chunk
-                elif chunk["type"] == "parsed_result":
-                    # parsed_result 타입에서는 전체 chunk를 final_result로 사용
-                    final_result = chunk
-                    parsed_result = chunk.get("output")
+            # context가 있는 LLM 노드인지 확인하고 적절한 스트리밍 메서드 호출
+            if (node.type in ["generation-node", "ensemble-node", "validation-node"] 
+                and context_outputs and hasattr(self.node_executor, 'execute_node_stream_with_context')):
+                # context-aware 스트리밍 실행
+                async for chunk in self.node_executor.execute_node_stream_with_context(node, pre_outputs, context_outputs, rerank_enabled):
+                    if chunk["type"] == "stream":
+                        accumulated_output += chunk["content"] 
+                        yield chunk
+                    elif chunk["type"] == "result":
+                        final_result = chunk
+                    elif chunk["type"] == "parsed_result":
+                        final_result = chunk
+                        parsed_result = chunk.get("output")
+            else:
+                # 기존 방식으로 스트리밍 실행 (모든 pre_outputs 합쳐서)
+                all_pre_outputs = pre_outputs + context_outputs
+                async for chunk in self.node_executor.execute_node_stream(node, all_pre_outputs, rerank_enabled):
+                    if chunk["type"] == "stream":
+                        accumulated_output += chunk["content"] 
+                        yield chunk
+                    elif chunk["type"] == "result":
+                        final_result = chunk
+                    elif chunk["type"] == "parsed_result":
+                        final_result = chunk
+                        parsed_result = chunk.get("output")
             
             # 최종 결과 반환 (execute_node_stream에서 이미 받은 결과 사용)
             if final_result:

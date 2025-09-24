@@ -1,6 +1,5 @@
 import { Layout, Typography } from 'antd';
 import { useEffect } from 'react';
-import { LLMProvider } from './types';
 import { NodeExecutionResultPanel } from './components/NodeExecutionResultPanel';
 import { NodeWorkflowCanvas } from './components/NodeWorkflowCanvas';
 import { useNodeWorkflowStore } from './store/nodeWorkflowStore';
@@ -12,10 +11,8 @@ const { Title } = Typography;
 function App() {
   useEffect(() => {
     const store = useNodeWorkflowStore.getState();
+    // 지식베이스만 미리 로드하고, 모델은 필요할 때 로드
     store.loadKnowledgeBases();
-    store.loadAvailableModels(LLMProvider.GOOGLE);
-    store.loadAvailableModels(LLMProvider.OPENAI);
-    store.loadAvailableModels(LLMProvider.INTERNAL);
   }, []);
 
   return (

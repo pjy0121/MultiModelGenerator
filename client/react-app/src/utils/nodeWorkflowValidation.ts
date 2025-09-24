@@ -51,27 +51,63 @@ export function isConnectionAllowed(
     return { allowed: false, reason: "출력 노드는 연결의 시작점이 될 수 없습니다." };
   }
   
-  // 규칙 3: ensemble-node가 아닌 노드는 여러 pre-node를 가질 수 없음
-  if (targetType !== NodeType.ENSEMBLE && targetPreNodes.length >= 1) {
-    return { allowed: false, reason: "앙상블 노드가 아닌 노드는 하나의 입력만 가질 수 있습니다." };
+  // 규칙 3: pre-node 개수 제한 검사
+  if (targetType !== NodeType.ENSEMBLE && targetType !== NodeType.OUTPUT && targetPreNodes.length >= 1) {
+    // 현재 pre-node들 분석
+    const contextPreNodes = targetPreNodes.filter(edge => {
+      const preNode = _nodes.find(n => n.id === edge.source);
+      return preNode?.data.nodeType === NodeType.CONTEXT;
+    });
+    
+    const inputPreNodes = targetPreNodes.filter(edge => {
+      const preNode = _nodes.find(n => n.id === edge.source);
+      return preNode?.data.nodeType === NodeType.INPUT;
+    });
+    
+    const otherPreNodes = targetPreNodes.filter(edge => {
+      const preNode = _nodes.find(n => n.id === edge.source);
+      return preNode?.data.nodeType !== NodeType.CONTEXT && preNode?.data.nodeType !== NodeType.INPUT;
+    });
+    
+    // context-node 최대 1개 제한
+    if (sourceType === NodeType.CONTEXT && contextPreNodes.length >= 1) {
+      return { allowed: false, reason: "context-node는 최대 1개만 연결할 수 있습니다." };
+    }
+    
+    // 노드 타입별 제한
+    if (targetType === NodeType.GENERATION || targetType === NodeType.VALIDATION) {
+      // generation-node, validation-node: input-node 최대 1개 + context-node 최대 1개
+      if (sourceType === NodeType.INPUT && inputPreNodes.length >= 1) {
+        return { allowed: false, reason: `${targetType}는 input-node를 최대 1개만 연결받을 수 있습니다.` };
+      }
+      if (sourceType !== NodeType.INPUT && sourceType !== NodeType.CONTEXT) {
+        return { allowed: false, reason: `${targetType}는 input-node와 context-node에서만 연결받을 수 있습니다.` };
+      }
+    } else {
+      // 다른 노드들: context-node 제외하고 일반 pre-node 1개만
+      if (sourceType !== NodeType.CONTEXT && (inputPreNodes.length + otherPreNodes.length) >= 1) {
+        return { allowed: false, reason: "context-node를 제외한 pre-node는 최대 1개만 연결할 수 있습니다." };
+      }
+    }
   }
   
-  // 규칙 4: input-node가 아닌 노드는 여러 post-node를 가질 수 없음
-  if (sourceType !== NodeType.INPUT && sourcePostNodes.length >= 1) {
-    return { allowed: false, reason: "입력 노드가 아닌 노드는 하나의 출력만 가질 수 있습니다." };
+  // 규칙 4: input-node와 context-node가 아닌 노드는 여러 post-node를 가질 수 없음
+  if (sourceType !== NodeType.INPUT && sourceType !== NodeType.CONTEXT && sourcePostNodes.length >= 1) {
+    return { allowed: false, reason: "입력 노드와 컨텍스트 노드가 아닌 노드는 하나의 출력만 가질 수 있습니다." };
   }
   
-  // 규칙 5: generation-node는 input-node에서만 입력받을 수 있음
-  if (targetType === NodeType.GENERATION && sourceType !== NodeType.INPUT) {
-    return { allowed: false, reason: "생성 노드는 입력 노드에서만 연결받을 수 있습니다." };
+  // 규칙 5: generation-node는 input-node와 context-node에서만 입력받을 수 있음
+  if (targetType === NodeType.GENERATION && sourceType !== NodeType.INPUT && sourceType !== NodeType.CONTEXT) {
+    return { allowed: false, reason: "생성 노드는 입력 노드와 컨텍스트 노드에서만 연결받을 수 있습니다." };
   }
   
   // 규칙 6: 특정 노드 타입 간 연결 허용 규칙
   const allowedConnections: Record<NodeType, NodeType[]> = {
-    [NodeType.INPUT]: [NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION, NodeType.OUTPUT],
+    [NodeType.INPUT]: [NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION, NodeType.CONTEXT, NodeType.OUTPUT],
     [NodeType.GENERATION]: [NodeType.ENSEMBLE, NodeType.VALIDATION, NodeType.OUTPUT],
     [NodeType.ENSEMBLE]: [NodeType.VALIDATION, NodeType.ENSEMBLE, NodeType.OUTPUT],
     [NodeType.VALIDATION]: [NodeType.VALIDATION, NodeType.ENSEMBLE, NodeType.OUTPUT],
+    [NodeType.CONTEXT]: [NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION, NodeType.CONTEXT, NodeType.OUTPUT], // context는 input-node 제외한 모든 노드에 연결 가능
     [NodeType.OUTPUT]: [] // output은 source가 될 수 없음
   };
   
@@ -113,6 +149,7 @@ export function validateNodeWorkflow(nodes: WorkflowNode[], edges: WorkflowEdge[
     [NodeType.GENERATION]: 0,
     [NodeType.ENSEMBLE]: 0,
     [NodeType.VALIDATION]: 0,
+    [NodeType.CONTEXT]: 0,
     [NodeType.OUTPUT]: 0
   };
   
@@ -149,9 +186,31 @@ export function validateNodeWorkflow(nodes: WorkflowNode[], edges: WorkflowEdge[
         break;
         
       case NodeType.GENERATION:
-        // generation-node: 정확히 1개의 pre-node, 1개 이상의 post-node
-        if (preList.length !== 1) {
-          errors.push(`generation-node '${node.data.label}'는 정확히 1개의 pre-node가 필요합니다.`);
+        // generation-node: input-node 최대 1개 + context-node 최대 1개, 1개 이상의 post-node
+        const genContextPreNodes = preList.filter(preNodeId => {
+          const preNode = nodes.find(n => n.id === preNodeId);
+          return preNode?.data.nodeType === NodeType.CONTEXT;
+        });
+        const genInputPreNodes = preList.filter(preNodeId => {
+          const preNode = nodes.find(n => n.id === preNodeId);
+          return preNode?.data.nodeType === NodeType.INPUT;
+        });
+        const genOtherPreNodes = preList.filter(preNodeId => {
+          const preNode = nodes.find(n => n.id === preNodeId);
+          return preNode?.data.nodeType !== NodeType.CONTEXT && preNode?.data.nodeType !== NodeType.INPUT;
+        });
+        
+        if (preList.length === 0) {
+          errors.push(`generation-node '${node.data.label}'는 최소 1개의 pre-node가 필요합니다.`);
+        }
+        if (genContextPreNodes.length > 1) {
+          errors.push(`generation-node '${node.data.label}'는 context-node를 최대 1개만 가질 수 있습니다.`);
+        }
+        if (genInputPreNodes.length > 1) {
+          errors.push(`generation-node '${node.data.label}'는 input-node를 최대 1개만 가질 수 있습니다.`);
+        }
+        if (genOtherPreNodes.length > 0) {
+          errors.push(`generation-node '${node.data.label}'는 input-node와 context-node 외의 pre-node는 허용되지 않습니다.`);
         }
         if (postList.length === 0) {
           errors.push(`generation-node '${node.data.label}'는 최소 1개의 post-node가 필요합니다.`);
@@ -169,9 +228,35 @@ export function validateNodeWorkflow(nodes: WorkflowNode[], edges: WorkflowEdge[
         break;
         
       case NodeType.VALIDATION:
-        // validation-node: 1개의 pre-node, 1개 이상의 post-node (연쇄 가능)
-        if (preList.length !== 1) {
-          errors.push(`validation-node '${node.data.label}'는 정확히 1개의 pre-node가 필요합니다.`);
+        // validation-node: input-node, generation-node, ensemble-node, validation-node, context-node로부터 입력 가능
+        // context-node는 최대 1개, 다른 노드들은 최대 1개 (context-node 제외)
+        const valContextPreNodes = preList.filter(preNodeId => {
+          const preNode = nodes.find(n => n.id === preNodeId);
+          return preNode?.data.nodeType === NodeType.CONTEXT;
+        });
+        const valOtherPreNodes = preList.filter(preNodeId => {
+          const preNode = nodes.find(n => n.id === preNodeId);
+          const nodeType = preNode?.data.nodeType;
+          return nodeType !== NodeType.CONTEXT && 
+                 nodeType !== NodeType.OUTPUT; // output-node만 제외
+        });
+        
+        if (preList.length === 0) {
+          errors.push(`validation-node '${node.data.label}'는 최소 1개의 pre-node가 필요합니다.`);
+        }
+        if (valContextPreNodes.length > 1) {
+          errors.push(`validation-node '${node.data.label}'는 context-node를 최대 1개만 가질 수 있습니다.`);
+        }
+        if (valOtherPreNodes.length > 1) {
+          errors.push(`validation-node '${node.data.label}'는 context-node를 제외한 pre-node를 최대 1개만 가질 수 있습니다.`);
+        }
+        // output-node로부터의 연결만 금지
+        const valOutputPreNodes = preList.filter(preNodeId => {
+          const preNode = nodes.find(n => n.id === preNodeId);
+          return preNode?.data.nodeType === NodeType.OUTPUT;
+        });
+        if (valOutputPreNodes.length > 0) {
+          errors.push(`validation-node '${node.data.label}'는 output-node로부터 입력을 받을 수 없습니다.`);
         }
         if (postList.length === 0) {
           errors.push(`validation-node '${node.data.label}'는 최소 1개의 post-node가 필요합니다.`);
@@ -179,23 +264,76 @@ export function validateNodeWorkflow(nodes: WorkflowNode[], edges: WorkflowEdge[
         break;
         
       case NodeType.OUTPUT:
-        // output-node: 1개의 pre-node, post-node 없어야 함
-        if (preList.length !== 1) {
-          errors.push(`output-node '${node.data.label}'는 정확히 1개의 pre-node가 필요합니다.`);
+        // output-node: 여러 pre-node 허용 (ensemble처럼 동작), post-node 없어야 함
+        if (preList.length === 0) {
+          errors.push(`output-node '${node.data.label}'는 최소 1개의 pre-node가 필요합니다.`);
         }
         if (postList.length > 0) {
           errors.push(`output-node '${node.data.label}'는 post-node를 가질 수 없습니다.`);
         }
         break;
+        
+      case NodeType.CONTEXT:
+        // context-node: pre-node 없어도 됨 (독립적으로 지식 베이스 검색), post-node는 필수
+        if (postList.length === 0) {
+          errors.push(`context-node '${node.data.label}'는 최소 1개의 post-node가 필요합니다.`);
+        }
+        break;
     }
   });
   
-  // 추가 규칙: ensemble-node가 아닌 노드는 여러 pre-node를 가질 수 없음
+  // 추가 규칙: pre-node 개수 제한
+  // - output-node, ensemble-node: 제한 없음
+  // - generation-node, validation-node: input-node 최대 1개 + context-node 최대 1개
+  // - 다른 노드들: 일반 pre-node 1개 + context-node 최대 1개
   nodes.forEach(node => {
-    if (node.data.nodeType !== NodeType.ENSEMBLE && node.data.nodeType !== NodeType.INPUT) {
-      const preList = preNodes.get(node.id) || [];
-      if (preList.length > 1) {
-        errors.push(`${node.data.nodeType} '${node.data.label}'는 여러 pre-node를 가질 수 없습니다. ensemble-node만 가능합니다.`);
+    const preList = preNodes.get(node.id) || [];
+    
+    if (node.data.nodeType !== NodeType.ENSEMBLE && node.data.nodeType !== NodeType.INPUT && node.data.nodeType !== NodeType.OUTPUT) {
+      // context-node와 다른 pre-node들을 분리
+      const contextPreNodes: string[] = [];
+      const inputPreNodes: string[] = [];
+      const otherPreNodes: string[] = [];
+      
+      preList.forEach(preNodeId => {
+        const preNode = nodes.find(n => n.id === preNodeId);
+        if (preNode) {
+          if (preNode.data.nodeType === NodeType.CONTEXT) {
+            contextPreNodes.push(preNodeId);
+          } else if (preNode.data.nodeType === NodeType.INPUT) {
+            inputPreNodes.push(preNodeId);
+          } else {
+            otherPreNodes.push(preNodeId);
+          }
+        }
+      });
+      
+      // context-node는 최대 1개만 허용
+      if (contextPreNodes.length > 1) {
+        errors.push(`${node.data.nodeType} '${node.data.label}'는 context-node를 최대 1개만 pre-node로 가질 수 있습니다.`);
+      }
+      
+      // 노드 타입별 추가 제한
+      if (node.data.nodeType === NodeType.GENERATION) {
+        // generation-node: input-node 최대 1개 + context-node 최대 1개만
+        if (inputPreNodes.length > 1) {
+          errors.push(`${node.data.nodeType} '${node.data.label}'는 input-node를 최대 1개만 pre-node로 가질 수 있습니다.`);
+        }
+        if (otherPreNodes.length > 0) {
+          errors.push(`${node.data.nodeType} '${node.data.label}'는 input-node와 context-node 외의 pre-node는 허용되지 않습니다.`);
+        }
+      } else if (node.data.nodeType === NodeType.VALIDATION) {
+        // validation-node: 다른 LLM 노드들로부터 입력 가능, context-node 제외한 pre-node 최대 1개
+        const totalNonContext = inputPreNodes.length + otherPreNodes.length;
+        if (totalNonContext > 1) {
+          errors.push(`${node.data.nodeType} '${node.data.label}'는 context-node를 제외한 pre-node를 최대 1개만 가질 수 있습니다.`);
+        }
+      } else {
+        // 다른 노드들: context-node 제외하고 일반 pre-node 1개만
+        const totalNonContext = inputPreNodes.length + otherPreNodes.length;
+        if (totalNonContext > 1) {
+          errors.push(`${node.data.nodeType} '${node.data.label}'는 context-node를 제외한 pre-node를 최대 1개만 가질 수 있습니다.`);
+        }
       }
     }
   });

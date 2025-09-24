@@ -25,6 +25,7 @@ import {
   RobotOutlined,
   BranchesOutlined,
   CheckCircleOutlined,
+  SearchOutlined,
   SaveOutlined,
   ReloadOutlined,
   ClearOutlined,
@@ -50,10 +51,10 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
     edges: storeEdges, 
     viewport, // 스토어의 뷰포트 상태
     isRestoring, // 복원 상태
+    selectedNodeId, // 선택된 노드 ID
     addEdge: addStoreEdge,
     removeEdge,
     removeNode,
-    // viewport 상태는 viewport로 통합됨
     
     // 노드 추가와 워크플로우 관리 함수들
     addNode,
@@ -66,6 +67,10 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
     updateNodePositions,
     executeWorkflowStream, // 워크플로우 스트리밍 실행 함수
     isExecuting, // 실행 상태
+    
+    // 노드 선택 관리
+    setSelectedNodeId,
+    getSelectedNodeEdges,
     
     // 전역 Rerank 설정
     globalUseRerank,
@@ -116,7 +121,15 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
 
   // ReactFlow용 상태 (스토어와 동기화)
   const [nodes, setNodes, onNodesChange] = useNodesState(storeNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(storeEdges);
+  const [, setEdges, onEdgesChange] = useEdgesState(storeEdges); // edges는 styledEdges 사용
+  
+  // 노드에 selected 상태 추가
+  const nodesWithSelected = React.useMemo(() => {
+    return nodes.map(node => ({
+      ...node,
+      selected: node.id === selectedNodeId
+    }));
+  }, [nodes, selectedNodeId]);
 
   // 스토어의 뷰포트가 변경되면 ReactFlow에 적용 (복원 시에만)
   useEffect(() => {
@@ -135,6 +148,48 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
 
   // 메모이제이션으로 불필요한 재계산 방지
   const memoizedNodeTypes = React.useMemo(() => nodeTypes, []);
+  
+  // 선택된 노드의 edges를 계산
+  const selectedNodeEdges = React.useMemo(() => {
+    if (!selectedNodeId) return [];
+    return storeEdges.filter(edge => 
+      edge.source === selectedNodeId || edge.target === selectedNodeId
+    );
+  }, [selectedNodeId, storeEdges]);
+
+  // 노드 클릭 핸들러
+  const onNodeClick = useCallback((_: React.MouseEvent, node: any) => {
+    setSelectedNodeId(node.id);
+  }, [setSelectedNodeId]);
+
+  // 캔버스 배경 클릭 시 선택 해제
+  const onPaneClick = useCallback(() => {
+    setSelectedNodeId(null);
+  }, [setSelectedNodeId]);
+
+  // Edge 스타일링 - 선택된 노드와 연관된 edge는 애니메이션 적용
+  const styledEdges = React.useMemo(() => {
+    return storeEdges.map(edge => ({
+      ...edge,
+      animated: selectedNodeEdges.some(selectedEdge => selectedEdge.id === edge.id),
+      markerEnd: {
+        type: 'arrowclosed' as const,
+        width: 20,
+        height: 20,
+        color: selectedNodeEdges.some(selectedEdge => selectedEdge.id === edge.id) 
+          ? '#1890ff' // 선택된 노드의 edge는 파란색
+          : '#b1b1b7' // 기본 회색
+      },
+      style: {
+        stroke: selectedNodeEdges.some(selectedEdge => selectedEdge.id === edge.id) 
+          ? '#1890ff' // 선택된 노드의 edge는 파란색
+          : '#b1b1b7', // 기본 회색
+        strokeWidth: selectedNodeEdges.some(selectedEdge => selectedEdge.id === edge.id) 
+          ? 2 // 선택된 노드의 edge는 더 굵게
+          : 1
+      }
+    }));
+  }, [storeEdges, selectedNodeEdges]);
 
   // 뷰포트 변화 감지 및 상태 업데이트 (더 민감한 감지)
   const onViewportChange = useCallback((newViewport: any) => {
@@ -436,8 +491,8 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
       <div style={{ flex: 1, position: 'relative' }}>
 
         <ReactFlow
-          nodes={nodes}
-          edges={edges}
+          nodes={nodesWithSelected}
+          edges={styledEdges}
           onNodesChange={onNodesChangeWithFixed}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
@@ -446,6 +501,8 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
           onReconnect={onReconnect}
           onReconnectStart={onReconnectStart}
           onReconnectEnd={onReconnectEnd}
+          onNodeClick={onNodeClick}
+          onPaneClick={onPaneClick}
           nodeTypes={memoizedNodeTypes}
           onInit={onInit}
           onMoveEnd={onViewportChange}
@@ -464,6 +521,7 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
               <Button icon={<RobotOutlined />} onClick={() => addNode(NodeType.GENERATION, { x: 250, y: 105 })}>생성</Button>
               <Button icon={<BranchesOutlined />} onClick={() => addNode(NodeType.ENSEMBLE, { x: 250, y: 205 })}>앙상블</Button>
               <Button icon={<CheckCircleOutlined />} onClick={() => addNode(NodeType.VALIDATION, { x: 250, y: 305 })}>검증</Button>
+              <Button icon={<SearchOutlined />} onClick={() => addNode(NodeType.CONTEXT, { x: 250, y: 405 })}>컨텍스트</Button>
             </Space.Compact>
             
             <Space.Compact>

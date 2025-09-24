@@ -29,6 +29,9 @@ interface NodeWorkflowState {
   viewport: { x: number; y: number; zoom: number };
   isRestoring: boolean; // 복원 상태 플래그
   
+  // 선택된 노드 (edge 강조를 위해)
+  selectedNodeId: string | null;
+  
   // 실행 상태
   isExecuting: boolean;
   executionResult: NodeBasedWorkflowResponse | null;
@@ -67,6 +70,8 @@ interface NodeWorkflowState {
   getValidationErrors: () => string[];
   
   executeWorkflowStream: (onStreamUpdate: (data: StreamChunk) => void) => Promise<void>;
+  stopWorkflowExecution: () => void;
+  clearAllExecutionResults: () => void;
   
   loadKnowledgeBases: () => Promise<void>;
   loadAvailableModels: (provider: LLMProvider) => Promise<void>;
@@ -84,6 +89,10 @@ interface NodeWorkflowState {
   exportToJSON: () => void;
   importFromJSON: (jsonData: string) => boolean;
   setRestoring: (isRestoring: boolean) => void;
+  
+  // 노드 선택 관리
+  setSelectedNodeId: (nodeId: string | null) => void;
+  getSelectedNodeEdges: () => WorkflowEdge[];
 }
 
 // 노드 생성 헬퍼 함수
@@ -96,7 +105,8 @@ const createWorkflowNode = (nodeType: NodeType, position: { x: number; y: number
     [NodeType.GENERATION]: "생성 노드", 
     [NodeType.ENSEMBLE]: "앙상블 노드",
     [NodeType.VALIDATION]: "검증 노드",
-    [NodeType.OUTPUT]: "출력 노드"
+    [NodeType.OUTPUT]: "출력 노드",
+    [NodeType.CONTEXT]: "컨텍스트 노드"
   };
   
   const nodeData: NodeData = {
@@ -161,6 +171,9 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     viewport: { x: 0, y: 0, zoom: 1 },
     isRestoring: false, // 복원 상태 초기값
     
+    // output-node가 기본 선택됨
+    selectedNodeId: initialNodes.find(node => node.data.nodeType === NodeType.OUTPUT)?.id || null,
+    
     isExecuting: false,
     executionResult: null,
     
@@ -211,37 +224,18 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       nodes: get().nodes.concat(newNode)
     }));
     
-    // LLM 노드인 경우 Google 모델 목록을 로드하고 기본 모델 선택
+    // LLM 노드인 경우 기본 설정만 (모델 로드는 편집할 때만)
     if ([NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION].includes(nodeType)) {
-      try {
-        const state = get();
-        
-        // 모든 provider 모델 목록 로드
-        await state.loadAvailableModels(LLMProvider.GOOGLE);
-        await state.loadAvailableModels(LLMProvider.OPENAI);
-        await state.loadAvailableModels(LLMProvider.INTERNAL);
-        
-        // 모델 로드 완료 후 기본 모델 선택
-        const updatedState = get();
-        const googleModels = updatedState.availableModels.filter(
-          model => model.provider === LLMProvider.GOOGLE
-        );
-        
-        if (googleModels.length > 0) {
-          // 기본 모델 우선순위: gemini-2.0-flash-exp > 첫 번째 모델
-          const defaultModel = googleModels.find(m => m.value.includes('gemini-2.0-flash')) || googleModels[0];
-          
-          // 노드에 기본 모델 설정
-          state.updateNode(newNode.id, {
-            model_type: defaultModel.value
-          });
-          
-          message.success(`${nodeType} 노드가 생성되고 기본 모델(${defaultModel.label})이 선택되었습니다.`);
-        }
-      } catch (error) {
-        console.error('모델 로드 실패:', error);
-        message.warning(`${nodeType} 노드가 생성되었지만 모델 로드에 실패했습니다. 수동으로 모델을 선택해주세요.`);
-      }
+      message.success(`${nodeType} 노드가 생성되었습니다. 편집에서 모델을 선택해주세요.`);
+    }
+    
+    // Context 노드인 경우 기본 검색 강도 설정
+    if (nodeType === NodeType.CONTEXT) {
+      const state = get();
+      state.updateNode(newNode.id, {
+        search_intensity: SearchIntensity.MEDIUM
+      });
+      message.success(`${nodeType} 노드가 생성되었습니다. 지식 베이스를 선택해주세요.`);
     }
   },
   
@@ -363,9 +357,15 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
   executeWorkflowStream: async (onStreamUpdate: (data: StreamChunk) => void) => {
     const state = get();
     
-    // 실행 전 검증
+    // 실행 전 검증 - 구체적인 에러 메시지 제공
     if (!state.validateWorkflow()) {
-      throw new Error('워크플로우 검증 실패. 연결 규칙을 확인해주세요.');
+      const errors = state.getValidationErrors();
+      const detailedMessage = errors.length > 0 
+        ? `워크플로우 검증 실패:\n${errors.join('\n')}`
+        : '워크플로우 검증 실패. 연결 규칙을 확인해주세요.';
+      
+      console.error('워크플로우 검증 실패:', errors);
+      throw new Error(detailedMessage);
     }
 
     set({ isExecuting: true, executionResult: null });
@@ -403,7 +403,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
 
       const request = {
         workflow: workflowDefinition,
-        use_rerank: state.globalUseRerank,
+        rerank_enabled: state.globalUseRerank,
       };
       
       // 초기화 - 모든 노드를 idle 상태로 설정
@@ -427,6 +427,15 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       // 스트리밍 실행
       for await (const chunk of nodeBasedWorkflowAPI.executeNodeWorkflowStream(request)) {
         onStreamUpdate(chunk);
+        
+        // validation_error 타입 처리
+        if (chunk.type === 'validation_error') {
+          const validationErrors = chunk.errors || ['알 수 없는 검증 오류'];
+          const detailedMessage = `백엔드 워크플로우 검증 실패:\n${validationErrors.map((error: string, index: number) => `${index + 1}. ${error}`).join('\n')}`;
+          
+          console.error('백엔드 검증 실패:', validationErrors);
+          throw new Error(detailedMessage);
+        }
         
         // 노드별 상태 업데이트
         if (chunk.type === 'node_start' && chunk.node_id) {
@@ -527,14 +536,44 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
             isExecuting: false 
           }));
         } else if (chunk.type === 'error') {
-          set({ isExecuting: false });
+          // 에러 발생 시 실행 중이던 노드만 idle로 되돌리고, 완료된 노드는 유지
+          const state = get();
+          const updatedStates = { ...state.nodeExecutionStates };
+          
+          // 실행 중인 노드만 idle로 되돌림
+          Object.keys(updatedStates).forEach(nodeId => {
+            if (updatedStates[nodeId] === 'executing') {
+              updatedStates[nodeId] = 'idle';
+            }
+          });
+          
+          set({ 
+            isExecuting: false,
+            nodeExecutionStates: updatedStates
+            // 완료된 노드의 결과와 출력은 유지
+          });
         }
       }
       
     } catch (error: unknown) {
       console.error('스트리밍 워크플로우 실행 에러:', error);
       
-      set({ isExecuting: false });
+      // 에러 발생 시 실행 중이던 노드만 idle로 되돌리고, 완료된 노드는 유지
+      const state = get();
+      const updatedStates = { ...state.nodeExecutionStates };
+      
+      // 실행 중인 노드만 idle로 되돌림
+      Object.keys(updatedStates).forEach(nodeId => {
+        if (updatedStates[nodeId] === 'executing') {
+          updatedStates[nodeId] = 'idle';
+        }
+      });
+      
+      set({ 
+        isExecuting: false,
+        nodeExecutionStates: updatedStates
+        // 완료된 노드의 결과와 출력은 유지
+      });
       
       let errorMessage = '알 수 없는 오류가 발생했습니다.';
       if (error instanceof Error && error.message) {
@@ -543,6 +582,55 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       
       throw new Error(errorMessage);
     }
+  },
+
+  stopWorkflowExecution: () => {
+    // 워크플로우 실행을 수동으로 중단
+    const state = get();
+    if (!state.isExecuting) return;
+    
+    // 실행 중인 노드만 idle로 되돌리고, 완료된 노드는 유지
+    const updatedStates = { ...state.nodeExecutionStates };
+    
+    // 실행 중인 노드만 idle로 되돌림
+    Object.keys(updatedStates).forEach(nodeId => {
+      if (updatedStates[nodeId] === 'executing') {
+        updatedStates[nodeId] = 'idle';
+      }
+    });
+    
+    set({ 
+      isExecuting: false,
+      nodeExecutionStates: updatedStates
+      // 완료된 노드의 결과와 출력은 유지
+    });
+    
+    message.warning('워크플로우 실행이 중단되었습니다. 완료된 노드 결과는 유지됩니다.');
+  },
+
+  clearAllExecutionResults: () => {
+    // 모든 실행 결과를 완전히 초기화 (사용자가 의도적으로 선택)
+    const state = get();
+    const resetStates: Record<string, 'idle' | 'executing' | 'completed' | 'error'> = {};
+    const resetOutputs: Record<string, string> = {};
+    const resetResults: Record<string, { success: boolean; description?: string; error?: string; execution_time?: number; }> = {};
+    
+    state.nodes.forEach(node => {
+      resetStates[node.id] = 'idle';
+      resetOutputs[node.id] = '';
+      resetResults[node.id] = { success: false };
+    });
+    
+    set({ 
+      isExecuting: false,
+      nodeExecutionStates: resetStates,
+      nodeStreamingOutputs: resetOutputs,
+      nodeExecutionResults: resetResults,
+      nodeStartOrder: [],
+      executionResult: null
+    });
+    
+    message.success('모든 실행 결과가 초기화되었습니다.');
   },
   
   // 데이터 로딩
@@ -632,6 +720,19 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       set({ isRestoring: false }); // 에러 시 복원 상태 해제
       return false;
     }
+  },
+
+  // 노드 선택 관련 함수들
+  setSelectedNodeId: (nodeId: string | null) => set({ selectedNodeId: nodeId }),
+
+  // 선택된 노드와 연관된 edges 반환 (들어오는 edge + 나가는 edge)
+  getSelectedNodeEdges: () => {
+    const { selectedNodeId, edges } = get();
+    if (!selectedNodeId) return [];
+    
+    return edges.filter(edge => 
+      edge.source === selectedNodeId || edge.target === selectedNodeId
+    );
   },
   
   resetToInitialState: () => {

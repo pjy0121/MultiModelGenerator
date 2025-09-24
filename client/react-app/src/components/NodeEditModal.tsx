@@ -20,11 +20,12 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
   const { availableModels, loadAvailableModels, knowledgeBases, loadKnowledgeBases } = useNodeWorkflowStore();
   const [form] = Form.useForm();
   const isLLMNode = node ? [NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION].includes(node.data.nodeType) : false;
+  const isContextNode = node ? node.data.nodeType === NodeType.CONTEXT : false;
 
   // 모달이 열릴 때 폼 초기화 (node.id가 변경될 때만)
   useEffect(() => {
     if (node) {
-      if (isLLMNode) {
+      if (isLLMNode || isContextNode) {
         loadKnowledgeBases();
       }
 
@@ -148,6 +149,7 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
       [NodeType.GENERATION]: "생성 노드 편집",
       [NodeType.ENSEMBLE]: "앙상블 노드 편집",
       [NodeType.VALIDATION]: "검증 노드 편집",
+      [NodeType.CONTEXT]: "컨텍스트 노드 편집",
       [NodeType.OUTPUT]: "출력 노드 편집"
     };
     return titles[nodeType];
@@ -252,32 +254,6 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
                     </Option>
                   ))
                 }
-              </Select>
-            </Form.Item>
-
-            <Form.Item
-              label="지식 베이스"
-              name="knowledge_base"
-              tooltip="검색에 사용할 지식 베이스를 선택합니다. 선택하지 않으면 지식 베이스를 사용하지 않습니다."
-            >
-              <Select placeholder="지식 베이스 선택" allowClear>
-                {knowledgeBases.map((kb: KnowledgeBase) => (
-                  <Option key={kb.name} value={kb.name}>{kb.name}</Option>
-                ))}
-              </Select>
-            </Form.Item>
-
-            <Form.Item
-              label="검색 강도"
-              name="search_intensity"
-              tooltip="지식 베이스 검색 시 얼마나 많은 관련 문서를 찾을지 결정합니다."
-            >
-              <Select>
-                <Option value={SearchIntensity.VERY_LOW}>매우 낮음 (초기 10개, re-rank 5개)</Option>
-                <Option value={SearchIntensity.LOW}>낮음 (초기 15개, re-rank 7개)</Option>
-                <Option value={SearchIntensity.MEDIUM}>보통 (초기 20개, re-rank 10개)</Option>
-                <Option value={SearchIntensity.HIGH}>높음 (초기 30개, re-rank 15개)</Option>
-                <Option value={SearchIntensity.VERY_HIGH}>매우 높음 (초기 50개, re-rank 20개)</Option>
               </Select>
             </Form.Item>
 
@@ -388,6 +364,44 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
                   ))}
                 </div>
               </div>
+            </Form.Item>
+          </>
+        )}
+
+        {/* Context 노드 (context-node) */}
+        {isContextNode && (
+          <>
+            <Form.Item
+              label="지식 베이스"
+              name="knowledge_base"
+              rules={[{ required: true, message: '지식 베이스를 선택해주세요.' }]}
+              tooltip="검색에 사용할 지식 베이스를 선택합니다."
+            >
+              <Select placeholder="지식 베이스 선택">
+                {knowledgeBases.map((kb: KnowledgeBase) => (
+                  <Option key={kb.name} value={kb.name}>
+                    <Text strong>{kb.name}</Text>
+                    <Text type="secondary" style={{ fontSize: '12px', marginLeft: '8px' }}>
+                      ({kb.chunk_count}개 청크)
+                    </Text>
+                  </Option>
+                ))}
+              </Select>
+            </Form.Item>
+
+            <Form.Item
+              label="검색 강도"
+              name="search_intensity"
+              rules={[{ required: true, message: '검색 강도를 선택해주세요.' }]}
+              tooltip="벡터 DB 검색 시 얼마나 많은 관련 문서를 찾을지 결정합니다."
+            >
+              <Select>
+                <Option value={SearchIntensity.VERY_LOW}>매우 낮음 (초기 10개, re-rank 5개)</Option>
+                <Option value={SearchIntensity.LOW}>낮음 (초기 15개, re-rank 7개)</Option>
+                <Option value={SearchIntensity.MEDIUM}>보통 (초기 20개, re-rank 10개)</Option>
+                <Option value={SearchIntensity.HIGH}>높음 (초기 30개, re-rank 15개)</Option>
+                <Option value={SearchIntensity.VERY_HIGH}>매우 높음 (초기 50개, re-rank 20개)</Option>
+              </Select>
             </Form.Item>
           </>
         )}

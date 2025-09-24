@@ -159,7 +159,13 @@ async def execute_workflow_stream(request: WorkflowExecutionRequest):
             # 실행 전 검증
             validation_result = validator.validate_workflow(request.workflow)
             if not validation_result["valid"]:
-                yield f"data: {json.dumps({'type': 'error', 'message': f'Workflow validation failed: {validation_result['errors']}'})}\n\n"
+                error_details = {
+                    'type': 'validation_error',
+                    'message': 'Workflow validation failed',
+                    'errors': validation_result['errors'],
+                    'warnings': validation_result.get('warnings', [])
+                }
+                yield f"data: {json.dumps(error_details)}\n\n"
                 return
             
             # 스트리밍으로 워크플로우 실행
@@ -197,8 +203,8 @@ async def list_knowledge_bases():
         
         for name in kb_names:
             try:
-                # VectorStoreService의 새로운 메서드 사용
-                kb_info = vector_store_service.get_knowledge_base_info(name)
+                # VectorStoreService의 새로운 메서드 사용 (await 추가)
+                kb_info = await vector_store_service.get_knowledge_base_info(name)
                 
                 knowledge_bases.append(KnowledgeBase(
                     name=kb_info['name'],
