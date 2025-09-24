@@ -19,13 +19,13 @@ class SearchIntensity(str, Enum):
 
 class RerankInfo(BaseModel):
     """Rerank 설정 정보"""
-    provider: str = Field(..., description="rerank 제공자 (openai, google 등)")
+    provider: str = Field(..., description="rerank Provider (openai, google 등)")
     model: str = Field(..., description="rerank 모델명")
 
 class AvailableModel(BaseModel):
     """사용 가능한 LLM 모델"""
     label: str = Field(..., description="모델 이름")
-    provider: str = Field(..., description="LLM 제공자")
+    provider: str = Field(..., description="LLM Provider")
     disabled: bool = Field(default=False, description="비활성화 여부")
     model_type: str = Field(..., description="모델 타입 (실제 모델 ID)")
 
@@ -44,6 +44,9 @@ class WorkflowNode(BaseModel):
     output_format: Optional[str] = Field(None, description="Expected output format for LLM nodes")
     knowledge_base: Optional[str] = Field(None, description="Knowledge base for context search")
     search_intensity: Optional[str] = Field(None, description="Search intensity for context search")
+    # context-node용 rerank 설정 (새로 추가)
+    rerank_provider: Optional[str] = Field(None, description="Rerank LLM provider for context-node")
+    rerank_model: Optional[str] = Field(None, description="Rerank LLM model for context-node")
     output: Optional[Any] = Field(None, description="Execution result")
     executed: bool = Field(default=False)
     error: Optional[str] = Field(None, description="")
@@ -59,7 +62,6 @@ class WorkflowDefinition(BaseModel):
 
 class WorkflowExecutionRequest(BaseModel):
     workflow: WorkflowDefinition = Field(..., description="Workflow to execute")
-    rerank_enabled: bool = Field(default=False, description="Global rerank setting for all LLM nodes")
 
 class NodeExecutionResult(BaseModel):
     node_id: str = Field(..., description="Node ID")

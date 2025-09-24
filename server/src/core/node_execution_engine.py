@@ -67,8 +67,7 @@ class NodeExecutionEngine:
         self, 
         node: WorkflowNode, 
         workflow: WorkflowDefinition, 
-        stream_queue: asyncio.Queue,
-        rerank_enabled: bool
+        stream_queue: asyncio.Queue
     ):
         """단일 노드를 실행하고 스트리밍 출력을 실시간으로 큐에 전송"""
         
@@ -76,7 +75,7 @@ class NodeExecutionEngine:
         final_result = None
         try:
             # 스트리밍 출력 처리
-            async for chunk in self._execute_node_stream(node, workflow, rerank_enabled):
+            async for chunk in self._execute_node_stream(node, workflow):
                 if chunk["type"] == "stream":
                     accumulated_output += chunk["content"]
                     # 즉시 스트리밍 출력 전송
@@ -162,8 +161,7 @@ class NodeExecutionEngine:
     
     async def execute_workflow(
         self, 
-        workflow: WorkflowDefinition,
-        rerank_enabled: bool
+        workflow: WorkflowDefinition
     ) -> WorkflowExecutionResponse:
         """워크플로우 전체 실행"""
         
@@ -207,7 +205,7 @@ class NodeExecutionEngine:
                 for node_id in ready_nodes:
                     node = nodes_map[node_id]
                     task = self._execute_single_node(
-                        node, pre_nodes_map[node_id], rerank_enabled
+                        node, pre_nodes_map[node_id]
                     )
                     execution_tasks.append(task)
                 
@@ -321,8 +319,7 @@ class NodeExecutionEngine:
     async def _execute_single_node(
         self, 
         node: WorkflowNode, 
-        pre_node_ids: List[str],
-        rerank_enabled: bool
+        pre_node_ids: List[str]
     ) -> NodeExecutionResult:
         """단일 노드 실행 - NodeExecutor 사용"""
         
@@ -353,13 +350,13 @@ class NodeExecutionEngine:
                 and context_outputs and hasattr(self.node_executor, 'execute_node_with_context')):
                 # context-aware 실행
                 result = await self.node_executor.execute_node_with_context(
-                    node, pre_outputs, context_outputs, rerank_enabled
+                    node, pre_outputs, context_outputs
                 )
             else:
                 # 기존 방식으로 실행 (모든 pre_outputs 합쳐서)
                 all_pre_outputs = pre_outputs + context_outputs
                 result = await self.node_executor.execute_node(
-                    node, all_pre_outputs, rerank_enabled
+                    node, all_pre_outputs
                 )
             
             return result
@@ -383,8 +380,7 @@ class NodeExecutionEngine:
     
     async def execute_workflow_stream(
         self, 
-        workflow: WorkflowDefinition,
-        rerank_enabled: bool
+        workflow: WorkflowDefinition
     ):
         """워크플로우 이벤트 기반 병렬 스트리밍 실행 - 각 노드가 완료되는 즉시 다음 단계 진행"""
 
@@ -427,7 +423,7 @@ class NodeExecutionEngine:
                     
                     task = asyncio.create_task(
                         self._execute_single_node_stream(
-                            node, workflow, global_stream_queue, rerank_enabled
+                            node, workflow, global_stream_queue
                         )
                     )
                     active_tasks[node.id] = task
@@ -478,7 +474,7 @@ class NodeExecutionEngine:
                                     # 즉시 노드 실행 시작
                                     task = asyncio.create_task(
                                         self._execute_single_node_stream(
-                                            target_node, workflow, global_stream_queue, rerank_enabled
+                                            target_node, workflow, global_stream_queue
                                         )
                                     )
                                     active_tasks[target_node_id] = task
@@ -525,8 +521,7 @@ class NodeExecutionEngine:
     async def _execute_node_stream(
         self,
         node: WorkflowNode,
-        workflow: WorkflowDefinition,
-        rerank_enabled: bool
+        workflow: WorkflowDefinition
     ):
         """개별 노드 스트리밍 실행"""
         
@@ -565,7 +560,7 @@ class NodeExecutionEngine:
             if (node.type in ["generation-node", "ensemble-node", "validation-node"] 
                 and context_outputs and hasattr(self.node_executor, 'execute_node_stream_with_context')):
                 # context-aware 스트리밍 실행
-                async for chunk in self.node_executor.execute_node_stream_with_context(node, pre_outputs, context_outputs, rerank_enabled):
+                async for chunk in self.node_executor.execute_node_stream_with_context(node, pre_outputs, context_outputs):
                     if chunk["type"] == "stream":
                         accumulated_output += chunk["content"] 
                         yield chunk
@@ -577,7 +572,7 @@ class NodeExecutionEngine:
             else:
                 # 기존 방식으로 스트리밍 실행 (모든 pre_outputs 합쳐서)
                 all_pre_outputs = pre_outputs + context_outputs
-                async for chunk in self.node_executor.execute_node_stream(node, all_pre_outputs, rerank_enabled):
+                async for chunk in self.node_executor.execute_node_stream(node, all_pre_outputs):
                     if chunk["type"] == "stream":
                         accumulated_output += chunk["content"] 
                         yield chunk

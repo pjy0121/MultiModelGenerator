@@ -128,8 +128,7 @@ async def execute_workflow(request: WorkflowExecutionRequest):
         
         # 실행
         result = await execution_engine.execute_workflow(
-            workflow=request.workflow, 
-            rerank_enabled=request.rerank_enabled
+            workflow=request.workflow
         )
         
         logger.info(f"Workflow execution completed. Success: {result.success}")
@@ -170,8 +169,7 @@ async def execute_workflow_stream(request: WorkflowExecutionRequest):
             
             # 스트리밍으로 워크플로우 실행
             async for chunk in execution_engine.execute_workflow_stream(
-                workflow=request.workflow,
-                rerank_enabled=request.rerank_enabled
+                workflow=request.workflow
             ):
                 yield f"data: {json.dumps(chunk)}\n\n"
                 
@@ -239,9 +237,9 @@ async def search_knowledge_base(request: dict):
             raise HTTPException(status_code=400, detail="Query and knowledge_base are required")
         
         # top_k를 search_intensity로 매핑 (간단한 매핑)
-        if top_k <= 10:
+        if top_k <= 7:
             search_intensity = "very_low"
-        elif top_k <= 15:
+        elif top_k <= 10:
             search_intensity = "low" 
         elif top_k <= 20:
             search_intensity = "medium"

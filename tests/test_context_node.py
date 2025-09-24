@@ -95,8 +95,7 @@ class TestContextNode:
             pytest.skip("Required knowledge base 'sentence_nvme_2-2' not available")
             
         payload = {
-            "workflow": context_workflow,
-            "rerank_enabled": False
+            "workflow": context_workflow
         }
         
         response = api_client.post(f"{api_base_url}/execute-workflow", json=payload)

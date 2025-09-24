@@ -14,8 +14,7 @@ class TestStreamingExecution:
     def test_streaming_workflow_execution(self, api_client: requests.Session, api_base_url: str, sample_workflow):
         """Test streaming workflow execution endpoint"""
         payload = {
-            "workflow": sample_workflow,
-            "rerank_enabled": False
+            "workflow": sample_workflow
         }
         
         response = api_client.post(
@@ -85,8 +84,7 @@ class TestStreamingExecution:
         }
         
         payload = {
-            "workflow": complex_workflow,
-            "rerank_enabled": False
+            "workflow": complex_workflow
         }
         
         response = api_client.post(
