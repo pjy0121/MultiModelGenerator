@@ -36,9 +36,6 @@ interface NodeWorkflowState {
   isExecuting: boolean;
   executionResult: NodeBasedWorkflowResponse | null;
   
-  // 전역 Rerank 설정
-  globalUseRerank: boolean;
-  
   // 노드별 실행 상태 및 스트리밍 출력
   nodeExecutionStates: Record<string, 'idle' | 'executing' | 'completed' | 'error'>;
   nodeStreamingOutputs: Record<string, string>;
@@ -55,9 +52,6 @@ interface NodeWorkflowState {
   
   // 노드 실행 상태 업데이트
   setNodeExecutionStatus: (nodeId: string, isExecuting: boolean, isCompleted?: boolean) => void;
-  
-  // 전역 Rerank 설정 관리
-  setGlobalUseRerank: (useRerank: boolean) => void;
   
   // 액션들
   addNode: (nodeType: NodeType, position: { x: number; y: number }) => void;
@@ -177,16 +171,6 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     isExecuting: false,
     executionResult: null,
     
-    // 전역 Rerank 설정 (로컬 스토리지에서 로드, 기본값: false)
-    globalUseRerank: (() => {
-      try {
-        const saved = localStorage.getItem('globalUseRerank');
-        return saved ? JSON.parse(saved) : false;
-      } catch {
-        return false;
-      }
-    })(),
-    
     validationResult: null,
     validationErrors: [],
     availableModels: [],
@@ -224,16 +208,23 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       nodes: get().nodes.concat(newNode)
     }));
     
-    // LLM 노드인 경우 기본 설정만 (모델 로드는 편집할 때만)
+    // LLM 노드인 경우 기본 provider와 모델 설정
     if ([NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION].includes(nodeType)) {
-      message.success(`${nodeType} 노드가 생성되었습니다. 편집에서 모델을 선택해주세요.`);
+      const state = get();
+      state.updateNode(newNode.id, {
+        llm_provider: LLMProvider.GOOGLE,
+        model_type: 'gemini-1.5-flash' // 기본 모델 설정
+      });
+      message.success(`${nodeType} 노드가 생성되었습니다. 필요시 편집에서 모델을 변경해주세요.`);
     }
     
-    // Context 노드인 경우 기본 검색 강도 설정
+    // Context 노드인 경우 기본 검색 강도와 rerank 설정
     if (nodeType === NodeType.CONTEXT) {
       const state = get();
       state.updateNode(newNode.id, {
-        search_intensity: SearchIntensity.MEDIUM
+        search_intensity: SearchIntensity.MEDIUM,
+        rerank_provider: LLMProvider.NONE, // 기본값: 재정렬 사용 안 함
+        rerank_model: undefined
       });
       message.success(`${nodeType} 노드가 생성되었습니다. 지식 베이스를 선택해주세요.`);
     }
@@ -323,18 +314,6 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       )
     }));
   },
-
-  // 전역 Rerank 설정 관리
-  setGlobalUseRerank: (useRerank: boolean) => {
-    set({ globalUseRerank: useRerank });
-    // 로컬 스토리지에 저장
-    try {
-      localStorage.setItem('globalUseRerank', JSON.stringify(useRerank));
-    } catch (error) {
-      console.error('Rerank 설정 저장 실패:', error);
-    }
-  },
-  
   // 검증 액션들
   validateWorkflow: () => {
     const { nodes, edges } = get();
@@ -392,6 +371,8 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
             prompt: finalPrompt,
             knowledge_base: node.data.knowledge_base || null,
             search_intensity: node.data.search_intensity || null,
+            rerank_provider: node.data.rerank_provider || null,
+            rerank_model: node.data.rerank_model || null,
 
             output: null,
             executed: false,
@@ -403,7 +384,6 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
 
       const request = {
         workflow: workflowDefinition,
-        rerank_enabled: state.globalUseRerank,
       };
       
       // 초기화 - 모든 노드를 idle 상태로 설정

@@ -13,7 +13,8 @@ export enum NodeType {
 export enum LLMProvider {
   OPENAI = "openai",
   GOOGLE = "google",
-  INTERNAL = "internal"
+  INTERNAL = "internal",
+  NONE = "none"  // 새로 추가: 재정렬 사용 안 함
 }
 
 export enum SearchIntensity {
@@ -31,10 +32,12 @@ export interface NodeBasedConfig {
   node_type: NodeType;
   content?: string;           // input-node, output-node용 텍스트 내용
   model_type?: string;        // LLM 모델 식별자
-  llm_provider?: LLMProvider; // LLM 제공자
+  llm_provider?: LLMProvider; // LLM Provider
   prompt?: string;            // LLM 노드용 프롬프트
   knowledge_base?: string;    // context-node용 지식베이스
   search_intensity?: SearchIntensity; // context-node용 검색 강도
+  rerank_provider?: LLMProvider; // context-node용 rerank LLM Provider
+  rerank_model?: string;      // context-node용 rerank 모델
   position: { x: number; y: number };
 }
 
@@ -78,7 +81,6 @@ export interface WorkflowExecutionRequest {
     nodes: any[];
     edges: WorkflowEdge[];
   };
-  rerank_enabled: boolean;
 }
 
 export interface NodeBasedWorkflowResponse {
@@ -103,6 +105,8 @@ export interface NodeData extends Record<string, unknown> {
   output_format?: string;     // LLM 노드용 출력 형식
   knowledge_base?: string;    // context-node용 지식베이스
   search_intensity?: SearchIntensity; // context-node용 검색 강도
+  rerank_provider?: LLMProvider; // context-node용 rerank LLM Provider
+  rerank_model?: string;      // context-node용 rerank 모델
   isExecuting?: boolean;      // 실행 상태 표시용
   isCompleted?: boolean;      // 완료 상태 표시용
 }

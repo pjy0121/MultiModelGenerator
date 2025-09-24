@@ -22,6 +22,19 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
   const isLLMNode = node ? [NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION].includes(node.data.nodeType) : false;
   const isContextNode = node ? node.data.nodeType === NodeType.CONTEXT : false;
 
+  // Provider별 기본 모델 선택 헬퍼 함수
+  const getDefaultModelForProvider = (provider: LLMProvider, models: AvailableModel[]) => {
+    if (provider === LLMProvider.GOOGLE) {
+      return models.find(m => m.value.includes('gemini-1.5-flash')) || models[0];
+    } else if (provider === LLMProvider.OPENAI) {
+      return models.find(m => m.value.includes('gpt-4o-mini')) || models[0];
+    } else if (provider === LLMProvider.INTERNAL) {
+      return models[0];
+    } else {
+      return models[0];
+    }
+  };
+
   // 모달이 열릴 때 폼 초기화 (node.id가 변경될 때만)
   useEffect(() => {
     if (node) {
@@ -56,12 +69,22 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
         output_format: node.data.output_format || '',
         knowledge_base: node.data.knowledge_base || '',
         search_intensity: getDefaultSearchIntensity(),
+        rerank_provider: node.data.rerank_provider || LLMProvider.NONE, // 기본값: 재정렬 사용 안 함
+        rerank_model: node.data.rerank_model || null,
       });
       
       // 해당 provider의 모델이 아직 로드되지 않았을 때 로드
       const currentProviderModels = availableModels.filter(model => model.provider === provider);
       if (currentProviderModels.length === 0 && isLLMNode) {
         loadAvailableModels(provider);
+      }
+      
+      // context-node의 rerank provider 모델도 로드
+      if (isContextNode && node.data.rerank_provider && node.data.rerank_provider !== LLMProvider.NONE) {
+        const rerankProviderModels = availableModels.filter(model => model.provider === node.data.rerank_provider);
+        if (rerankProviderModels.length === 0) {
+          loadAvailableModels(node.data.rerank_provider);
+        }
       }
     }
   }, [node?.id]); // node.id가 변경될 때만 실행
@@ -79,22 +102,36 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
         const providerModels = availableModels.filter(model => model.provider === currentProvider);
         
         if (providerModels.length > 0) {
-          let defaultModel;
-          
-          if (currentProvider === LLMProvider.GOOGLE) {
-            defaultModel = providerModels.find(m => m.value.includes('gemini-1.5-flash')) || providerModels[0];
-          } else if (currentProvider === LLMProvider.OPENAI) {
-            defaultModel = providerModels.find(m => m.value.includes('gpt-4o-mini')) || providerModels[0];
-          } else if (currentProvider === LLMProvider.INTERNAL) {
-            defaultModel = providerModels[0];
-          } else {
-            defaultModel = providerModels[0];
-          }
+          const defaultModel = getDefaultModelForProvider(currentProvider, providerModels);
           
           // 폼에 이미 다른 값이 설정되어 있지 않은 경우에만 설정
           const currentFormModel = form.getFieldValue('model_type');
           if (!currentFormModel || currentFormModel === '') {
             form.setFieldValue('model_type', defaultModel.value);
+          }
+        }
+      }
+      
+      // context-node의 rerank provider에 대한 기본 모델 자동 선택
+      if (isContextNode && node) {
+        const rerankProvider = node.data.rerank_provider;
+        const rerankModel = node.data.rerank_model;
+        
+        if (rerankProvider && rerankProvider !== LLMProvider.NONE) {
+          const hasValidRerankModel = rerankModel && availableModels.some(m => m.value === rerankModel && m.provider === rerankProvider);
+          
+          if (!hasValidRerankModel) {
+            const rerankProviderModels = availableModels.filter(model => model.provider === rerankProvider);
+            
+            if (rerankProviderModels.length > 0) {
+              const defaultRerankModel = getDefaultModelForProvider(rerankProvider, rerankProviderModels);
+              
+              // 폼에 이미 다른 값이 설정되어 있지 않은 경우에만 설정
+              const currentFormRerankModel = form.getFieldValue('rerank_model');
+              if (!currentFormRerankModel || currentFormRerankModel === '') {
+                form.setFieldValue('rerank_model', defaultRerankModel.value);
+              }
+            }
           }
         }
       }
@@ -119,17 +156,7 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
       console.log('Available models for provider:', providerModels);
       
       if (providerModels.length > 0) {
-        let defaultModel;
-        
-        if (provider === LLMProvider.GOOGLE) {
-          defaultModel = providerModels.find(m => m.value.includes('gemini-1.5-flash')) || providerModels[0];
-        } else if (provider === LLMProvider.OPENAI) {
-          defaultModel = providerModels.find(m => m.value.includes('gpt-4o-mini')) || providerModels[0];
-        } else if (provider === LLMProvider.INTERNAL) {
-          defaultModel = providerModels[0]; // internal은 보통 단일 모델이므로 첫 번째 사용
-        } else {
-          defaultModel = providerModels[0];
-        }
+        const defaultModel = getDefaultModelForProvider(provider, providerModels);
         
         console.log('Setting default model:', defaultModel);
         form.setFieldValue('model_type', defaultModel.value);
@@ -430,6 +457,80 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
                 <Option value={SearchIntensity.MEDIUM}>보통 (초기 20개, re-rank 10개)</Option>
                 <Option value={SearchIntensity.HIGH}>높음 (초기 30개, re-rank 15개)</Option>
                 <Option value={SearchIntensity.VERY_HIGH}>매우 높음 (초기 50개, re-rank 20개)</Option>
+              </Select>
+            </Form.Item>
+
+            <Divider style={{ margin: '16px 0' }} />
+            
+            <Form.Item
+              label="재정렬 LLM Provider"
+              name="rerank_provider"
+              tooltip="검색된 청크를 재정렬할 LLM Provider를 선택합니다. '재정렬 사용 안 함'을 선택하면 재정렬을 건너뜁니다."
+            >
+              <Select 
+                placeholder="재정렬을 수행할 LLM Provider 선택"
+                onChange={async (value) => {
+                  // NONE이 선택되면 rerank_model을 null로 설정
+                  if (value === LLMProvider.NONE) {
+                    form.setFieldsValue({ rerank_model: null });
+                    return;
+                  }
+                  
+                  // 다른 provider가 선택되면 기본 모델 설정
+                  form.setFieldsValue({ rerank_model: '' }); // 먼저 초기화
+                  
+                  // 해당 provider의 모델이 로드되지 않았으면 로드
+                  let providerModels = availableModels.filter(model => model.provider === value);
+                  
+                  if (providerModels.length === 0) {
+                    await loadAvailableModels(value);
+                    // 로드 후 store에서 다시 가져오기
+                    setTimeout(() => {
+                      const state = useNodeWorkflowStore.getState();
+                      const newProviderModels = state.availableModels.filter(model => model.provider === value);
+                      if (newProviderModels.length > 0) {
+                        const defaultModel = getDefaultModelForProvider(value, newProviderModels);
+                        if (defaultModel) {
+                          form.setFieldsValue({ rerank_model: defaultModel.value });
+                        }
+                      }
+                    }, 100);
+                  } else {
+                    // 이미 로드된 경우 바로 기본 모델 설정
+                    const defaultModel = getDefaultModelForProvider(value, providerModels);
+                    if (defaultModel) {
+                      form.setFieldsValue({ rerank_model: defaultModel.value });
+                    }
+                  }
+                }}
+              >
+                <Option value={LLMProvider.NONE}>재정렬 사용 안 함</Option>
+                <Option value={LLMProvider.OPENAI}>OpenAI</Option>
+                <Option value={LLMProvider.GOOGLE}>Google</Option>
+                <Option value={LLMProvider.INTERNAL}>Internal LLM</Option>
+              </Select>
+            </Form.Item>
+
+            <Form.Item
+              label="재정렬 모델"
+              name="rerank_model"
+              tooltip="재정렬에 사용할 모델을 선택합니다."
+              dependencies={['rerank_provider']}
+            >
+              <Select 
+                placeholder="재정렬을 수행할 모델 선택"
+                disabled={form.getFieldValue('rerank_provider') === LLMProvider.NONE}
+              >
+                {availableModels
+                  .filter(model => {
+                    const selectedProvider = form.getFieldValue('rerank_provider');
+                    return selectedProvider !== LLMProvider.NONE && model.provider === selectedProvider;
+                  })
+                  .map(model => (
+                    <Option key={model.value} value={model.value} disabled={model.disabled}>
+                      {model.label}
+                    </Option>
+                  ))}
               </Select>
             </Form.Item>
           </>

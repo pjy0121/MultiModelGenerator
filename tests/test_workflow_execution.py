@@ -12,8 +12,7 @@ class TestWorkflowExecution:
     def test_simple_workflow_execution(self, api_client: requests.Session, api_base_url: str, sample_workflow):
         """Test basic workflow execution"""
         payload = {
-            "workflow": sample_workflow,
-            "rerank_enabled": False
+            "workflow": sample_workflow
         }
         
         response = api_client.post(f"{api_base_url}/execute-workflow", json=payload)
@@ -34,10 +33,9 @@ class TestWorkflowExecution:
         assert len(data["execution_order"]) == 3
         
     def test_workflow_with_rerank(self, api_client: requests.Session, api_base_url: str, sample_workflow):
-        """Test workflow execution with rerank enabled"""
+        """Test workflow execution with rerank enabled - now via context-node settings"""
         payload = {
-            "workflow": sample_workflow,
-            "rerank_enabled": True
+            "workflow": sample_workflow
         }
         
         response = api_client.post(f"{api_base_url}/execute-workflow", json=payload)
@@ -90,8 +88,7 @@ class TestWorkflowExecution:
         }
         
         payload = {
-            "workflow": invalid_workflow,
-            "rerank_enabled": False
+            "workflow": invalid_workflow
         }
         
         response = api_client.post(f"{api_base_url}/execute-workflow", json=payload)

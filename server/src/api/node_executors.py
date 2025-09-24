@@ -22,21 +22,21 @@ class NodeExecutor:
         self.vector_store_service = VectorStoreService()
         self.result_parser = ResultParser()
 
-    async def execute_node(self, node: WorkflowNode, pre_outputs: List[str], rerank_enabled: bool) -> NodeExecutionResult:
+    async def execute_node(self, node: WorkflowNode, pre_outputs: List[str]) -> NodeExecutionResult:
         """노드 실행 (레거시 인터페이스)"""
-        return await self.execute_node_with_context(node, pre_outputs, [], rerank_enabled)
+        return await self.execute_node_with_context(node, pre_outputs, [])
 
-    async def execute_node_with_context(self, node: WorkflowNode, pre_outputs: List[str], context_outputs: List[str], rerank_enabled: bool) -> NodeExecutionResult:
+    async def execute_node_with_context(self, node: WorkflowNode, pre_outputs: List[str], context_outputs: List[str]) -> NodeExecutionResult:
         """노드 실행 - context-node 출력과 일반 pre-node 출력을 분리해서 처리"""
         try:
             if self._is_text_node(node.type):
                 # Text 노드는 일반 pre_outputs만 사용
                 return self._execute_text_node(node, pre_outputs)
             elif node.type == "context-node":
-                return await self._execute_context_node(node, pre_outputs, rerank_enabled)
+                return await self._execute_context_node(node, pre_outputs)
             else:
                 # LLM 노드는 context와 input_data를 분리해서 처리
-                return await self._execute_llm_node_with_context(node, pre_outputs, context_outputs, rerank_enabled)
+                return await self._execute_llm_node_with_context(node, pre_outputs, context_outputs)
         except Exception as e:
             return NodeExecutionResult(
                 node_id=node.id,
@@ -45,12 +45,12 @@ class NodeExecutor:
                 execution_time=0.0
             )
     
-    async def execute_node_stream(self, node: WorkflowNode, pre_outputs: List[str], rerank_enabled: bool):
+    async def execute_node_stream(self, node: WorkflowNode, pre_outputs: List[str]):
         """노드 스트리밍 실행 (레거시 인터페이스)"""
-        async for chunk in self.execute_node_stream_with_context(node, pre_outputs, [], rerank_enabled):
+        async for chunk in self.execute_node_stream_with_context(node, pre_outputs, []):
             yield chunk
 
-    async def execute_node_stream_with_context(self, node: WorkflowNode, pre_outputs: List[str], context_outputs: List[str], rerank_enabled: bool):
+    async def execute_node_stream_with_context(self, node: WorkflowNode, pre_outputs: List[str], context_outputs: List[str]):
         """노드 스트리밍 실행 - context-node 출력과 일반 pre-node 출력을 분리해서 처리"""
         try:
             if self._is_text_node(node.type):
@@ -66,7 +66,7 @@ class NodeExecutor:
                 }
             elif node.type == "context-node":
                 # 컨텍스트 노드는 즉시 결과 반환
-                result = await self._execute_context_node(node, pre_outputs, rerank_enabled)
+                result = await self._execute_context_node(node, pre_outputs)
                 yield {
                     "type": "result", 
                     "success": result.success,
@@ -77,7 +77,7 @@ class NodeExecutor:
                 }
             else:
                 # LLM 노드는 context와 input_data를 분리해서 처리
-                async for chunk in self._execute_llm_node_stream_with_context(node, pre_outputs, context_outputs, rerank_enabled):
+                async for chunk in self._execute_llm_node_stream_with_context(node, pre_outputs, context_outputs):
                     yield chunk
         except Exception as e:
             yield {
@@ -115,12 +115,12 @@ class NodeExecutor:
             execution_time=0.0
         )
     
-    async def _execute_llm_node(self, node: WorkflowNode, pre_outputs: List[str], rerank_enabled: bool) -> NodeExecutionResult:
+    async def _execute_llm_node(self, node: WorkflowNode, pre_outputs: List[str]) -> NodeExecutionResult:
         """LLM 노드 실행 (Generation/Ensemble/Validation)"""
         start_time = time.time()
         
         try:
-            prompt = await self._prepare_prompt(node, pre_outputs, rerank_enabled)
+            prompt = await self._prepare_prompt(node, pre_outputs)
             
             if not node.llm_provider or not node.model_type:
                 raise ValueError(f"Node {node.id} missing LLM configuration")
@@ -147,7 +147,7 @@ class NodeExecutor:
                 execution_time=execution_time
             )
 
-    async def _execute_llm_node_with_context(self, node: WorkflowNode, pre_outputs: List[str], context_outputs: List[str], rerank_enabled: bool) -> NodeExecutionResult:
+    async def _execute_llm_node_with_context(self, node: WorkflowNode, pre_outputs: List[str], context_outputs: List[str]) -> NodeExecutionResult:
         """LLM 노드 실행 - context와 input_data를 분리해서 처리"""
         start_time = time.time()
         
@@ -188,54 +188,15 @@ class NodeExecutor:
                 execution_time=execution_time
             )
     
-    async def _execute_llm_node_stream(self, node: WorkflowNode, pre_outputs: List[str], rerank_enabled: bool):
+    async def _execute_llm_node_stream(self, node: WorkflowNode, pre_outputs: List[str]):
         """LLM 노드 스트리밍 실행"""
         try:
-            # 지식 베이스 검색 과정 스트리밍
+            # LLM 노드에서는 지식베이스 검색을 하지 않음 (context-node에서 처리)
             input_data = "\n".join(pre_outputs) if pre_outputs else ""
             prompt_template = node.prompt or ""
             
-            # 컨텍스트 검색 과정을 스트리밍으로 보여주기
+            # context는 빈 문자열로 처리 (context-node에서 제공받음)
             context = ""
-            if node.knowledge_base and "{context}" in prompt_template:
-                import time
-                search_start = time.time()
-                yield {"type": "stream", "content": f"🔍 [{node.id}] 지식 베이스 '{node.knowledge_base}' 검색 시작...\n"}
-                
-                try:
-                    rerank_info = None
-                    if rerank_enabled and node.llm_provider and node.model_type:
-                        rerank_info = {"provider": node.llm_provider, "model": node.model_type}
-                        yield {"type": "stream", "content": f"🔄 [{node.id}] 리랭킹 활성화됨 ({node.llm_provider}/{node.model_type})\n"}
-                    
-                    # 검색을 별도 태스크로 실행하여 병렬 처리 보장
-                    search_task = asyncio.create_task(
-                        self.vector_store_service.search(
-                            kb_name=node.knowledge_base,
-                            query=input_data,
-                            search_intensity=node.search_intensity or "medium",
-                            rerank_info=rerank_info
-                        )
-                    )
-                    context_results = await search_task
-                    
-                    search_time = time.time() - search_start
-                    
-                    if context_results:
-                        context = "\n".join(context_results)
-                        yield {"type": "stream", "content": f"✅ [{node.id}] {len(context_results)}개 문서 찾음 ({search_time:.2f}초)\n"}
-                    else:
-                        context = "No relevant context found."
-                        yield {"type": "stream", "content": f"⚠️ [{node.id}] 관련 문서 없음 ({search_time:.2f}초)\n"}
-                        
-                except Exception as e:
-                    search_time = time.time() - search_start
-                    context = f"Context search failed: {str(e)}"
-                    yield {"type": "stream", "content": f"❌ [{node.id}] 검색 실패: {str(e)} ({search_time:.2f}초)\n"}
-                    
-            elif "{context}" in prompt_template:
-                context = "No knowledge base selected."
-                yield {"type": "stream", "content": f"⚠️ [{node.id}] 지식 베이스가 선택되지 않았습니다.\n"}
             
             # LLM 실행 시작 알림
             yield {"type": "stream", "content": f"🤖 [{node.id}] {node.llm_provider}/{node.model_type} 모델 실행 중...\n\n"}
@@ -301,39 +262,19 @@ class NodeExecutor:
                 "output": None
             }
     
-    async def _prepare_prompt(self, node: WorkflowNode, pre_outputs: List[str], rerank_enabled: bool) -> str:
-        """프롬프트 준비 (비스트리밍)"""
+    async def _prepare_prompt(self, node: WorkflowNode, pre_outputs: List[str]) -> str:
+        """프롬프트 준비 (비스트리밍) - LLM 노드용, 지식베이스 검색 제거"""
         input_data = "\n".join(pre_outputs) if pre_outputs else ""
         prompt_template = node.prompt or ""
         
-        # 컨텍스트 검색
+        # context는 빈 문자열로 처리 (context-node에서 제공받음)
         context = ""
-        if node.knowledge_base and "{context}" in prompt_template:
-            try:
-                rerank_info = None
-                if rerank_enabled and node.llm_provider and node.model_type:
-                    rerank_info = {
-                        "provider": node.llm_provider,
-                        "model": node.model_type
-                    }
-                
-                context_results = await self.vector_store_service.search(
-                    kb_name=node.knowledge_base,
-                    query=input_data,
-                    search_intensity=node.search_intensity or "medium",
-                    rerank_info=rerank_info
-                )
-                context = "\n".join(context_results) if context_results else "No relevant context found."
-            except Exception as e:
-                context = f"Context search failed: {str(e)}"
-        elif "{context}" in prompt_template:
-            context = "No knowledge base selected."
         
         # 프롬프트 변수 치환
         formatted_prompt = prompt_template.replace("{input_data}", input_data).replace("{context}", context)
         return formatted_prompt if formatted_prompt.strip() else input_data
 
-    async def _execute_context_node(self, node: WorkflowNode, pre_outputs: List[str], rerank_enabled: bool) -> NodeExecutionResult:
+    async def _execute_context_node(self, node: WorkflowNode, pre_outputs: List[str]) -> NodeExecutionResult:
         """Context 노드 실행 - 벡터 DB에서 컨텍스트 검색"""
         start_time = time.time()
         
@@ -360,12 +301,12 @@ class NodeExecutor:
                     execution_time=time.time() - start_time
                 )
             
-            # 리랭크 설정
+            # context-node 자체의 rerank 설정 사용
             rerank_info = None
-            if rerank_enabled:
+            if (node.rerank_provider and node.rerank_provider != "none" and node.rerank_model):
                 rerank_info = {
-                    "provider": LLM_CONFIG.get("default_provider", "google"),
-                    "model": LLM_CONFIG.get("default_model", "gemini-1.5-flash")
+                    "provider": node.rerank_provider,
+                    "model": node.rerank_model
                 }
             
             # 벡터 DB 검색 실행
@@ -460,7 +401,7 @@ class NodeExecutor:
         except Exception as e:
             raise Exception(f"LLM call failed: {str(e)}")
     
-    async def _execute_llm_node_stream_with_context(self, node: WorkflowNode, pre_outputs: List[str], context_outputs: List[str], rerank_enabled: bool):
+    async def _execute_llm_node_stream_with_context(self, node: WorkflowNode, pre_outputs: List[str], context_outputs: List[str]):
         """LLM 노드 스트리밍 실행 - context와 input_data를 분리해서 처리"""
         try:
             # input_data는 일반 pre-node 출력들만 사용

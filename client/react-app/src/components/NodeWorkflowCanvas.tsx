@@ -17,7 +17,6 @@ import {
   Modal, 
   Input, 
   Typography,
-  Checkbox,
   Space 
 } from 'antd';
 import {
@@ -70,10 +69,6 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
     
     // 노드 선택 관리
     setSelectedNodeId,
-    
-    // 전역 Rerank 설정
-    globalUseRerank,
-    setGlobalUseRerank,
   } = useNodeWorkflowStore();
   
   // 워크플로우 관리 상태
@@ -475,12 +470,6 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
       <div style={{ padding: '8px 16px', background: '#fff', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography.Title level={5} style={{ margin: 0 }}>워크플로우 구성</Typography.Title>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <Checkbox 
-            checked={globalUseRerank} 
-            onChange={(e) => setGlobalUseRerank(e.target.checked)}
-          >
-            청크 재정렬
-          </Checkbox>
           <Button icon={<PlayCircleOutlined />} type="primary" onClick={handleStreamingExecution} loading={isExecuting}>
             {isExecuting ? '실행 중...' : '워크플로우 실행'}
           </Button>

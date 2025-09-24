@@ -42,8 +42,8 @@ VECTOR_DB_CONFIG = {
     "chunk_overlap": 100,
     "similarity_threshold": 0.85,
     "search_intensity_map": {
-        "very_low":  {"init": 10, "final": 5},
-        "low":       {"init": 15, "final": 7},
+        "very_low":  {"init": 7, "final": 5},
+        "low":       {"init": 10, "final": 7},
         "medium":    {"init": 20, "final": 10},
         "high":      {"init": 30, "final": 15},
         "very_high": {"init": 50, "final": 20}
@@ -52,7 +52,7 @@ VECTOR_DB_CONFIG = {
 
 # 유틸리티 함수들
 def is_llm_provider_available(provider: str) -> bool:
-    """LLM 제공자가 사용 가능한지 확인"""
+    """LLM Provider가 사용 가능한지 확인"""
     return bool(API_KEYS.get(provider))
 
 def get_kb_path(kb_name: str) -> str:

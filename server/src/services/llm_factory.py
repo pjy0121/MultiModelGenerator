@@ -50,10 +50,10 @@ class LLMFactory:
     @classmethod
     def get_client(cls, provider: str) -> LLMClientInterface:
         """
-        지정된 제공자의 클라이언트 반환
+        지정된 Provider의 클라이언트 반환
         
         Args:
-            provider: LLM 제공자 이름 (필수)
+            provider: LLM Provider 이름 (필수)
             
         Returns:
             LLM 클라이언트 인스턴스
@@ -61,7 +61,7 @@ class LLMFactory:
         cls._initialize_clients()
         
         if provider not in cls._clients:
-            raise ValueError(f"지원하지 않는 LLM 제공자: {provider}")
+            raise ValueError(f"지원하지 않는 LLM Provider: {provider}")
             
         client = cls._clients[provider]
         if not client.is_available():
@@ -82,7 +82,7 @@ class LLMFactory:
         """
         cls._initialize_clients()
         
-        # 모델 ID 기반으로 제공자 결정
+        # 모델 ID 기반으로 Provider 결정
         if model_id.startswith("gpt-"):
             provider = "openai"
         elif model_id.startswith("gemini-") or model_id.startswith("gemma-") or model_id.startswith("learnlm-"):
@@ -92,7 +92,7 @@ class LLMFactory:
             raise ValueError(f"알 수 없는 모델 ID: {model_id}. 지원하는 모델을 사용하세요.")
         
         if provider not in cls._clients:
-            raise ValueError(f"지원하지 않는 LLM 제공자: {provider}")
+            raise ValueError(f"지원하지 않는 LLM Provider: {provider}")
             
         client = cls._clients[provider]
         if not client.is_available():
@@ -117,7 +117,7 @@ class LLMFactory:
         # 프로바이더가 지정된 경우 해당 클라이언트만 사용
         if provider:
             if provider not in cls._clients:
-                raise ValueError(f"지원하지 않는 LLM 제공자: {provider}")
+                raise ValueError(f"지원하지 않는 LLM Provider: {provider}")
             
             client = cls._clients[provider]
             if not client.is_available():
@@ -140,11 +140,11 @@ class LLMFactory:
         if not available_providers:
             raise ValueError(f"사용 가능한 LLM 클라이언트가 없습니다. API 키를 확인하세요.")
         else:
-            raise ValueError(f"모델 '{model_name}'을 지원하는 사용 가능한 클라이언트가 없습니다. 사용 가능한 제공자: {available_providers}")
+            raise ValueError(f"모델 '{model_name}'을 지원하는 사용 가능한 클라이언트가 없습니다. 사용 가능한 LLM Provider: {available_providers}")
     
     @classmethod
     def get_available_providers(cls) -> List[str]:
-        """사용 가능한 LLM 제공자 목록 반환"""
+        """사용 가능한 LLM Provider 목록 반환"""
         cls._initialize_clients()
         
         available = []
