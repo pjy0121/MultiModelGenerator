@@ -66,20 +66,23 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
     }
   }, [node?.id]); // node.id가 변경될 때만 실행
 
-  // 모델이 로드될 때 기본 모델 자동 선택
+  // 모델이 로드될 때 기본 모델 자동 선택 (초기 로드 시에만)
   useEffect(() => {
     if (node && availableModels.length > 0) {
       const currentProvider = node.data.llm_provider || LLMProvider.GOOGLE;
       const currentModel = node.data.model_type;
       
-      if (!currentModel || !availableModels.some(m => m.value === currentModel && m.provider === currentProvider)) {
+      // 기존 모델이 없거나 현재 provider에 해당하는 모델이 없을 때만 자동 선택
+      const hasValidModel = currentModel && availableModels.some(m => m.value === currentModel && m.provider === currentProvider);
+      
+      if (!hasValidModel) {
         const providerModels = availableModels.filter(model => model.provider === currentProvider);
         
         if (providerModels.length > 0) {
           let defaultModel;
           
           if (currentProvider === LLMProvider.GOOGLE) {
-            defaultModel = providerModels.find(m => m.value.includes('gemini-2.0-flash')) || providerModels[0];
+            defaultModel = providerModels.find(m => m.value.includes('gemini-1.5-flash')) || providerModels[0];
           } else if (currentProvider === LLMProvider.OPENAI) {
             defaultModel = providerModels.find(m => m.value.includes('gpt-4o-mini')) || providerModels[0];
           } else if (currentProvider === LLMProvider.INTERNAL) {
@@ -88,16 +91,23 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
             defaultModel = providerModels[0];
           }
           
-          form.setFieldValue('model_type', defaultModel.value);
+          // 폼에 이미 다른 값이 설정되어 있지 않은 경우에만 설정
+          const currentFormModel = form.getFieldValue('model_type');
+          if (!currentFormModel || currentFormModel === '') {
+            form.setFieldValue('model_type', defaultModel.value);
+          }
         }
       }
     }
-  }, [availableModels, node, form]);
+  }, [availableModels, node?.id]); // node.id 변경 시에만 실행되도록 수정
 
   // Provider 변경 시 모델 목록 로드 및 기본 모델 선택
   const handleProviderChange = async (provider: LLMProvider) => {
+    console.log('Provider changed to:', provider);
+    
     // 먼저 모델 선택 초기화
     form.setFieldValue('model_type', '');
+    console.log('Model field cleared');
     
     // 모델 목록 로드 (실패 시 store에서 해당 provider 모델들이 제거됨)
     await loadAvailableModels(provider);
@@ -106,12 +116,13 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
     setTimeout(() => {
       const state = useNodeWorkflowStore.getState();
       const providerModels = state.availableModels.filter(model => model.provider === provider);
+      console.log('Available models for provider:', providerModels);
       
       if (providerModels.length > 0) {
         let defaultModel;
         
         if (provider === LLMProvider.GOOGLE) {
-          defaultModel = providerModels.find(m => m.value.includes('gemini-2.0-flash')) || providerModels[0];
+          defaultModel = providerModels.find(m => m.value.includes('gemini-1.5-flash')) || providerModels[0];
         } else if (provider === LLMProvider.OPENAI) {
           defaultModel = providerModels.find(m => m.value.includes('gpt-4o-mini')) || providerModels[0];
         } else if (provider === LLMProvider.INTERNAL) {
@@ -120,7 +131,14 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
           defaultModel = providerModels[0];
         }
         
+        console.log('Setting default model:', defaultModel);
         form.setFieldValue('model_type', defaultModel.value);
+        
+        // 설정 후 확인
+        setTimeout(() => {
+          const currentValue = form.getFieldValue('model_type');
+          console.log('Form model after provider change:', currentValue);
+        }, 10);
       }
       // providerModels.length === 0인 경우 모델 필드는 비어있는 상태로 유지됨
     }, 100);
@@ -245,6 +263,17 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
                 filterOption={(input, option) =>
                   String(option?.children ?? '').toLowerCase().includes(input.toLowerCase())
                 }
+                onChange={(value) => {
+                  console.log('Model selection changed:', value);
+                  // 명시적으로 모델 변경 처리
+                  form.setFieldValue('model_type', value);
+                  // 값이 제대로 설정되었는지 확인
+                  setTimeout(() => {
+                    const currentValue = form.getFieldValue('model_type');
+                    console.log('Current form model after change:', currentValue);
+                  }, 10);
+                }}
+                value={form.getFieldValue('model_type')}
               >
                 {availableModels
                   .filter(model => model.provider === (form.getFieldValue('llm_provider') || LLMProvider.GOOGLE))

@@ -116,6 +116,52 @@ const StreamingOutput: React.FC<StreamingOutputProps> = memo(({ output, isExecut
   );
 });
 
+// 완료된 결과 표시 컴포넌트 (자동 스크롤 기능 포함)
+interface CompletedResultDisplayProps {
+  content: string;
+  nodeType: string;
+  isNewResult?: boolean; // 새로 완료된 결과인지 여부
+}
+
+const CompletedResultDisplay: React.FC<CompletedResultDisplayProps> = memo(({ content, nodeType, isNewResult = false }) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // 새로운 결과가 완료되었을 때 스크롤을 맨 아래로 이동
+  useEffect(() => {
+    if (scrollRef.current && isNewResult && content) {
+      // 약간의 지연을 주어 DOM이 완전히 렌더링된 후 스크롤
+      const timer = setTimeout(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [content, isNewResult]);
+
+  if (!content) {
+    return null;
+  }
+
+  return (
+    <div 
+      ref={scrollRef}
+      style={{ 
+        maxHeight: '300px', 
+        overflowY: 'auto', 
+        padding: '8px',
+        border: '1px solid #d9d9d9',
+        borderRadius: '4px',
+        backgroundColor: nodeType === 'output-node' ? '#fafafa' : nodeType === 'input-node' ? '#f0f8ff' : '#f6f8fa',
+        scrollBehavior: 'smooth'
+      }}
+    >
+      <MarkdownWithDownload content={content} />
+    </div>
+  );
+});
+
 // 테이블 다운로드 컴포넌트
 interface TableDownloadButtonsProps {
   headerRow: string[];
@@ -415,6 +461,39 @@ export const NodeExecutionResultPanel: React.FC = memo(() => {
     nodeStartOrder,
   } = useNodeWorkflowStore();
 
+  // 이전 실행 상태를 추적하여 새로 완료된 노드 감지
+  const previousExecutionStates = useRef<Record<string, string>>({});
+  const [newlyCompletedNodes, setNewlyCompletedNodes] = useState<Set<string>>(new Set());
+
+  // 실행 상태 변화 감지
+  useEffect(() => {
+    const currentStates = { ...nodeExecutionStates };
+    const newlyCompleted = new Set<string>();
+    
+    Object.keys(currentStates).forEach(nodeId => {
+      const currentState = currentStates[nodeId];
+      const previousState = previousExecutionStates.current[nodeId];
+      
+      // 이전 상태가 'executing'이고 현재 상태가 'completed'이면 새로 완료됨
+      if (previousState === 'executing' && currentState === 'completed') {
+        newlyCompleted.add(nodeId);
+      }
+    });
+    
+    if (newlyCompleted.size > 0) {
+      setNewlyCompletedNodes(newlyCompleted);
+      
+      // 일정 시간 후 새로 완료됨 플래그 제거
+      const timer = setTimeout(() => {
+        setNewlyCompletedNodes(new Set());
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+    
+    previousExecutionStates.current = currentStates;
+  }, [nodeExecutionStates]);
+
   // 노드 실행 시작 순서대로 정렬 (고정된 순서 유지) - 메모이제이션으로 최적화
   const orderedNodes = useMemo(() => {
     // 실행 결과가 있거나 실행 상태가 설정된 노드들만 포함
@@ -560,18 +639,11 @@ export const NodeExecutionResultPanel: React.FC = memo(() => {
                                 const outputContent = outputMatch ? outputMatch[1].trim() : executionResult.description;
                                 
                                 return (
-                                  <div>
-                                    <div style={{ 
-                                      maxHeight: '300px', 
-                                      overflowY: 'auto', 
-                                      padding: '8px',
-                                      border: '1px solid #d9d9d9',
-                                      borderRadius: '4px',
-                                      backgroundColor: '#fafafa'
-                                    }}>
-                                      <MarkdownWithDownload content={outputContent || ''} />
-                                    </div>
-                                  </div>
+                                  <CompletedResultDisplay 
+                                    content={outputContent || ''} 
+                                    nodeType={node.node_type}
+                                    isNewResult={newlyCompletedNodes.has(node.id)}
+                                  />
                                 );
                               })()
                             ) : (
@@ -592,27 +664,23 @@ export const NodeExecutionResultPanel: React.FC = memo(() => {
                                         📄 입력 데이터 내용: {content ? `(${content.length}자)` : '(내용 없음)'}
                                       </div>
                                     )}
-                                    <div style={{ 
-                                      maxHeight: '300px', 
-                                      overflowY: 'auto', 
-                                      padding: '8px',
-                                      border: '1px solid #d9d9d9',
-                                      borderRadius: '4px',
-                                      backgroundColor: isInputNode ? '#f0f8ff' : undefined
-                                    }}>
-                                      {content && content.trim() ? (
-                                        <MarkdownWithDownload content={content} />
-                                      ) : (
-                                        <div style={{ 
-                                          color: '#999', 
-                                          fontStyle: 'italic',
-                                          textAlign: 'center',
-                                          padding: '20px'
-                                        }}>
-                                          {isInputNode ? '입력 노드에 내용이 설정되지 않았습니다.' : '출력 내용이 없습니다.'}
-                                        </div>
-                                      )}
-                                    </div>
+                                    {content && content.trim() ? (
+                                      <CompletedResultDisplay 
+                                        content={content} 
+                                        nodeType={node.node_type}
+                                        isNewResult={newlyCompletedNodes.has(node.id)}
+                                      />
+                                    ) : (
+                                      <div style={{ 
+                                        color: '#999', 
+                                        fontStyle: 'italic',
+                                        fontSize: '10px',
+                                        textAlign: 'center',
+                                        padding: '20px'
+                                      }}>
+                                        {isInputNode ? '입력 노드에 내용이 설정되지 않았습니다.' : '출력 내용이 없습니다.'}
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })()
