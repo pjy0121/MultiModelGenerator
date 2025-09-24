@@ -70,7 +70,6 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
     
     // 노드 선택 관리
     setSelectedNodeId,
-    getSelectedNodeEdges,
     
     // 전역 Rerank 설정
     globalUseRerank,

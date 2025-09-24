@@ -365,7 +365,7 @@ class NodeExecutor:
             if rerank_enabled:
                 rerank_info = {
                     "provider": LLM_CONFIG.get("default_provider", "google"),
-                    "model": LLM_CONFIG.get("default_model", "gemini-2.0-flash")
+                    "model": LLM_CONFIG.get("default_model", "gemini-1.5-flash")
                 }
             
             # 벡터 DB 검색 실행

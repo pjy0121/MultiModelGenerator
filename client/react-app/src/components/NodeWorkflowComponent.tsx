@@ -1,6 +1,6 @@
 import React, { useState, memo, useCallback, useMemo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Card, Tag, Typography, Button, Popconfirm, Spin } from 'antd';
+import { Card, Tag, Typography, Button, Popconfirm } from 'antd';
 import { EditOutlined, DeleteOutlined, LoadingOutlined } from '@ant-design/icons';
 import { NodeType, WorkflowNode } from '../types';
 import NodeEditModal from './NodeEditModal';

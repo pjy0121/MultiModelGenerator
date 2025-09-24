@@ -27,7 +27,7 @@ SERVER_CONFIG = {
 LLM_CONFIG = {
     "supported_providers": ["openai", "google", "internal"],
     "default_provider": "google", 
-    "default_model": "gemini-2.0-flash",
+    "default_model": "gemini-1.5-flash",
     "default_temperature": 0.1,
     "chunk_processing_size": 10,
     "simulation_sleep_interval": 0.1
