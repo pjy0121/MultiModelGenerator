@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List
 
 from .llm_factory import LLMFactory
 import json

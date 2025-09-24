@@ -3,6 +3,7 @@ from .llm_client_interface import LLMClientInterface
 
 from .openai_llm_client import OpenAIClient
 from .google_llm_client import GoogleLLMClient
+from .internal_llm_client import InternalLLMClient
 
 class LLMFactory:
     """LLM 클라이언트 팩토리"""
@@ -32,6 +33,15 @@ class LLMFactory:
             print("✅ Google 클라이언트 생성 완료")
         except Exception as e:
             print(f"❌ Google 클라이언트 생성 실패: {e}")
+            import traceback
+            traceback.print_exc()
+            
+        try:
+            print("🔄 Internal LLM 클라이언트 생성 중...")
+            cls._clients["internal"] = InternalLLMClient()
+            print("✅ Internal LLM 클라이언트 생성 완료")
+        except Exception as e:
+            print(f"❌ Internal LLM 클라이언트 생성 실패: {e}")
             import traceback
             traceback.print_exc()
             

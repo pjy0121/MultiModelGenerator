@@ -33,8 +33,3 @@ class LLMClientInterface(ABC):
     ) -> Union[str, AsyncGenerator[str, None]]:
         """Alternative interface for generating responses (used by rerank)."""
         pass
-    
-    @abstractmethod
-    def get_model_context_length(self, model: str) -> int:
-        """Get the maximum context length for a specific model."""
-        pass
