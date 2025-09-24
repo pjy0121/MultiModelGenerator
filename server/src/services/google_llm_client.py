@@ -142,16 +142,6 @@ class GoogleLLMClient(LLMClientInterface):
         except Exception as e:
             raise Exception(f"Google AI 응답 생성 실패: {str(e)}")
     
-    def get_model_context_length(self, model: str) -> int:
-        """모델의 최대 컨텍스트 길이 반환"""
-        # Google AI 모델들의 일반적인 컨텍스트 길이
-        if 'gemini-1.5' in model:
-            return 1000000  # 1M tokens
-        elif 'gemini-1.0-pro' in model or 'gemini-pro' in model:
-            return 30720   # 30K tokens
-        else:
-            return 8192    # 기본값
-    
     async def chat_completion_stream(self, model: str, messages: List[Dict[str, Any]], **kwargs):
         """Google AI를 사용하여 스트리밍 채팅 완성"""
         if not self.is_available():

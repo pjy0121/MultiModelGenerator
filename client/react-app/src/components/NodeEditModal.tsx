@@ -75,9 +75,17 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
         const providerModels = availableModels.filter(model => model.provider === currentProvider);
         
         if (providerModels.length > 0) {
-          const defaultModel = currentProvider === LLMProvider.GOOGLE 
-            ? providerModels.find(m => m.value.includes('gemini-2.0-flash')) || providerModels[0]
-            : providerModels.find(m => m.value.includes('gpt-4o-mini')) || providerModels[0];
+          let defaultModel;
+          
+          if (currentProvider === LLMProvider.GOOGLE) {
+            defaultModel = providerModels.find(m => m.value.includes('gemini-2.0-flash')) || providerModels[0];
+          } else if (currentProvider === LLMProvider.OPENAI) {
+            defaultModel = providerModels.find(m => m.value.includes('gpt-4o-mini')) || providerModels[0];
+          } else if (currentProvider === LLMProvider.INTERNAL) {
+            defaultModel = providerModels[0];
+          } else {
+            defaultModel = providerModels[0];
+          }
           
           form.setFieldValue('model_type', defaultModel.value);
         }
@@ -87,20 +95,33 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
 
   // Provider 변경 시 모델 목록 로드 및 기본 모델 선택
   const handleProviderChange = async (provider: LLMProvider) => {
+    // 먼저 모델 선택 초기화
     form.setFieldValue('model_type', '');
+    
+    // 모델 목록 로드 (실패 시 store에서 해당 provider 모델들이 제거됨)
     await loadAvailableModels(provider);
     
+    // 로드 완료 후 사용 가능한 모델이 있으면 기본 모델 선택
     setTimeout(() => {
       const state = useNodeWorkflowStore.getState();
       const providerModels = state.availableModels.filter(model => model.provider === provider);
       
       if (providerModels.length > 0) {
-        const defaultModel = provider === LLMProvider.GOOGLE
-          ? providerModels.find(m => m.value.includes('gemini-2.0-flash')) || providerModels[0]
-          : providerModels.find(m => m.value.includes('gpt-4o-mini')) || providerModels[0];
+        let defaultModel;
+        
+        if (provider === LLMProvider.GOOGLE) {
+          defaultModel = providerModels.find(m => m.value.includes('gemini-2.0-flash')) || providerModels[0];
+        } else if (provider === LLMProvider.OPENAI) {
+          defaultModel = providerModels.find(m => m.value.includes('gpt-4o-mini')) || providerModels[0];
+        } else if (provider === LLMProvider.INTERNAL) {
+          defaultModel = providerModels[0]; // internal은 보통 단일 모델이므로 첫 번째 사용
+        } else {
+          defaultModel = providerModels[0];
+        }
         
         form.setFieldValue('model_type', defaultModel.value);
       }
+      // providerModels.length === 0인 경우 모델 필드는 비어있는 상태로 유지됨
     }, 100);
   };
 
@@ -190,6 +211,7 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
               >
                 <Option value={LLMProvider.GOOGLE}>Google AI Studio</Option>
                 <Option value={LLMProvider.OPENAI}>OpenAI</Option>
+                <Option value={LLMProvider.INTERNAL}>Internal LLM</Option>
               </Select>
             </Form.Item>
 

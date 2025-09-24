@@ -164,18 +164,3 @@ class OpenAIClient(LLMClientInterface):
     ) -> str:
         """rerank에서 사용하는 generate 메서드"""
         return await self.generate_response(prompt, model, temperature, max_tokens, stream)
-    
-    def get_model_context_length(self, model: str) -> int:
-        """모델의 최대 컨텍스트 길이 반환"""
-        if "gpt-4" in model:
-            if "turbo" in model or "1106" in model or "0125" in model:
-                return 128000  # GPT-4 Turbo
-            else:
-                return 8192    # GPT-4
-        elif "gpt-3.5-turbo" in model:
-            if "16k" in model:
-                return 16384   # GPT-3.5 Turbo 16k
-            else:
-                return 4096    # GPT-3.5 Turbo
-        else:
-            return 4096        # 기본값

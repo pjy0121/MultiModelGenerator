@@ -15,6 +15,7 @@ function App() {
     store.loadKnowledgeBases();
     store.loadAvailableModels(LLMProvider.GOOGLE);
     store.loadAvailableModels(LLMProvider.OPENAI);
+    store.loadAvailableModels(LLMProvider.INTERNAL);
   }, []);
 
   return (

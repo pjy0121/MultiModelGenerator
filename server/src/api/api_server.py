@@ -18,7 +18,7 @@ from ..core.models import (
     KnowledgeBaseListResponse
 )
 from ..services.vector_store_service import VectorStoreService
-from ..services.model_manager import ModelManager
+from ..services.llm_factory import LLMFactory
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -272,9 +272,22 @@ async def get_available_models(provider: str):
             supported_providers = ", ".join(LLM_CONFIG["supported_providers"])
             raise HTTPException(status_code=400, detail=f"Unsupported provider. Only '{supported_providers}' are supported.")
 
-        models = ModelManager.get_models_by_provider(provider)
+        # LLMFactory를 통해 직접 클라이언트에서 모델 목록 가져오기
+        client = LLMFactory.get_client(provider)
+        if not client:
+            raise HTTPException(status_code=500, detail=f"Failed to create client for {provider}")
+            
+        if not client.is_available():
+            if provider == "internal":
+                raise HTTPException(
+                    status_code=503, 
+                    detail=f"Internal LLM service is not available. Please check INTERNAL_API_KEY and INTERNAL_API_ENDPOINT environment variables."
+                )
+            else:
+                raise HTTPException(status_code=503, detail=f"{provider} service is not available")
+            
+        models = client.get_available_models()
         
-        # 이미 dict 형태이므로 그대로 반환
         return models
         
     except HTTPException:

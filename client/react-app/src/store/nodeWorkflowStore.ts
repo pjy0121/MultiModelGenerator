@@ -219,6 +219,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
         // 모든 provider 모델 목록 로드
         await state.loadAvailableModels(LLMProvider.GOOGLE);
         await state.loadAvailableModels(LLMProvider.OPENAI);
+        await state.loadAvailableModels(LLMProvider.INTERNAL);
         
         // 모델 로드 완료 후 기본 모델 선택
         const updatedState = get();
@@ -565,7 +566,15 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       
       set({ availableModels: updatedModels });
     } catch (error) {
-      console.error('모델 목록 로딩 실패:', error);
+      console.error(`${provider} 모델 목록 로딩 실패:`, error);
+      
+      // 실패 시 해당 provider의 모델들을 제거
+      const state = get();
+      const otherProviderModels = state.availableModels.filter(model => model.provider !== provider);
+      set({ availableModels: otherProviderModels });
+      
+      // 사용자에게 알림
+      message.error(`${provider} 모델 목록을 불러오는데 실패했습니다. 연결 상태를 확인해주세요.`);
     }
   },
   

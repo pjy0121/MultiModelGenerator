@@ -11,7 +11,8 @@ export enum NodeType {
 
 export enum LLMProvider {
   OPENAI = "openai",
-  GOOGLE = "google"
+  GOOGLE = "google",
+  INTERNAL = "internal"
 }
 
 export enum SearchIntensity {
