@@ -11,6 +11,14 @@ class WorkflowValidator:
     project_reference.md의 연결 조건을 기반으로 검증
     """
     
+    def _format_node_name(self, node_id: str, node_type: NodeType) -> str:
+        """노드 이름을 사용자 친화적으로 포맷팅"""
+        # 긴 ID의 경우 마지막 8자리만 사용
+        if len(node_id) > 20:
+            short_id = node_id[-8:]
+            return f"{node_type.value} (...{short_id})"
+        return f"{node_type.value} ({node_id})"
+    
     def validate_workflow(self, workflow: WorkflowDefinition) -> Dict[str, any]:
         """
         워크플로우 전체 유효성 검증
@@ -86,6 +94,12 @@ class WorkflowValidator:
                     errors.append(f"output-node '{node_id}'에는 post-node가 존재할 수 없습니다.")
                 if not pre_nodes:
                     errors.append(f"output-node '{node_id}'에는 최소 하나의 pre-node가 있어야 합니다.")
+                # output-node는 여러 pre-node를 허용 (ensemble처럼 동작)
+            
+            elif node.type == NodeType.CONTEXT:
+                # context-node: pre-node는 없어도 됨 (독립적 지식 베이스 검색), post-node는 필수
+                if not post_nodes:
+                    errors.append(f"context-node '{node_id}'에는 최소 하나의 post-node가 있어야 합니다.")
             
             else:
                 # generation, ensemble, validation 노드들
@@ -94,13 +108,56 @@ class WorkflowValidator:
                 if not post_nodes:
                     errors.append(f"노드 '{node_id}'에는 최소 하나의 post-node가 있어야 합니다.")
             
-            # 조건 3: 여러 개의 pre-node와 연결될 수 있는 노드는 ensemble-node뿐이다
-            if len(pre_nodes) > 1 and node.type != NodeType.ENSEMBLE:
-                errors.append(f"노드 '{node_id}' ({node.type.value}): ensemble-node가 아닌 노드는 여러 개의 pre-node를 가질 수 없습니다.")
+            # 조건 3: pre-node 개수 제한 규칙
+            # - output-node, ensemble-node: 제한 없음
+            # - generation-node, validation-node: input-node 최대 1개 + context-node 최대 1개
+            # - 다른 노드들: 일반 pre-node 1개 + context-node 최대 1개
             
-            # 조건 4: 여러 개의 post-node와 연결될 수 있는 노드는 input-node뿐이다
-            if len(post_nodes) > 1 and node.type != NodeType.INPUT:
-                errors.append(f"노드 '{node_id}' ({node.type.value}): input-node가 아닌 노드는 여러 개의 post-node를 가질 수 없습니다.")
+            context_pre_nodes = []
+            input_pre_nodes = []
+            other_pre_nodes = []
+            
+            for pre_node_id in pre_nodes:
+                pre_node = nodes_map.get(pre_node_id)
+                if pre_node:
+                    if pre_node.type == NodeType.CONTEXT:
+                        context_pre_nodes.append(pre_node_id)
+                    elif pre_node.type == NodeType.INPUT:
+                        input_pre_nodes.append(pre_node_id)
+                    else:
+                        other_pre_nodes.append(pre_node_id)
+            
+            # context-node는 모든 노드에서 최대 1개만 허용
+            if len(context_pre_nodes) > 1:
+                node_name = self._format_node_name(node_id, node.type)
+                errors.append(f"{node_name}: context-node는 최대 1개만 연결할 수 있습니다.")
+            
+            # 노드 타입별 pre-node 제한 검사
+            if node.type == NodeType.GENERATION:
+                # generation-node: input-node 최대 1개 + context-node 최대 1개만
+                if len(input_pre_nodes) > 1:
+                    node_name = self._format_node_name(node_id, node.type)
+                    errors.append(f"{node_name}: input-node는 최대 1개만 연결할 수 있습니다.")
+                if len(other_pre_nodes) > 0:
+                    node_name = self._format_node_name(node_id, node.type)
+                    errors.append(f"{node_name}: input-node와 context-node에서만 입력받을 수 있습니다.")
+            elif node.type == NodeType.VALIDATION:
+                # validation-node: 다른 LLM 노드들로부터 입력 가능, context-node 제외한 pre-node 최대 1개
+                total_non_context = len(input_pre_nodes) + len(other_pre_nodes)
+                if total_non_context > 1:
+                    node_name = self._format_node_name(node_id, node.type)
+                    errors.append(f"{node_name}: context-node를 제외한 입력은 최대 1개만 가능합니다.")
+            elif node.type != NodeType.ENSEMBLE and node.type != NodeType.OUTPUT:
+                # 다른 노드들 (input, context 제외): 일반 pre-node 1개 + context-node 최대 1개
+                total_non_context = len(input_pre_nodes) + len(other_pre_nodes)
+                if total_non_context > 1:
+                    node_name = self._format_node_name(node_id, node.type)
+                    errors.append(f"{node_name}: context-node를 제외한 입력은 최대 1개만 가능합니다.")
+            
+            # 조건 4: 여러 개의 post-node와 연결될 수 있는 노드는 input-node와 context-node뿐이다
+            if len(post_nodes) > 1 and node.type != NodeType.INPUT and node.type != NodeType.CONTEXT:
+                node_name = self._format_node_name(node_id, node.type)
+                errors.append(f"{node_name}: 여러 출력을 가질 수 없습니다 (input-node와 context-node만 가능).")
             
             # 타입별 연결 제한 검증
             self._validate_node_type_connections(node, pre_nodes, post_nodes, nodes_map, errors)
@@ -131,12 +188,13 @@ class WorkflowValidator:
     ):
         """노드 타입별 연결 제한 검증"""
         
-        # generation-node: pre-node로 input-node만 올 수 있다
+        # generation-node: pre-node로 input-node와 context-node가 올 수 있다
         if node.type == NodeType.GENERATION:
+            allowed_pre_types = {NodeType.INPUT, NodeType.CONTEXT}
             for pre_id in pre_nodes:
                 pre_node = nodes_map.get(pre_id)
-                if pre_node and pre_node.type != NodeType.INPUT:
-                    errors.append(f"generation-node '{node.id}': pre-node로 input-node만 올 수 있습니다.")
+                if pre_node and pre_node.type not in allowed_pre_types:
+                    errors.append(f"generation-node '{node.id}': pre-node로 input-node와 context-node만 올 수 있습니다.")
         
         # ensemble-node: pre-node로 output-node를 제외한 모든 노드들이 올 수 있다
         if node.type == NodeType.ENSEMBLE:
@@ -147,11 +205,19 @@ class WorkflowValidator:
         
         # validation-node: pre-node로 input-node, generation-node, ensemble-node, validation-node가 올 수 있다
         if node.type == NodeType.VALIDATION:
-            allowed_pre_types = {NodeType.INPUT, NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION}
+            allowed_pre_types = {NodeType.INPUT, NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION, NodeType.CONTEXT}
             for pre_id in pre_nodes:
                 pre_node = nodes_map.get(pre_id)
                 if pre_node and pre_node.type not in allowed_pre_types:
                     errors.append(f"validation-node '{node.id}': pre-node로 {pre_node.type.value}는 올 수 없습니다.")
+        
+        # context-node: post-node로 generation-node, ensemble-node, validation-node, context-node, output-node가 올 수 있다 (input-node 제외)
+        if node.type == NodeType.CONTEXT:
+            allowed_post_types = {NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION, NodeType.CONTEXT, NodeType.OUTPUT}
+            for post_id in post_nodes:
+                post_node = nodes_map.get(post_id)
+                if post_node and post_node.type not in allowed_post_types:
+                    errors.append(f"context-node '{node.id}': post-node로 {post_node.type.value}는 올 수 없습니다.")
     
     def _build_pre_nodes_map(self, workflow: WorkflowDefinition) -> Dict[str, List[str]]:
         """각 노드의 pre-nodes 맵핑"""

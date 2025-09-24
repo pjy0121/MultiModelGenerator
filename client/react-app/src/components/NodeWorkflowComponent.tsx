@@ -8,6 +8,18 @@ import { useNodeWorkflowStore } from '../store/nodeWorkflowStore';
 
 const { Text } = Typography;
 
+// 검색 강도 표시 매핑
+const getSearchIntensityLabel = (intensity: string): string => {
+  const intensityMap: Record<string, string> = {
+    'very_low': '매우 낮음',
+    'low': '낮음',
+    'medium': '보통',
+    'high': '높음',
+    'very_high': '매우 높음'
+  };
+  return intensityMap[intensity] || intensity;
+};
+
 interface NodeWorkflowComponentProps {
   data: WorkflowNode['data'];
   id: string;
@@ -25,6 +37,8 @@ const getNodeColor = (nodeType: NodeType): { background: string; border: string;
       return { background: '#f9f0ff', border: '#722ed1', tag: 'purple' };
     case NodeType.VALIDATION:
       return { background: '#fff7e6', border: '#fa8c16', tag: 'orange' };
+    case NodeType.CONTEXT:
+      return { background: '#f0f5ff', border: '#2f54eb', tag: 'blue' };
     case NodeType.OUTPUT:
       return { background: '#fff1f0', border: '#ff4d4f', tag: 'red' };
     default:
@@ -68,7 +82,7 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = memo(
     [data.nodeType]
   );
 
-  // 실행 상태에 따른 스타일 변경
+  // 실행 상태 및 선택 상태에 따른 스타일 변경
   const getExecutingStyle = useCallback(() => {
     if (isExecuting) {
       return {
@@ -78,13 +92,25 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = memo(
         zIndex: 1000 // 다른 노드들보다 위에 표시
       };
     }
+    
+    if (selected) {
+      return {
+        background: colors.background,
+        border: `3px solid ${colors.border}`, // 선택된 노드는 더 굵은 테두리
+        boxShadow: `0 0 15px ${colors.border}40`, // 선택된 노드는 glow 효과
+        transform: 'scale(1.02)', // 약간 확대
+        transition: 'all 0.3s ease',
+        zIndex: 100
+      };
+    }
+    
     return {
       background: colors.background,
       border: `2px solid ${colors.border}`,
       transform: 'scale(1)',
       transition: 'all 0.3s ease' // 부드러운 전환
     };
-  }, [isExecuting, colors.background, colors.border]);
+  }, [isExecuting, selected, colors.background, colors.border]);
 
   // 노드 편집 핸들러
   const handleEdit = useCallback(() => {
@@ -231,13 +257,33 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = memo(
               </div>
             )}
             
+            {/* Context 노드 정보 표시 */}
+            {data.nodeType === NodeType.CONTEXT && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ marginBottom: 4 }}>
+                  <Text style={{ fontSize: 10, color: '#666' }}>
+                    <strong>{data.knowledge_base && `Base: ${data.knowledge_base}`}</strong>
+                  </Text>
+                  <br />
+                  <Text style={{ fontSize: 10, color: '#666' }}>
+                    <strong>{data.knowledge_base && data.search_intensity ? `Intensity: ${getSearchIntensityLabel(data.search_intensity)}` : ''}</strong>
+                  </Text>
+                </div>
+                {!data.knowledge_base && (
+                  <Text style={{ fontSize: 10, color: '#ff4d4f', fontStyle: 'italic' }}>
+                    ⚠️ 지식 베이스가 설정되지 않았습니다
+                  </Text>
+                )}
+              </div>
+            )}
+            
             {/* Content 노드 정보 표시 */}
             {isContentNode && (
               <div>
                 <Text style={{ fontSize: 10, color: '#666' }}>
                   { data.content && data.content.length > 50 
                     ? `${data.content.substring(0, 50)}...` 
-                    : data.content || 'Content not set!'
+                    : data.content || ''
                   }
                 </Text>
               </div>

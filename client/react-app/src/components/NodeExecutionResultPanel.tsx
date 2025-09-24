@@ -36,12 +36,13 @@ const StreamingOutput: React.FC<StreamingOutputProps> = memo(({ output, isExecut
 
   // 스트리밍 출력이 업데이트될 때마다 스크롤을 맨 아래로 이동
   useEffect(() => {
-    if (scrollRef.current && output && isExecuting && autoScroll) {
+    if (scrollRef.current && output && autoScroll) {
       const scrollElement = scrollRef.current;
       const currentOutputLength = output.length;
       
-      // 새로운 콘텐츠가 추가되었을 때만 스크롤
-      if (currentOutputLength > previousOutputLength.current) {
+      // 새로운 콘텐츠가 추가되었을 때만 스크롤 (실행 중일 때)
+      // 또는 실행이 완료되었을 때도 스크롤
+      if (currentOutputLength > previousOutputLength.current || !isExecuting) {
         // requestAnimationFrame을 사용해서 DOM 업데이트 후에 스크롤
         requestAnimationFrame(() => {
           scrollElement.scrollTop = scrollElement.scrollHeight;

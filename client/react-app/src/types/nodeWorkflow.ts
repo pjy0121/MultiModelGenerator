@@ -1,11 +1,12 @@
 // ==================== 노드 기반 워크플로우 전용 타입 시스템 ====================
-// project_reference.md에 기반한 5가지 노드 타입만 지원
+// project_reference.md에 기반한 6가지 노드 타입 지원
 
 export enum NodeType {
   INPUT = "input-node",
   GENERATION = "generation-node", 
   ENSEMBLE = "ensemble-node",
   VALIDATION = "validation-node",
+  CONTEXT = "context-node",
   OUTPUT = "output-node"
 }
 
@@ -32,6 +33,8 @@ export interface NodeBasedConfig {
   model_type?: string;        // LLM 모델 식별자
   llm_provider?: LLMProvider; // LLM 제공자
   prompt?: string;            // LLM 노드용 프롬프트
+  knowledge_base?: string;    // context-node용 지식베이스
+  search_intensity?: SearchIntensity; // context-node용 검색 강도
   position: { x: number; y: number };
 }
 
@@ -60,10 +63,13 @@ export interface NodeBasedExecutionResult {
 
 // 스트림 데이터 타입
 export interface StreamChunk {
-  type: 'node_start' | 'node_streaming' | 'node_complete' | 'workflow_complete';
+  type: 'node_start' | 'node_streaming' | 'node_complete' | 'workflow_complete' | 'validation_error' | 'error';
   node_id?: string;
   content?: string;
   results?: NodeBasedExecutionResult[];
+  message?: string;
+  errors?: string[];
+  warnings?: string[];
 }
 
 // 워크플로우 실행 요청 타입
@@ -72,7 +78,7 @@ export interface WorkflowExecutionRequest {
     nodes: any[];
     edges: WorkflowEdge[];
   };
-  use_rerank: boolean;
+  rerank_enabled: boolean;
 }
 
 export interface NodeBasedWorkflowResponse {
@@ -95,6 +101,8 @@ export interface NodeData extends Record<string, unknown> {
   llm_provider?: LLMProvider; // LLM 노드용
   prompt?: string;            // LLM 노드용 프롬프트
   output_format?: string;     // LLM 노드용 출력 형식
+  knowledge_base?: string;    // context-node용 지식베이스
+  search_intensity?: SearchIntensity; // context-node용 검색 강도
   isExecuting?: boolean;      // 실행 상태 표시용
   isCompleted?: boolean;      // 완료 상태 표시용
 }
@@ -115,13 +123,11 @@ export interface WorkflowNode {
 export interface KnowledgeBase {
   name: string;
   chunk_count: number;
-  path: string;
-  exists: boolean;
+  created_at: string;
 }
 
 export interface KnowledgeBaseListResponse {
   knowledge_bases: KnowledgeBase[];
-  total_count: number;
 }
 
 // ==================== 워크플로우 검증 관련 타입들 ====================

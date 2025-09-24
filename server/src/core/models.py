@@ -7,6 +7,7 @@ class NodeType(str, Enum):
     GENERATION = "generation-node"
     ENSEMBLE = "ensemble-node"
     VALIDATION = "validation-node"
+    CONTEXT = "context-node"
     OUTPUT = "output-node"
 
 class SearchIntensity(str, Enum):
