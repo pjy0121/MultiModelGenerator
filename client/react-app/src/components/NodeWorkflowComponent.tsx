@@ -5,19 +5,13 @@ import { EditOutlined, DeleteOutlined, LoadingOutlined } from '@ant-design/icons
 import { NodeType, WorkflowNode } from '../types';
 import NodeEditModal from './NodeEditModal';
 import { useNodeWorkflowStore } from '../store/nodeWorkflowStore';
+import { NODE_CONFIG } from '../config/constants';
 
 const { Text } = Typography;
 
 // 검색 강도 표시 매핑
 const getSearchIntensityLabel = (intensity: string): string => {
-  const intensityMap: Record<string, string> = {
-    'very_low': '매우 낮음',
-    'low': '낮음',
-    'medium': '보통',
-    'high': '높음',
-    'very_high': '매우 높음'
-  };
-  return intensityMap[intensity] || intensity;
+  return NODE_CONFIG.SEARCH_INTENSITY_LABELS[intensity as keyof typeof NODE_CONFIG.SEARCH_INTENSITY_LABELS] || intensity;
 };
 
 interface NodeWorkflowComponentProps {
@@ -28,22 +22,7 @@ interface NodeWorkflowComponentProps {
 
 // 노드 타입별 색상 설정
 const getNodeColor = (nodeType: NodeType): { background: string; border: string; tag: string } => {
-  switch (nodeType) {
-    case NodeType.INPUT:
-      return { background: '#e6f7ff', border: '#1890ff', tag: 'blue' };
-    case NodeType.GENERATION:
-      return { background: '#f6ffed', border: '#52c41a', tag: 'green' };
-    case NodeType.ENSEMBLE:
-      return { background: '#f9f0ff', border: '#722ed1', tag: 'purple' };
-    case NodeType.VALIDATION:
-      return { background: '#fff7e6', border: '#fa8c16', tag: 'orange' };
-    case NodeType.CONTEXT:
-      return { background: '#f0f5ff', border: '#2f54eb', tag: 'blue' };
-    case NodeType.OUTPUT:
-      return { background: '#fff1f0', border: '#ff4d4f', tag: 'red' };
-    default:
-      return { background: '#f5f5f5', border: '#d9d9d9', tag: 'default' };
-  }
+  return NODE_CONFIG.COLORS[nodeType] || NODE_CONFIG.COLORS.default;
 };
 
 // Handle 위치 결정

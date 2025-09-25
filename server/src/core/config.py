@@ -3,6 +3,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# 서버 설정
+SERVER_CONFIG = {
+    "host": "localhost",
+    "port": 5001
+}
+
 # API 키 설정
 API_KEYS = {
     "openai": os.getenv("OPENAI_API_KEY"),
@@ -14,13 +20,8 @@ API_KEYS = {
 INTERNAL_LLM_CONFIG = {
     "api_endpoint": os.getenv("INTERNAL_API_ENDPOINT"),
     "api_key": os.getenv("INTERNAL_API_KEY"),
-    "model_name": os.getenv("INTERNAL_MODEL_NAME", "internal-llm")
-}
-
-# 서버 설정
-SERVER_CONFIG = {
-    "host": os.getenv("API_HOST", "localhost"),
-    "port": int(os.getenv("API_PORT", "5001"))
+    "model_name": os.getenv("INTERNAL_MODEL_NAME"),
+    "timeout": 30
 }
 
 # LLM 설정
@@ -33,11 +34,10 @@ LLM_CONFIG = {
     "simulation_sleep_interval": 0.1
 }
 
-
-
 # 벡터 DB 설정
 VECTOR_DB_CONFIG = {
     "root_dir": "./knowledge_bases",
+    "embedding_model": "all-MiniLM-L6-v2",  # name or path
     "chunk_size": 6000,
     "chunk_overlap": 100,
     "similarity_threshold": 0.85,

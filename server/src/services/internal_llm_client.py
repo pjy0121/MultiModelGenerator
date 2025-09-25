@@ -1,5 +1,6 @@
-from typing import List, Dict, Any
+import os
 import asyncio
+from typing import List, Dict, Any
 from openai import OpenAI
 from .llm_client_interface import LLMClientInterface
 from ..core.config import INTERNAL_LLM_CONFIG, NODE_EXECUTION_CONFIG
@@ -16,17 +17,19 @@ class InternalLLMClient(LLMClientInterface):
     def _initialize_client(self):
         """클라이언트 초기화"""
         try:
-            api_endpoint = INTERNAL_LLM_CONFIG.get("api_endpoint")
             api_key = INTERNAL_LLM_CONFIG.get("api_key")
-            
-            if not api_endpoint:
-                raise ValueError("INTERNAL_API_ENDPOINT가 설정되지 않았습니다.")
             if not api_key:
                 raise ValueError("INTERNAL_API_KEY가 설정되지 않았습니다.")
-                
+            
+            api_endpoint = INTERNAL_LLM_CONFIG.get("api_endpoint")            
+            if not api_endpoint:
+                raise ValueError("INTERNAL_API_ENDPOINT가 설정되지 않았습니다.")            
+            os.environ["NO_PROXY"] = api_endpoint.replace("https://", "").replace("http://", "")
+
             self.client = OpenAI(
                 api_key=api_key,
-                base_url=api_endpoint
+                base_url=api_endpoint,
+                timeout=INTERNAL_LLM_CONFIG.get("timeout", 30)
             )
         except Exception as e:
             print(f"Internal LLM 클라이언트 초기화 실패: {e}")

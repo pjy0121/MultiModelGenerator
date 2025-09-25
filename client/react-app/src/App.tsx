@@ -2,7 +2,7 @@ import { Layout, Typography } from 'antd';
 import { useEffect } from 'react';
 import { NodeExecutionResultPanel } from './components/NodeExecutionResultPanel';
 import { NodeWorkflowCanvas } from './components/NodeWorkflowCanvas';
-import { useNodeWorkflowStore } from './store/nodeWorkflowStore';
+import { useDataLoadingStore } from './store/dataLoadingStore';
 import './App.css';
 
 const { Header, Content, Sider } = Layout;
@@ -10,7 +10,7 @@ const { Title } = Typography;
 
 function App() {
   useEffect(() => {
-    const store = useNodeWorkflowStore.getState();
+    const store = useDataLoadingStore.getState();
     // 지식베이스만 미리 로드하고, 모델은 필요할 때 로드
     store.loadKnowledgeBases();
   }, []);
