@@ -336,12 +336,21 @@ class NodeExecutor:
             # 검색 시작 알림
             yield {"type": "stream", "content": f"🔍 [{node.id}] 지식 베이스 '{node.knowledge_base}' 검색 중...\n"}
             
+            # rerank 정보 설정
+            rerank_info = None
+            if (node.rerank_provider and node.rerank_provider != "none" and node.rerank_model):
+                rerank_info = {
+                    "provider": node.rerank_provider,
+                    "model": node.rerank_model
+                }
+                yield {"type": "stream", "content": f"🔄 [{node.id}] 재정렬 설정됨: {node.rerank_provider}/{node.rerank_model}\n"}
+            
             # 벡터 스토어에서 관련 컨텍스트 검색
             context_results = await self.vector_store_service.search(
                 kb_name=node.knowledge_base,
                 query=query,
                 search_intensity=node.search_intensity or "medium",
-                rerank_info=None
+                rerank_info=rerank_info
             )
             
             if context_results:

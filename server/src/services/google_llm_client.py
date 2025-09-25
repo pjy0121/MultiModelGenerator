@@ -1,4 +1,6 @@
+
 import asyncio
+import traceback
 import google.generativeai as genai
 from typing import List, Dict, Any
 from .llm_client_interface import LLMClientInterface
@@ -91,14 +93,42 @@ class GoogleLLMClient(LLMClientInterface):
                 generation_config=generation_config
             )
             
-            # 스트리밍 응답 생성
-            response = genai_model.generate_content(prompt, stream=True)
+            print(f"🔄 Google AI 응답 생성 시작...")
             
-            for chunk in response:
-                if chunk.text:
-                    yield chunk.text
-                    await asyncio.sleep(0.01)
+            # 스트리밍 응답 생성
+            try:
+                response = genai_model.generate_content(prompt, stream=True)
+                print(f"✅ Google AI 응답 객체 생성 완료")
+                
+                # 응답 스트림 처리
+                for chunk in response:
+                    try:
+                        if hasattr(chunk, 'text') and chunk.text:
+                            yield chunk.text
+                            await asyncio.sleep(0.01)
+                        
+                    except AttributeError as attr_e:
+                        # 알려지지 않은 필드나 구조 변경에 대한 안전장치
+                        print(f"⚠️ Google AI chunk 처리 중 속성 오류: {attr_e}")
+                        continue
+                    except Exception as chunk_e:
+                        # 개별 chunk 처리 오류는 로그만 남기고 계속 진행
+                        print(f"⚠️ Google AI chunk 처리 오류: {chunk_e}")
+                        continue
+                        
+            except Exception as stream_e:
+                error_detail = traceback.format_exc()
+                print(f"⚠️ Google AI 스트림 생성 오류: {stream_e}")
+                print(f"⚠️ 상세 오류 정보:\n{error_detail}")
+                raise
                     
         except Exception as e:
-            raise Exception(f"Google AI 스트리밍 응답 생성 실패: {str(e)}")
+            error_msg = str(e)
+            # 특정 에러 메시지에 대한 더 명확한 설명 제공
+            if "finish_message" in error_msg:
+                error_msg = f"Google AI API 구조 변경으로 인한 오류: {error_msg}"
+            elif "Unknown field" in error_msg:
+                error_msg = f"Google AI API 필드 변경으로 인한 오류: {error_msg}"
+            
+            raise Exception(f"Google AI 스트리밍 응답 생성 실패: {error_msg}")
         

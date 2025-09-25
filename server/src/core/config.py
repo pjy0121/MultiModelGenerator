@@ -54,7 +54,7 @@ VECTOR_DB_CONFIG = {
 NODE_EXECUTION_CONFIG = {
     "stream_timeout": 10.0,           # 스트림 완료 대기 시간 (초)
     "stream_poll_timeout": 0.1,       # 스트림 폴링 간격 (초) 
-    "max_tokens_default": 2000,       # LLM 응답 기본 토큰 수
+    "max_tokens_default": 200000,       # LLM 응답 기본 토큰 수
     "score_decay_factor": 0.1         # VectorStore mock 점수 감소율
 }
 

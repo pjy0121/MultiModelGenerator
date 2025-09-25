@@ -518,21 +518,31 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
               tooltip="재정렬에 사용할 모델을 선택합니다."
               dependencies={['rerank_provider']}
             >
-              <Select 
-                placeholder="재정렬을 수행할 모델 선택"
-                disabled={form.getFieldValue('rerank_provider') === LLMProvider.NONE}
-              >
-                {availableModels
-                  .filter((model: AvailableModel) => {
-                    const selectedProvider = form.getFieldValue('rerank_provider');
-                    return selectedProvider !== LLMProvider.NONE && model.provider === selectedProvider;
-                  })
-                  .map((model: AvailableModel) => (
-                    <Option key={model.value} value={model.value} disabled={model.disabled}>
-                      {model.label}
-                    </Option>
-                  ))}
-              </Select>
+              <Form.Item noStyle shouldUpdate={(prev, current) => prev.rerank_provider !== current.rerank_provider}>
+                {(form) => {
+                  const selectedProvider = form.getFieldValue('rerank_provider');
+                  return (
+                    <Select 
+                      placeholder="재정렬을 수행할 모델 선택"
+                      disabled={selectedProvider === LLMProvider.NONE}
+                      value={form.getFieldValue('rerank_model')}
+                      onChange={(value) => {
+                        form.setFieldValue('rerank_model', value);
+                      }}
+                    >
+                      {availableModels
+                        .filter((model: AvailableModel) => {
+                          return selectedProvider !== LLMProvider.NONE && model.provider === selectedProvider;
+                        })
+                        .map((model: AvailableModel) => (
+                          <Option key={model.value} value={model.value} disabled={model.disabled}>
+                            {model.label}
+                          </Option>
+                        ))}
+                    </Select>
+                  );
+                }}
+              </Form.Item>
             </Form.Item>
           </>
         )}

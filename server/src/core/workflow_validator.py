@@ -48,6 +48,9 @@ class WorkflowValidator:
         # 필수 노드 존재 검증
         self._validate_required_nodes(workflow, errors)
         
+        # context-node 입력 검증
+        self._validate_context_nodes_input(workflow, errors)
+        
         return {
             "valid": len(errors) == 0,
             "errors": errors,
@@ -246,3 +249,32 @@ class WorkflowValidator:
             post_nodes_map[edge.source].append(edge.target)
         
         return post_nodes_map
+    
+    def _validate_context_nodes_input(self, workflow: WorkflowDefinition, errors: List[str]):
+        """context-node의 입력 검증 - context-node는 반드시 input-node가 pre-node로 있어야 함"""
+        
+        # 의존성 그래프 구축
+        pre_nodes_map = self._build_pre_nodes_map(workflow)
+        node_lookup = {node.id: node for node in workflow.nodes}
+        
+        # context-node들을 찾기
+        context_nodes = [node for node in workflow.nodes if node.type == NodeType.CONTEXT]
+        
+        for context_node in context_nodes:
+            pre_node_ids = pre_nodes_map.get(context_node.id, [])
+            
+            # context-node는 반드시 pre-node가 있어야 함
+            if not pre_node_ids:
+                errors.append(f"context-node '{context_node.id}'는 반드시 input-node가 pre-node로 연결되어야 합니다.")
+                continue
+            
+            # context-node의 pre-node 중 적어도 하나는 input-node여야 함
+            has_input_node = False
+            for pre_node_id in pre_node_ids:
+                pre_node = node_lookup.get(pre_node_id)
+                if pre_node and pre_node.type == NodeType.INPUT:
+                    has_input_node = True
+                    break
+            
+            if not has_input_node:
+                errors.append(f"context-node '{context_node.id}'는 반드시 input-node가 pre-node로 연결되어야 합니다.")

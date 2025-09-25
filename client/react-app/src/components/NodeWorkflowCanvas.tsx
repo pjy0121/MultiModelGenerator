@@ -486,7 +486,7 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
 
       {/* 상단 타이틀 바 */}
       <div style={{ padding: '8px 16px', background: UI_COLORS.PANEL.HEADER_BACKGROUND, borderBottom: `1px solid ${UI_COLORS.PANEL.HEADER_BORDER}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography.Title level={5} style={{ margin: 0 }}>워크플로우 구성</Typography.Title>
+        <Typography.Title level={4} style={{ margin: 0 }}>워크플로우 구성</Typography.Title>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
           {!isExecuting && !isStopping ? (
             <Button 
