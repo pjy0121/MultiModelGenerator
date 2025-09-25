@@ -2,7 +2,6 @@ import PyPDF2
 import re
 from typing import List, Dict
 from sentence_transformers import SentenceTransformer
-import numpy as np
 from ..core.config import VECTOR_DB_CONFIG
 
 class DocumentProcessor:

@@ -46,55 +46,6 @@ vector_store_service = VectorStoreService()
 async def health():
     return {"status": "Node-based workflow API is running", "version": "2.0.0"}
 
-@app.get("/test")
-async def test():
-    return {"message": "Node-based API is working!"}
-
-@app.get("/post")
-def run_workflow(
-    provider: str = Query(..., description="LLM Provider"),
-    model: str = Query(..., description="Model name"),
-    input_text: str = Query(..., description="Input content"),
-):
-    """
-    GET /run?provider=openai&model=gpt-4&input_text=PCIe+Compliance
-    """
-    try:
-        # 1. 템플릿 불러오기
-        with open("C:\\Users\\SpringFrog\\projects\\MultiModelGenerator\\post_param_example.json", "r", encoding="utf-8") as f:
-            template = json.load(f)
-
-        # 2. 값 치환
-        new_data = deepcopy(template)
-        for node in new_data["workflow"]["nodes"]:
-            if node.get("llm_provider") == "google":
-                node["llm_provider"] = provider
-            if node.get("model_type") == "gemini-1.5-flash":
-                node["model_type"] = model
-            if node.get("content") == "Sanitize":
-                node["content"] = input_text
-
-        # 3. POST 요청
-        headers = {"Content-Type": "application/json"}
-        api_base_url = f"http://{SERVER_CONFIG['host']}:{SERVER_CONFIG['port']}"
-        response = requests.post(f"{api_base_url}/execute-workflow-stream",
-                                 headers=headers, json=new_data)
-
-        # 4. 결과 반환
-        try:
-            return {
-                "status_code": response.status_code,
-                "response": response.json()
-            }
-        except Exception:
-            return {
-                "status_code": response.status_code,
-                "response": response.text
-            }
-
-    except Exception as e:
-        return {"error": str(e)}
-
 @app.post("/validate-workflow")
 async def validate_workflow(workflow: WorkflowDefinition):
     """워크플로우 유효성 검증 (project_reference.md 연결 조건 기준)"""
@@ -104,45 +55,6 @@ async def validate_workflow(workflow: WorkflowDefinition):
     except Exception as e:
         logger.error(f"Validation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/execute-workflow", response_model=WorkflowExecutionResponse)
-async def execute_workflow(request: WorkflowExecutionRequest):
-    """
-    Node-based 워크플로우 실행
-    project_reference.md의 워크플로우 실행 API 사양 구현
-    """
-    try:
-        logger.info(f"Starting workflow execution with {len(request.workflow.nodes)} nodes")
-        
-        # 실행 전 검증
-        validation_result = validator.validate_workflow(request.workflow)
-        if not validation_result["valid"]:
-            logger.warning(f"Workflow validation failed: {validation_result['errors']}")
-            return WorkflowExecutionResponse(
-                success=False,
-                results=[],
-                error=f"Workflow validation failed: {', '.join(validation_result['errors'])}",
-                total_execution_time=0.0,
-                execution_order=[]
-            )
-        
-        # 실행
-        result = await execution_engine.execute_workflow(
-            workflow=request.workflow
-        )
-        
-        logger.info(f"Workflow execution completed. Success: {result.success}")
-        return result
-        
-    except Exception as e:
-        logger.error(f"Workflow execution failed: {e}")
-        return WorkflowExecutionResponse(
-            success=False,
-            results=[],
-            error=str(e),
-            total_execution_time=0.0,
-            execution_order=[]
-        )
 
 @app.post("/execute-workflow-stream")
 async def execute_workflow_stream(request: WorkflowExecutionRequest):
@@ -197,7 +109,7 @@ async def list_knowledge_bases():
     """지식베이스 목록 조회"""
     try:
         knowledge_bases = []
-        kb_names = vector_store_service.list_knowledge_bases()
+        kb_names = vector_store_service.get_knowledge_bases()
         
         for name in kb_names:
             try:
@@ -206,15 +118,15 @@ async def list_knowledge_bases():
                 
                 knowledge_bases.append(KnowledgeBase(
                     name=kb_info['name'],
-                    chunk_count=kb_info['chunk_count'],  # document_count -> chunk_count
-                    created_at=kb_info['created_at']
+                    chunk_count=kb_info.get('count', 0),  # VectorStore는 'count' 사용
+                    created_at=kb_info.get('created_at', 'Unknown')  # 생성일 정보가 없으면 Unknown
                 ))
             except Exception as e:
                 logger.warning(f"Failed to get info for KB {name}: {e}")
                 # 오류가 발생해도 기본값으로 추가
                 knowledge_bases.append(KnowledgeBase(
                     name=name,
-                    chunk_count=0,  # document_count -> chunk_count
+                    chunk_count=0,  # 기본값
                     created_at="Unknown"
                 ))
                 continue

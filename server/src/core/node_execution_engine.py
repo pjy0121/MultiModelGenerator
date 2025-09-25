@@ -13,6 +13,7 @@ from ..core.models import (
     NodeExecutionResult, WorkflowExecutionResponse
 )
 from ..api.node_executors import NodeExecutor
+from .config import NODE_EXECUTION_CONFIG
 
 
 # 로거 설정
@@ -46,7 +47,10 @@ class NodeExecutionEngine:
         
         while completed_count < expected_completions:
             try:
-                chunk = await asyncio.wait_for(stream_queue.get(), timeout=10.0)
+                chunk = await asyncio.wait_for(
+                    stream_queue.get(), 
+                    timeout=NODE_EXECUTION_CONFIG["stream_timeout"]
+                )
                 
                 if chunk["type"] == "_stream_complete":
                     break
@@ -163,106 +167,20 @@ class NodeExecutionEngine:
         self, 
         workflow: WorkflowDefinition
     ) -> WorkflowExecutionResponse:
-        """워크플로우 전체 실행"""
+        """워크플로우 전체 실행 (비스트리밍)"""
         
-        start_time = time.time()  # 실행 시간 측정 시작
+        # 스트리밍 실행을 사용하되 결과만 수집
+        results = []
+        async for event in self.execute_workflow_stream(workflow):
+            if event["type"] == "final_result":
+                return event["result"]
         
-        try:
-            # 초기화
-            self._reset_state()
-            
-            # workflow nodes 저장 (context-node 구분을 위해)
-            self.workflow_nodes = workflow.nodes
-            
-            # 통합 노드 실행자는 재생성할 필요 없음 (의존성 주입으로 관리됨)
-            
-            # 의존성 그래프 구축
-            pre_nodes_map = self._build_dependency_graph(workflow)
-            post_nodes_map = self._build_post_nodes_map(workflow)
-            nodes_map = {node.id: node for node in workflow.nodes}
-            
-            # 1. 모든 input-node들을 실행 대기 목록에 추가
-            input_nodes = [node for node in workflow.nodes if node.type == "input-node"]
-            for node in input_nodes:
-                self.execution_queue.add(node.id)
-            
-            # 2. 실행 루프
-            while self.execution_queue:
-                # 2-1. 실행 가능한 노드들 찾기 (pre-node가 모두 완료된 노드들)
-                ready_nodes = self._find_ready_nodes(pre_nodes_map)
-                
-                if not ready_nodes:
-                    # 더 이상 실행할 수 있는 노드가 없으면 순환 의존성 또는 오류
-                    remaining_nodes = list(self.execution_queue)
-                    return WorkflowExecutionResponse(
-                        success=False,
-                        results=self.execution_results,
-                        error=f"Circular dependency or execution error. Remaining nodes: {remaining_nodes}"
-                    )
-                
-                # 2-2. 실행 가능한 노드들을 병렬로 실행
-                execution_tasks = []
-                for node_id in ready_nodes:
-                    node = nodes_map[node_id]
-                    task = self._execute_single_node(
-                        node, pre_nodes_map[node_id]
-                    )
-                    execution_tasks.append(task)
-                
-                # 2-3. 병렬 실행 완료 대기
-                node_results = await asyncio.gather(*execution_tasks, return_exceptions=True)
-                
-                # 2-4. 결과 처리 및 post-node들을 큐에 추가
-                for i, result in enumerate(node_results):
-                    node_id = ready_nodes[i]
-                    
-                    # 실행 순서 기록 (성공/실패 관계없이)
-                    self.execution_order.append(node_id)
-                    
-                    if isinstance(result, Exception):
-                        # 실행 중 에러 발생
-                        error_result = NodeExecutionResult(
-                            node_id=node_id,
-                            success=False,
-                            error=str(result)
-                        )
-                        self.execution_results.append(error_result)
-                    else:
-                        # 성공적 실행
-                        self.execution_results.append(result)
-                        if result.success and result.output:
-                            self.node_outputs[node_id] = result.output
-                    
-                    # 완료된 노드 처리
-                    self.completed_nodes.add(node_id)
-                    self.execution_queue.remove(node_id)
-                    
-                    # post-node들을 실행 큐에 추가
-                    for post_node_id in post_nodes_map.get(node_id, []):
-                        if post_node_id not in self.completed_nodes:
-                            self.execution_queue.add(post_node_id)
-            
-            # 최종 결과 조립
-            final_output = self._get_final_output(workflow)
-            execution_time = time.time() - start_time  # 실행 시간 계산
-            
-            return WorkflowExecutionResponse(
-                success=True,
-                results=self.execution_results,
-                final_output=final_output,
-                total_execution_time=execution_time,
-                execution_order=self.execution_order
-            )
-            
-        except Exception as e:
-            execution_time = time.time() - start_time  # 오류 시에도 실행 시간 계산
-            return WorkflowExecutionResponse(
-                success=False,
-                results=self.execution_results,
-                error=f"Workflow execution failed: {str(e)}",
-                total_execution_time=execution_time,
-                execution_order=self.execution_order
-            )
+        # fallback (정상적으로는 도달하지 않음)
+        return WorkflowExecutionResponse(
+            success=False,
+            results=[],
+            error="Workflow execution completed without final result"
+        )
     
     def _reset_state(self):
         """실행 상태 초기화"""
@@ -315,58 +233,6 @@ class NodeExecutionEngine:
                 logger.info(f"Node {node_id} waiting for pre_nodes: {missing_pre_nodes}")
         
         return ready_nodes
-    
-    async def _execute_single_node(
-        self, 
-        node: WorkflowNode, 
-        pre_node_ids: List[str]
-    ) -> NodeExecutionResult:
-        """단일 노드 실행 - NodeExecutor 사용"""
-        
-        try:
-            # pre-node들을 context-node와 일반 노드로 분리
-            context_node_ids = []
-            regular_pre_node_ids = []
-            
-            for pre_id in pre_node_ids:
-                pre_node = None
-                # workflow에서 pre_node 찾기
-                for wf_node in getattr(self, 'workflow_nodes', []):
-                    if wf_node.id == pre_id:
-                        pre_node = wf_node
-                        break
-                
-                if pre_node and pre_node.type == "context-node":
-                    context_node_ids.append(pre_id)
-                else:
-                    regular_pre_node_ids.append(pre_id)
-            
-            # 각각의 출력 수집
-            context_outputs = [self.node_outputs.get(ctx_id, "") for ctx_id in context_node_ids]
-            pre_outputs = [self.node_outputs.get(pre_id, "") for pre_id in regular_pre_node_ids]
-            
-            # context가 있는 LLM 노드인지 확인
-            if (node.type in ["generation-node", "ensemble-node", "validation-node"] 
-                and context_outputs and hasattr(self.node_executor, 'execute_node_with_context')):
-                # context-aware 실행
-                result = await self.node_executor.execute_node_with_context(
-                    node, pre_outputs, context_outputs
-                )
-            else:
-                # 기존 방식으로 실행 (모든 pre_outputs 합쳐서)
-                all_pre_outputs = pre_outputs + context_outputs
-                result = await self.node_executor.execute_node(
-                    node, all_pre_outputs
-                )
-            
-            return result
-            
-        except Exception as e:
-            return NodeExecutionResult(
-                node_id=node.id,
-                success=False,
-                error=str(e)
-            )
     
     def _get_final_output(self, workflow: WorkflowDefinition) -> Optional[str]:
         """최종 출력 결과 (output-node의 결과)"""
@@ -502,6 +368,7 @@ class NodeExecutionEngine:
             total_time = time.time() - start_time
             final_output = self._get_final_output(workflow)
             
+            # 스트리밍용 완료 이벤트
             yield {
                 "type": "complete",
                 "success": True,
@@ -511,11 +378,38 @@ class NodeExecutionEngine:
                 "results": [result.__dict__ for result in self.execution_results]
             }
             
+            # 비스트리밍용 최종 결과 이벤트
+            yield {
+                "type": "final_result",
+                "result": WorkflowExecutionResponse(
+                    success=True,
+                    results=self.execution_results,
+                    final_output=final_output,
+                    total_execution_time=total_time,
+                    execution_order=self.execution_order
+                )
+            }
+            
         except Exception as e:
             logger.error(f"워크플로우 실행 중 오류 발생: {str(e)}")
+            total_time = time.time() - start_time
+            
+            # 스트리밍용 에러 이벤트
             yield {
                 "type": "error",
                 "message": f"워크플로우 실행 오류: {str(e)}"
+            }
+            
+            # 비스트리밍용 최종 결과 이벤트
+            yield {
+                "type": "final_result",
+                "result": WorkflowExecutionResponse(
+                    success=False,
+                    results=self.execution_results,
+                    error=f"Workflow execution failed: {str(e)}",
+                    total_execution_time=total_time,
+                    execution_order=self.execution_order
+                )
             }
     
     async def _execute_node_stream(

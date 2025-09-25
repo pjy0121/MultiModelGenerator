@@ -1,7 +1,8 @@
+import asyncio
 from typing import List, Dict, Any
 from openai import OpenAI
 from .llm_client_interface import LLMClientInterface
-from ..core.config import API_KEYS
+from ..core.config import API_KEYS, NODE_EXECUTION_CONFIG
 
 class OpenAIClient(LLMClientInterface):
     """OpenAI API 클라이언트"""
@@ -25,81 +26,8 @@ class OpenAIClient(LLMClientInterface):
     
     def is_available(self) -> bool:
         """OpenAI API 사용 가능 여부 확인"""
-        return self.client is not None
-    
-    def chat_completion(
-        self, 
-        model: str, 
-        messages: List[Dict[str, str]], 
-        temperature: float = 0.1,
-        max_tokens: int = 2000
-    ) -> str:
-        """OpenAI API 채팅 완성"""
-        if not self.client:
-            raise RuntimeError("OpenAI 클라이언트가 초기화되지 않았습니다.")
-        
-        try:
-            response = self.client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            if "401" in str(e) or "Unauthorized" in str(e):
-                error_msg = (
-                    f"OpenAI API 인증 실패: {e}\n"
-                    f"💡 해결 방법:\n"
-                    f"1. .env 파일의 OPENAI_API_KEY 확인\n"
-                    f"2. API 키가 유효한지 확인\n"
-                    f"3. 서버 재시작 후 다시 시도"
-                )
-                raise RuntimeError(error_msg)
-            else:
-                raise RuntimeError(f"OpenAI API 요청 실패: {e}")
-    
-    def is_available(self) -> bool:
-        """클라이언트 사용 가능 여부 확인"""
         return self.client is not None and bool(API_KEYS["openai"])
-    
-    async def chat_completion_stream(
-        self, 
-        model: str, 
-        messages: List[Dict[str, str]], 
-        temperature: float = 0.1,
-        max_tokens: int = 2000
-    ):
-        """OpenAI API 스트리밍 채팅 완성"""
-        if not self.client:
-            raise RuntimeError("OpenAI 클라이언트가 초기화되지 않았습니다.")
-        
-        try:
-            stream = self.client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stream=True
-            )
-            
-            for chunk in stream:
-                if chunk.choices[0].delta.content is not None:
-                    yield chunk.choices[0].delta.content
-                    
-        except Exception as e:
-            if "401" in str(e) or "Unauthorized" in str(e):
-                error_msg = (
-                    f"OpenAI API 인증 실패: {e}\n"
-                    f"💡 해결 방법:\n"
-                    f"1. .env 파일의 OPENAI_API_KEY 확인\n"
-                    f"2. API 키가 유효한지 확인\n"
-                    f"3. 서버 재시작 후 다시 시도"
-                )
-                raise RuntimeError(error_msg)
-            else:
-                raise RuntimeError(f"OpenAI API 스트리밍 요청 실패: {e}")
-    
+
     def get_available_models(self) -> List[Dict[str, Any]]:
         """OpenAI API에서 실제 사용 가능한 모델 목록 가져오기"""
         if not self.is_available():
@@ -130,37 +58,49 @@ class OpenAIClient(LLMClientInterface):
         except Exception as e:
             return []
     
-    async def generate_response(
+    async def generate_stream(
         self, 
         prompt: str, 
         model: str, 
         temperature: float = 0.3, 
-        max_tokens: int = 2000,
-        stream: bool = False
-    ) -> str:
-        """프롬프트를 사용하여 응답 생성"""
+        max_tokens: int = NODE_EXECUTION_CONFIG["max_tokens_default"]
+    ):
+        """스트리밍으로 응답 생성 (통합된 단일 인터페이스)"""
         if not self.client:
             raise RuntimeError("OpenAI 클라이언트가 초기화되지 않았습니다.")
         
         try:
             messages = [{"role": "user", "content": prompt}]
-            response = self.client.chat.completions.create(
+            stream = self.client.chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=temperature,
-                max_tokens=max_tokens
+                max_tokens=max_tokens,
+                stream=True
             )
-            return response.choices[0].message.content
+            
+            for chunk in stream:
+                content = chunk.choices[0].delta.content
+                if content is not None:
+                    yield content
+                    await asyncio.sleep(0.01)
+                    
         except Exception as e:
-            raise RuntimeError(f"OpenAI API 요청 실패: {e}")
-    
-    async def generate(
-        self, 
-        prompt: str, 
-        model: str, 
-        temperature: float = 0.3, 
-        max_tokens: int = 2000,
-        stream: bool = False
-    ) -> str:
-        """rerank에서 사용하는 generate 메서드"""
-        return await self.generate_response(prompt, model, temperature, max_tokens, stream)
+            # OpenAI 라이브러리의 정확한 에러 타입 처리
+            from openai import AuthenticationError, APIError, RateLimitError
+            
+            if isinstance(e, AuthenticationError):
+                error_msg = (
+                    f"OpenAI API 인증 실패: {e}\n"
+                    f"💡 해결 방법:\n"
+                    f"1. .env 파일의 OPENAI_API_KEY 확인\n"
+                    f"2. API 키가 유효한지 확인\n"
+                    f"3. 서버 재시작 후 다시 시도"
+                )
+                raise RuntimeError(error_msg)
+            elif isinstance(e, RateLimitError):
+                raise RuntimeError(f"OpenAI API 사용량 초과: {e}")
+            elif isinstance(e, APIError):
+                raise RuntimeError(f"OpenAI API 오류: {e}")
+            else:
+                raise RuntimeError(f"OpenAI API 스트리밍 요청 실패: {e}")

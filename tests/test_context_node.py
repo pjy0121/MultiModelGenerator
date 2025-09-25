@@ -98,14 +98,33 @@ class TestContextNode:
             "workflow": context_workflow
         }
         
-        response = api_client.post(f"{api_base_url}/execute-workflow", json=payload)
+        response = api_client.post(f"{api_base_url}/execute-workflow-stream", json=payload, stream=True)
         assert response.status_code == 200
         
-        data = response.json()
+        # Parse streaming response
+        events = []
+        final_data = None
+        for line in response.iter_lines():
+            if line:
+                line = line.decode('utf-8')
+                if line.startswith("data: "):
+                    event_data = line[6:]  # Remove "data: " prefix
+                    try:
+                        event_json = json.loads(event_data)
+                        events.append(event_json)
+                        if event_json.get('type') == 'final_result':
+                            final_data = event_json.get('data', {})
+                    except json.JSONDecodeError:
+                        continue
+        
+        # Check that we got events and final data
+        assert events, "No streaming events received"
+        assert final_data is not None, "No final result received"
+        
         # API may return success: false if context node fails
         # Just check that we get a response with the expected structure
-        assert "success" in data
-        assert "results" in data  # API uses "results" not "node_results"
+        assert "success" in final_data
+        assert "results" in final_data  # API uses "results" not "node_results"
         
         # Check that workflow executed (regardless of success)
-        assert len(data["results"]) > 0
+        assert len(final_data["results"]) > 0

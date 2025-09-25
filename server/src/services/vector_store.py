@@ -88,41 +88,6 @@ class VectorStore:
             print(f"⚠️ 초기 검색 중 오류 발생: {e}")
             return []
 
-    async def search_with_rerank(
-        self, 
-        query: str, 
-        search_intensity: str,
-        rerank_provider: str,
-        rerank_model: str
-    ) -> List[str]:
-        """유사한 청크 검색 후 LLM으로 재정렬합니다."""
-        search_intensity_map = VECTOR_DB_CONFIG["search_intensity_map"]
-        search_params = search_intensity_map.get(search_intensity, search_intensity_map["medium"])
-        top_k_init = search_params["init"]
-        top_k_final = search_params["final"]
-
-        initial_chunks = await self._search_initial_chunks(query, top_k_init)
-        if not initial_chunks:
-            return []
-
-        try:
-            reranker = ReRanker(provider=rerank_provider, model=rerank_model)
-            reranked_chunks = await reranker.rerank_documents(query, initial_chunks, top_k_final)
-            return reranked_chunks
-        except Exception as e:
-            print(f"⚠️ 재정렬 중 오류 발생: {e}. 초기 검색 결과의 일부를 반환합니다.")
-            return initial_chunks[:top_k_final]
-
-    async def search_without_rerank(self, query: str, search_intensity: str) -> List[str]:
-        """유사한 청크를 검색만 하고 재정렬은 수행하지 않습니다."""
-        search_intensity_map = VECTOR_DB_CONFIG["search_intensity_map"]
-        search_params = search_intensity_map.get(search_intensity, search_intensity_map["medium"])
-        top_k = search_params["final"]
-
-        # 여기서는 초기 검색의 top_k를 최종 결과 개수와 동일하게 설정
-        initial_chunks = await self._search_initial_chunks(query, top_k * 2) # 여유있게 2배수 검색
-        return initial_chunks[:top_k]
-    
     async def search(
         self,
         query: str,
@@ -130,26 +95,38 @@ class VectorStore:
         rerank_info: Optional[Dict[str, str]] = None
     ) -> List[str]:
         """
-        통합 검색 메서드
-        rerank_info가 있으면 rerank 사용, 없으면 일반 검색
+        통합 검색 메서드 - 공통 로직을 하나로 통합
         
         Args:
             query: 검색 쿼리
             search_intensity: 검색 강도
             rerank_info: rerank 정보 {"provider": "openai", "model": "gpt-3.5-turbo"}
         """
+        # 공통: 검색 파라미터 설정
+        search_intensity_map = VECTOR_DB_CONFIG["search_intensity_map"]
+        search_params = search_intensity_map.get(search_intensity, search_intensity_map["medium"])
+        top_k_final = search_params["final"]
+        
+        # rerank 사용 시에는 더 많은 초기 검색, 아니면 final과 동일
         if rerank_info:
-            return await self.search_with_rerank(
-                query=query,
-                search_intensity=search_intensity,
-                rerank_provider=rerank_info["provider"],
-                rerank_model=rerank_info["model"]
-            )
+            top_k_init = search_params["init"]
+            initial_chunks = await self._search_initial_chunks(query, top_k_init)
+            
+            if not initial_chunks:
+                return []
+            
+            # rerank 수행
+            try:
+                reranker = ReRanker(provider=rerank_info["provider"], model=rerank_info["model"])
+                reranked_chunks = await reranker.rerank_documents(query, initial_chunks, top_k_final)
+                return reranked_chunks
+            except Exception as e:
+                print(f"⚠️ 재정렬 중 오류 발생: {e}. 초기 검색 결과의 일부를 반환합니다.")
+                return initial_chunks[:top_k_final]
         else:
-            return await self.search_without_rerank(
-                query=query,
-                search_intensity=search_intensity
-            )
+            # rerank 없이 바로 검색 (여유있게 2배 검색 후 자르기)
+            initial_chunks = await self._search_initial_chunks(query, top_k_final * 2)
+            return initial_chunks[:top_k_final]
     
     def get_status(self) -> dict:
         """지식 베이스 상태 정보 반환"""
@@ -167,5 +144,43 @@ class VectorStore:
                 'count': 0,
                 'path': self.db_path,
                 'name': self.kb_name
+            }
+    
+    def get_knowledge_bases(self) -> List[str]:
+        """사용 가능한 지식 베이스 목록 반환"""
+        try:
+            kb_base_path = os.path.join(os.path.dirname(__file__), '..', '..', 'knowledge_bases')
+            if not os.path.exists(kb_base_path):
+                return []
+            
+            knowledge_bases = []
+            for item in os.listdir(kb_base_path):
+                item_path = os.path.join(kb_base_path, item)
+                if os.path.isdir(item_path):
+                    knowledge_bases.append(item)
+            
+            return knowledge_bases
+            
+        except Exception as e:
+            print(f"지식 베이스 목록 조회 실패: {e}")
+            return []
+    
+    async def get_knowledge_base_info(self) -> Dict:
+        """지식 베이스 상세 정보 반환"""
+        try:
+            count = self.collection.count()
+            return {
+                'name': self.kb_name,
+                'count': count,
+                'path': self.db_path,
+                'exists': True
+            }
+        except Exception as e:
+            return {
+                'name': self.kb_name,
+                'count': 0,
+                'path': self.db_path,
+                'exists': False,
+                'error': str(e)
             }
 

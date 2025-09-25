@@ -3,7 +3,7 @@ import sys
 import shutil
 import time
 from typing import Dict, Any
-from ..core.config import Config
+from ..core.config import Config, ADMIN_CONFIG
 from ..services.document_processor import DocumentProcessor
 from ..services.vector_store import VectorStore
 
@@ -300,18 +300,18 @@ class KnowledgeBaseAdmin:
         
         # 청크 크기 입력
         while True:
-            chunk_input = input(f"\n📏 청크 크기를 입력하세요 (기본값: 2048): ").strip()
+            chunk_input = input(f"\n📏 청크 크기를 입력하세요 (기본값: {ADMIN_CONFIG['chunk_size_default']}): ").strip()
             if not chunk_input:
-                chunk_size = 2048
+                chunk_size = ADMIN_CONFIG['chunk_size_default']
                 break
             
             try:
                 chunk_size = int(chunk_input)
-                if chunk_size < 512:
-                    print("❌ 청크 크기는 최소 512자 이상이어야 합니다.")
+                if chunk_size < ADMIN_CONFIG['chunk_size_min']:
+                    print(f"❌ 청크 크기는 최소 {ADMIN_CONFIG['chunk_size_min']}자 이상이어야 합니다.")
                     continue
-                elif chunk_size > 8192:
-                    print("❌ 청크 크기는 최대 8192자까지 권장됩니다.")
+                elif chunk_size > ADMIN_CONFIG['chunk_size_max']:
+                    print(f"❌ 청크 크기는 최대 {ADMIN_CONFIG['chunk_size_max']}자까지 권장됩니다.")
                     continue
                 break
             except ValueError:
@@ -319,8 +319,8 @@ class KnowledgeBaseAdmin:
         
         # 청크 오버랩 입력
         while True:
-            default_overlap = chunk_size // 4  # 25% 기본값
-            overlap_input = input(f"🔄 청크 오버랩을 입력하세요 (기본값: {default_overlap}, 크기의 25%): ").strip()
+            default_overlap = int(chunk_size * ADMIN_CONFIG['chunk_overlap_ratio'])  # 설정된 비율
+            overlap_input = input(f"🔄 청크 오버랩을 입력하세요 (기본값: {default_overlap}, 크기의 {int(ADMIN_CONFIG['chunk_overlap_ratio']*100)}%): ").strip()
             if not overlap_input:
                 chunk_overlap = default_overlap
                 break
