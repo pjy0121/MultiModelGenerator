@@ -58,10 +58,17 @@ const StreamingOutput: React.FC<StreamingOutputProps> = memo(({ output, isExecut
     if (isExecuting) {
       setAutoScroll(true);
       previousOutputLength.current = 0;
+    } else if (output && scrollRef.current && autoScroll) {
+      // 실행이 끝났을 때 최종 스크롤을 맨 아래로
+      requestAnimationFrame(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      });
     }
-  }, [isExecuting]);
+  }, [isExecuting, output, autoScroll]);
 
-  if (!output || !isExecuting) {
+  if (!output) {
     return null;
   }
 
@@ -75,7 +82,7 @@ const StreamingOutput: React.FC<StreamingOutputProps> = memo(({ output, isExecut
         justifyContent: 'space-between',
         alignItems: 'center'
       }}>
-        <span>실시간 출력:</span>
+        <span>{isExecuting ? '실시간 출력:' : '실행 출력:'}</span>
         {!autoScroll && (
           <span style={{ 
             fontSize: 9, 

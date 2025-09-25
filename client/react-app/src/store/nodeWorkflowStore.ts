@@ -34,6 +34,7 @@ interface NodeWorkflowState {
   
   // 실행 상태
   isExecuting: boolean;
+  isStopping: boolean; // 워크플로우 중단 중인 상태
   executionResult: NodeBasedWorkflowResponse | null;
   
   // 노드별 실행 상태 및 스트리밍 출력
@@ -169,6 +170,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     selectedNodeId: initialNodes.find(node => node.data.nodeType === NodeType.OUTPUT)?.id || null,
     
     isExecuting: false,
+    isStopping: false, // 중단 상태 초기값
     executionResult: null,
     
     validationResult: null,
@@ -417,6 +419,12 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
           throw new Error(detailedMessage);
         }
         
+        // 중단 요청 이벤트 처리
+        if (chunk.type === 'stop_requested') {
+          console.log('서버에서 중단 요청을 확인했습니다:', chunk.message);
+          // 이미 isStopping이 true로 설정되어 있으므로 추가 처리 불필요
+        }
+        
         // 노드별 상태 업데이트
         if (chunk.type === 'node_start' && chunk.node_id) {
           set(state => ({
@@ -496,6 +504,11 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
             });
           }
 
+          // 중단 상태 확인 (상태 업데이트 전에)
+          const currentState = get();
+          const wasStopping = currentState.isStopping;
+          const serverWasStopped = chunk.was_stopped; // 서버에서 전달된 중단 정보
+          
           set(state => ({ 
             executionResult: {
               success: chunk.success,
@@ -513,8 +526,17 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
               ...state.nodeExecutionStates,
               ...completedStates // 완료된 노드 상태 업데이트
             },
-            isExecuting: false 
+            isExecuting: false,
+            isStopping: false // 워크플로우 완료 시 중단 상태도 정리
           }));
+          
+          // 중단 요청이 있었다면 여기서 처리 완료
+          if (wasStopping || serverWasStopped) {
+            message.success('워크플로우가 중단되었습니다. 실행 중이던 노드들의 출력은 모두 완료되었습니다.');
+          }
+          
+          // WorkflowComplete 처리 완료, finally 블록 실행하지 않음
+          return;
         } else if (chunk.type === 'error') {
           // 에러 발생 시 실행 중이던 노드만 idle로 되돌리고, 완료된 노드는 유지
           const state = get();
@@ -561,31 +583,42 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       }
       
       throw new Error(errorMessage);
+    } finally {
+      // 중단 상태인지 확인 (상태 정리 전에)
+      const currentState = get();
+      const wasStopping = currentState.isStopping;
+      
+      // 실행 상태 및 중단 상태 정리
+      set({ 
+        isExecuting: false,
+        isStopping: false
+      });
+      
+      // 중단된 경우 메시지 표시
+      if (wasStopping) {
+        message.success('워크플로우가 중단되었습니다. 실행 중이던 노드들의 출력은 모두 완료되었습니다.');
+      }
     }
   },
 
-  stopWorkflowExecution: () => {
+  stopWorkflowExecution: async () => {
     // 워크플로우 실행을 수동으로 중단
     const state = get();
-    if (!state.isExecuting) return;
+    if (!state.isExecuting || state.isStopping) return;
     
-    // 실행 중인 노드만 idle로 되돌리고, 완료된 노드는 유지
-    const updatedStates = { ...state.nodeExecutionStates };
+    // 중단 상태로 전환
+    set({ isStopping: true });
     
-    // 실행 중인 노드만 idle로 되돌림
-    Object.keys(updatedStates).forEach(nodeId => {
-      if (updatedStates[nodeId] === 'executing') {
-        updatedStates[nodeId] = 'idle';
-      }
-    });
-    
-    set({ 
-      isExecuting: false,
-      nodeExecutionStates: updatedStates
-      // 완료된 노드의 결과와 출력은 유지
-    });
-    
-    message.warning('워크플로우 실행이 중단되었습니다. 완료된 노드 결과는 유지됩니다.');
+    try {
+      // 서버에 중단 요청
+      const result = await nodeBasedWorkflowAPI.stopWorkflowExecution();
+      message.info(result.message || '워크플로우 중단 요청이 전송되었습니다.');
+    } catch (error) {
+      console.error('워크플로우 중단 요청 실패:', error);
+      message.error('워크플로우 중단 요청에 실패했습니다.');
+      // 실패 시 중단 상태 해제
+      set({ isStopping: false });
+    }
   },
 
   clearAllExecutionResults: () => {

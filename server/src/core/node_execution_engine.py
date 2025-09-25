@@ -36,6 +36,8 @@ class NodeExecutionEngine:
         self.node_outputs: Dict[str, str] = {}
         self.execution_results: List[NodeExecutionResult] = []
         self.execution_order: List[str] = []  # 실행 순서 추적
+        self.is_stopping: bool = False  # 중단 플래그 추가
+        self.stop_logged: bool = False  # 중단 로그 중복 방지용 플래그
         
         # 노드 실행자 생성
         self.node_executor = NodeExecutor()
@@ -300,6 +302,16 @@ class NodeExecutionEngine:
 
             # 이벤트 기반 실행 루프
             while total_completed < total_nodes:
+                # 중단 요청 체크 (한 번만 로그)
+                if self.is_stopping and not self.stop_logged:
+                    logger.info("Workflow execution stopped by user request")
+                    self.stop_logged = True
+                    # 현재 실행 중인 태스크들을 취소하지 않고 완료되기를 기다림
+                    yield {
+                        "type": "stop_requested",
+                        "message": "워크플로우 중단이 요청되었습니다. 현재 실행 중인 노드들이 완료되면 중단됩니다."
+                    }
+                
                 # 스트리밍 출력 처리
                 try:
                     chunk = await asyncio.wait_for(global_stream_queue.get(), timeout=0.1)
@@ -314,6 +326,15 @@ class NodeExecutionEngine:
                         self.completed_nodes.add(completed_node_id)
                         self.execution_order.append(completed_node_id)
                         
+                        # 완료된 노드를 active_tasks에서 제거
+                        if completed_node_id in active_tasks:
+                            del active_tasks[completed_node_id]
+                        
+                        # 중단 요청이 있고 더 이상 활성 태스크가 없다면 루프 종료
+                        if self.is_stopping and not active_tasks:
+                            logger.info("Workflow execution stopping - all active tasks completed")
+                            break
+                        
                         # 즉시 post-node들 확인하고 실행 가능한 노드 시작
                         for edge in workflow.edges:
                             if edge.source == completed_node_id:
@@ -327,6 +348,10 @@ class NodeExecutionEngine:
                                 # 의존성 체크: 모든 pre-node가 완료되었는지 확인
                                 pre_nodes = set(pre_nodes_map.get(target_node_id, []))
                                 if pre_nodes.issubset(self.completed_nodes):
+                                    # 중단 요청이 있으면 새로운 노드 시작 안함
+                                    if self.is_stopping:
+                                        continue
+                                        
                                     target_node = node_lookup[target_node_id]
                                     
                                     # 노드 실행 시작 알림을 먼저 발생시킴 (딜레이 최소화)
@@ -346,6 +371,11 @@ class NodeExecutionEngine:
                                     active_tasks[target_node_id] = task
                     
                     elif chunk["type"] == "node_complete" and not chunk["success"]:
+                        # 실패한 노드도 active_tasks에서 제거
+                        failed_node_id = chunk.get("node_id")
+                        if failed_node_id and failed_node_id in active_tasks:
+                            del active_tasks[failed_node_id]
+                        
                         # 실패한 노드가 있으면 전체 워크플로우 중단
                         yield {
                             "type": "error",
@@ -368,14 +398,19 @@ class NodeExecutionEngine:
             total_time = time.time() - start_time
             final_output = self._get_final_output(workflow)
             
+            # 중단된 경우와 정상 완료 구분
+            was_stopped = self.is_stopping
+            success_status = True  # 기본적으로 성공으로 처리 (중단도 성공적인 종료로 간주)
+            
             # 스트리밍용 완료 이벤트
             yield {
                 "type": "complete",
-                "success": True,
+                "success": success_status,
                 "final_output": final_output,
                 "total_execution_time": total_time,
                 "execution_order": self.execution_order,
-                "results": [result.__dict__ for result in self.execution_results]
+                "results": [result.__dict__ for result in self.execution_results],
+                "was_stopped": was_stopped  # 중단 여부 정보 추가
             }
             
             # 비스트리밍용 최종 결과 이벤트
@@ -497,3 +532,18 @@ class NodeExecutionEngine:
                 "success": False,
                 "error": str(e)
             }
+    
+    def stop_execution(self):
+        """워크플로우 실행 중단 요청"""
+        self.is_stopping = True
+        logger.info("Workflow execution stop requested")
+    
+    def reset_execution_state(self):
+        """실행 상태 초기화"""
+        self.execution_queue.clear()
+        self.completed_nodes.clear()
+        self.node_outputs.clear()
+        self.execution_results.clear()
+        self.execution_order.clear()
+        self.is_stopping = False
+        self.stop_logged = False  # 중단 로그 플래그도 초기화
