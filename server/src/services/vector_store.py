@@ -6,6 +6,9 @@ from .rerank import ReRanker
 
 class VectorStore:
     def __init__(self, kb_name: str):
+        self.embedding_function = chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name=VECTOR_DB_CONFIG["embedding_model"])
+
         self.kb_name = kb_name
         self.db_path = get_kb_path(kb_name)
         
@@ -13,11 +16,15 @@ class VectorStore:
         os.makedirs(self.db_path, exist_ok=True)
         
         self.client = chromadb.PersistentClient(path=self.db_path)
-        self.collection = self.client.get_or_create_collection(
+        self.collection = self.get_collection()
+
+    def get_collection(self):
+        return self.client.get_or_create_collection(
             name="spec_documents",
-            metadata={"hnsw:space": "cosine"}
+            metadata={"hnsw:space": "cosine"},
+            embedding_function=self.embedding_function
         )
-    
+
     def store_chunks(self, chunks: List[Dict]) -> None:
         """청크들을 벡터 DB에 저장"""
         print(f"💾 지식 베이스 '{self.kb_name}'에 {len(chunks)}개 청크 저장 중...")
@@ -25,10 +32,7 @@ class VectorStore:
         # 기존 데이터 삭제 (새로 저장하는 경우)
         try:
             self.collection.delete()
-            self.collection = self.client.get_or_create_collection(
-                name="spec_documents",
-                metadata={"hnsw:space": "cosine"}
-            )
+            self.collection = self.get_collection()
         except:
             pass
         
@@ -105,17 +109,17 @@ class VectorStore:
         # 공통: 검색 파라미터 설정
         search_intensity_map = VECTOR_DB_CONFIG["search_intensity_map"]
         search_params = search_intensity_map.get(search_intensity, search_intensity_map["medium"])
-        top_k_final = search_params["final"]
+
+        top_k_init = search_params["init"]
         
         # rerank 사용 시에는 더 많은 초기 검색, 아니면 final과 동일
         if rerank_info:
-            top_k_init = search_params["init"]
             initial_chunks = await self._search_initial_chunks(query, top_k_init)
             
             if not initial_chunks:
                 return []
             
-            # rerank 수행
+            top_k_final = search_params["final"]
             try:
                 reranker = ReRanker(provider=rerank_info["provider"], model=rerank_info["model"])
                 reranked_chunks = await reranker.rerank_documents(query, initial_chunks, top_k_final)
@@ -124,9 +128,8 @@ class VectorStore:
                 print(f"⚠️ 재정렬 중 오류 발생: {e}. 초기 검색 결과의 일부를 반환합니다.")
                 return initial_chunks[:top_k_final]
         else:
-            # rerank 없이 바로 검색 (여유있게 2배 검색 후 자르기)
-            initial_chunks = await self._search_initial_chunks(query, top_k_final * 2)
-            return initial_chunks[:top_k_final]
+            initial_chunks = await self._search_initial_chunks(query, top_k_init)
+            return initial_chunks
     
     def get_status(self) -> dict:
         """지식 베이스 상태 정보 반환"""

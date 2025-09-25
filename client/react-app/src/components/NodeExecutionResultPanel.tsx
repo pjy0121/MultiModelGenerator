@@ -17,56 +17,71 @@ const StreamingOutput: React.FC<StreamingOutputProps> = memo(({ output, isExecut
   const scrollRef = useRef<HTMLDivElement>(null);
   const previousOutputLength = useRef<number>(0);
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
+  const userScrolledRef = useRef<boolean>(false); // 사용자가 수동으로 스크롤했는지 추적
+  const scrollTimeoutRef = useRef<number | null>(null);
 
   // 사용자가 스크롤 위치를 변경했는지 감지
   const handleScroll = useCallback(() => {
-    if (scrollRef.current) {
-      const scrollElement = scrollRef.current;
-      const isAtBottom = scrollElement.scrollTop + scrollElement.clientHeight >= scrollElement.scrollHeight - 10;
-      
-      // 사용자가 맨 아래로 스크롤하면 자동 스크롤 재활성화
-      if (isAtBottom) {
-        setAutoScroll(true);
-      } else {
-        // 사용자가 위로 스크롤하면 자동 스크롤 비활성화
-        setAutoScroll(false);
-      }
+    if (!scrollRef.current) return;
+    
+    const scrollElement = scrollRef.current;
+    const isAtBottom = scrollElement.scrollTop + scrollElement.clientHeight >= scrollElement.scrollHeight - 5;
+    
+    // 스크롤 이벤트 디바운싱
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
     }
+    
+    scrollTimeoutRef.current = setTimeout(() => {
+      if (isAtBottom) {
+        // 맨 아래에 있으면 자동 스크롤 활성화
+        setAutoScroll(true);
+        userScrolledRef.current = false;
+      } else if (!userScrolledRef.current) {
+        // 사용자가 위로 스크롤했으면 자동 스크롤 비활성화
+        setAutoScroll(false);
+        userScrolledRef.current = true;
+      }
+    }, 50); // 50ms 디바운싱
   }, []);
 
-  // 스트리밍 출력이 업데이트될 때마다 스크롤을 맨 아래로 이동
+  // 스트리밍 출력이 업데이트될 때마다 스크롤을 맨 아래로 이동 (자동 스크롤이 활성화된 경우에만)
   useEffect(() => {
-    if (scrollRef.current && output && autoScroll) {
+    if (scrollRef.current && output && autoScroll && !userScrolledRef.current) {
       const scrollElement = scrollRef.current;
       const currentOutputLength = output.length;
       
-      // 새로운 콘텐츠가 추가되었을 때만 스크롤 (실행 중일 때)
-      // 또는 실행이 완료되었을 때도 스크롤
-      if (currentOutputLength > previousOutputLength.current || !isExecuting) {
+      // 새로운 콘텐츠가 추가되었을 때만 스크롤
+      if (currentOutputLength > previousOutputLength.current) {
         // requestAnimationFrame을 사용해서 DOM 업데이트 후에 스크롤
         requestAnimationFrame(() => {
-          scrollElement.scrollTop = scrollElement.scrollHeight;
+          if (scrollElement && autoScroll && !userScrolledRef.current) {
+            scrollElement.scrollTop = scrollElement.scrollHeight;
+          }
         });
         
         previousOutputLength.current = currentOutputLength;
       }
     }
-  }, [output, isExecuting, autoScroll]);
+  }, [output, autoScroll]);
 
   // 실행이 시작될 때 자동 스크롤 활성화 및 길이 초기화
   useEffect(() => {
     if (isExecuting) {
       setAutoScroll(true);
+      userScrolledRef.current = false;
       previousOutputLength.current = 0;
-    } else if (output && scrollRef.current && autoScroll) {
-      // 실행이 끝났을 때 최종 스크롤을 맨 아래로
-      requestAnimationFrame(() => {
-        if (scrollRef.current) {
-          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        }
-      });
     }
-  }, [isExecuting, output, autoScroll]);
+  }, [isExecuting]);
+
+  // 컴포넌트 언마운트 시 타이머 정리
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
 
   if (!output) {
     return null;
@@ -82,15 +97,25 @@ const StreamingOutput: React.FC<StreamingOutputProps> = memo(({ output, isExecut
         justifyContent: 'space-between',
         alignItems: 'center'
       }}>
-        <span>{isExecuting ? '실시간 출력:' : '실행 출력:'}</span>
-        {!autoScroll && (
+        {!autoScroll && isExecuting && (
           <span style={{ 
             fontSize: 9, 
             color: '#ff8c00', 
             fontStyle: 'italic',
-            cursor: 'pointer'
-          }} onClick={() => setAutoScroll(true)}>
-            자동 스크롤 중지됨 (클릭하여 재개)
+            cursor: 'pointer',
+            padding: '2px 6px',
+            backgroundColor: '#fff3cd',
+            border: '1px solid #ffecb5',
+            borderRadius: 3
+          }} onClick={() => {
+            setAutoScroll(true);
+            userScrolledRef.current = false;
+            // 클릭 시 즉시 아래로 스크롤
+            if (scrollRef.current) {
+              scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+            }
+          }}>
+            ⏸️ 자동 스크롤 중지됨 (클릭하여 재개)
           </span>
         )}
       </div>
@@ -104,7 +129,7 @@ const StreamingOutput: React.FC<StreamingOutputProps> = memo(({ output, isExecut
           borderRadius: 4,
           maxHeight: 200,
           overflowY: 'auto',
-          scrollBehavior: 'smooth' // 부드러운 스크롤 적용
+          scrollBehavior: 'auto' // 자동 스크롤은 즉시, 사용자 스크롤은 부드럽게
         }}
       >
         <div 
@@ -133,19 +158,32 @@ interface CompletedResultDisplayProps {
 const CompletedResultDisplay: React.FC<CompletedResultDisplayProps> = memo(({ content, nodeType, isNewResult = false }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 새로운 결과가 완료되었을 때 스크롤을 맨 아래로 이동
+  // 결과가 렌더링될 때마다 스크롤을 맨 아래로 이동
   useEffect(() => {
-    if (scrollRef.current && isNewResult && content) {
-      // 약간의 지연을 주어 DOM이 완전히 렌더링된 후 스크롤
+    if (scrollRef.current && content) {
+      // DOM이 완전히 렌더링된 후 스크롤
       const timer = setTimeout(() => {
         if (scrollRef.current) {
           scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
-      }, 100);
+      }, isNewResult ? 200 : 100); // 새 결과일 때는 조금 더 지연
       
       return () => clearTimeout(timer);
     }
   }, [content, isNewResult]);
+
+  // 컴포넌트가 마운트된 후에도 한 번 더 스크롤 (늦게 로딩되는 내용 대응)
+  useEffect(() => {
+    if (scrollRef.current && content) {
+      const timer = setTimeout(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   if (!content) {
     return null;
@@ -161,7 +199,7 @@ const CompletedResultDisplay: React.FC<CompletedResultDisplayProps> = memo(({ co
         border: '1px solid #d9d9d9',
         borderRadius: '4px',
         backgroundColor: nodeType === 'output-node' ? '#fafafa' : nodeType === 'input-node' ? '#f0f8ff' : '#f6f8fa',
-        scrollBehavior: 'smooth'
+        scrollBehavior: 'auto' // 즉시 스크롤 이동
       }}
     >
       <MarkdownWithDownload content={content} />
@@ -616,18 +654,20 @@ export const NodeExecutionResultPanel: React.FC = memo(() => {
                 }
               >
                 {/* 스트리밍 출력 (실행 중일 때만 표시) */}
-                <StreamingOutput 
-                  output={streamingOutput || ''} 
-                  isExecuting={executionState === 'executing'} 
-                />
+                {executionState === 'executing' && (
+                  <StreamingOutput 
+                    output={streamingOutput || ''} 
+                    isExecuting={true} 
+                  />
+                )}
                 
-                {/* 실행 결과 표시 */}
-                {executionResult && (
+                {/* 실행 결과 표시 (완료된 경우에만) */}
+                {executionResult && executionState === 'completed' && (
                   <div style={{ fontSize: 11 }}>
                     {executionResult.success ? (
                       <div>
-                        {/* 완료된 경우 최종 결과 표시 */}
-                        {executionState === 'completed' && executionResult.description && (
+                        {/* 완료된 경우 최종 결과만 표시 */}
+                        {executionResult.description && (
                           <div>
                             {/* output-node의 경우 <output></output> 또는 <출력></출력> 내의 내용만 추출하여 스크롤 가능하게 표시 */}
                             {node.node_type === 'output-node' ? (
@@ -697,9 +737,18 @@ export const NodeExecutionResultPanel: React.FC = memo(() => {
                       </div>
                     ) : (
                       <Text style={{ color: '#ff4d4f' }}>
-                        {executionResult.error || ''}
+                        {executionResult.error || '알 수 없는 오류가 발생했습니다.'}
                       </Text>
                     )}
+                  </div>
+                )}
+                
+                {/* 에러 상태 표시 */}
+                {executionState === 'error' && executionResult && (
+                  <div style={{ fontSize: 11 }}>
+                    <Text style={{ color: '#ff4d4f' }}>
+                      {executionResult.error || '알 수 없는 오류가 발생했습니다.'}
+                    </Text>
                   </div>
                 )}
               </Card>

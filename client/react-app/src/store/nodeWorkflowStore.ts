@@ -9,13 +9,12 @@ import {
   NodeData,
   NodeBasedWorkflowResponse,
   ValidationResult,
-  KnowledgeBase,
-  AvailableModel,
   StreamChunk
 } from '../types';
-import { nodeBasedWorkflowAPI, workflowAPI } from '../services/api';
+import { showSuccessMessage } from '../utils/messageUtils';
+import { nodeBasedWorkflowAPI } from '../services/api';
 import { validateNodeWorkflow, formatValidationErrors } from '../utils/nodeWorkflowValidation';
-import { DEFAULT_PROMPTS, OUTPUT_FORMAT_TEMPLATES } from '../config/defaultPrompts';
+import { createWorkflowNode, createInitialNodes } from '../utils/nodeFactory';
 
 // ==================== 노드 기반 워크플로우 전용 스토어 ====================
 // project_reference.md 기준 - 5가지 노드 타입만 지원
@@ -28,9 +27,6 @@ interface NodeWorkflowState {
   // ReactFlow 뷰포트 상태 (중복 제거: viewport만 유지)
   viewport: { x: number; y: number; zoom: number };
   isRestoring: boolean; // 복원 상태 플래그
-  
-  // 선택된 노드 (edge 강조를 위해)
-  selectedNodeId: string | null;
   
   // 실행 상태
   isExecuting: boolean;
@@ -46,10 +42,6 @@ interface NodeWorkflowState {
   // 검증 상태
   validationResult: ValidationResult | null;
   validationErrors: string[];
-  
-  // 모델 관리
-  availableModels: AvailableModel[];
-  knowledgeBases: KnowledgeBase[];
   
   // 노드 실행 상태 업데이트
   setNodeExecutionStatus: (nodeId: string, isExecuting: boolean, isCompleted?: boolean) => void;
@@ -68,9 +60,6 @@ interface NodeWorkflowState {
   stopWorkflowExecution: () => void;
   clearAllExecutionResults: () => void;
   
-  loadKnowledgeBases: () => Promise<void>;
-  loadAvailableModels: (provider: LLMProvider) => Promise<void>;
-  
   // 뷰포트 상태 관리
   setViewport: (viewport: { x: number; y: number; zoom: number }) => void;
   
@@ -84,75 +73,7 @@ interface NodeWorkflowState {
   exportToJSON: () => void;
   importFromJSON: (jsonData: string) => boolean;
   setRestoring: (isRestoring: boolean) => void;
-  
-  // 노드 선택 관리
-  setSelectedNodeId: (nodeId: string | null) => void;
-  getSelectedNodeEdges: () => WorkflowEdge[];
 }
-
-// 노드 생성 헬퍼 함수
-const createWorkflowNode = (nodeType: NodeType, position: { x: number; y: number }): WorkflowNode => {
-  const id = `${nodeType}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  
-  // 노드 타입별 기본 레이블
-  const labels = {
-    [NodeType.INPUT]: "입력 노드",
-    [NodeType.GENERATION]: "생성 노드", 
-    [NodeType.ENSEMBLE]: "앙상블 노드",
-    [NodeType.VALIDATION]: "검증 노드",
-    [NodeType.OUTPUT]: "출력 노드",
-    [NodeType.CONTEXT]: "컨텍스트 노드"
-  };
-  
-  const nodeData: NodeData = {
-    id,
-    nodeType,
-    label: labels[nodeType],
-  };
-  
-  // input-node와 output-node는 content 필드 추가
-  if (nodeType === NodeType.INPUT || nodeType === NodeType.OUTPUT) {
-    nodeData.content = '';
-  }
-  
-  // LLM 노드들은 모델 및 검색 설정 필드 추가
-  if ([NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION].includes(nodeType)) {
-    nodeData.model_type = '';
-    nodeData.llm_provider = LLMProvider.GOOGLE;
-    nodeData.knowledge_base = ''; // 기본값: 없음
-    
-    // 기본 프롬프트 템플릿 적용
-    nodeData.prompt = DEFAULT_PROMPTS[nodeType as keyof typeof DEFAULT_PROMPTS] || '';
-    
-    // 기본 출력 형식 템플릿 적용
-    nodeData.output_format = OUTPUT_FORMAT_TEMPLATES[nodeType as keyof typeof OUTPUT_FORMAT_TEMPLATES] || '';
-    
-    // 노드 타입에 따른 기본 검색 강도 설정
-    if (nodeType === NodeType.VALIDATION) {
-      nodeData.search_intensity = SearchIntensity.VERY_LOW; // validation-node: 매우 낮음
-    } else {
-      nodeData.search_intensity = SearchIntensity.MEDIUM; // generation, ensemble: 보통
-    }
-  }
-  
-  return {
-    id,
-    type: 'workflowNode',
-    position,
-    data: nodeData,
-    draggable: true,
-    selectable: true,
-    deletable: nodeType !== NodeType.OUTPUT // output-node는 삭제 불가
-  };
-};
-
-// 초기 노드 생성 함수
-const createInitialNodes = (): WorkflowNode[] => {
-  return [
-    createWorkflowNode(NodeType.INPUT, { x: 400, y: 50 }),    // 상단 중앙 (더 위로)
-    createWorkflowNode(NodeType.OUTPUT, { x: 400, y: 850 })   // 하단 중앙
-  ];
-};
 
 export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
   // 초기 노드들 생성 (연결 없이)
@@ -166,17 +87,12 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     viewport: { x: 0, y: 0, zoom: 1 },
     isRestoring: false, // 복원 상태 초기값
     
-    // output-node가 기본 선택됨
-    selectedNodeId: initialNodes.find(node => node.data.nodeType === NodeType.OUTPUT)?.id || null,
-    
     isExecuting: false,
     isStopping: false, // 중단 상태 초기값
     executionResult: null,
     
     validationResult: null,
     validationErrors: [],
-    availableModels: [],
-    knowledgeBases: [],
     
     // 노드별 실행 상태 및 출력
     nodeExecutionStates: {},
@@ -217,7 +133,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
         llm_provider: LLMProvider.GOOGLE,
         model_type: 'gemini-1.5-flash' // 기본 모델 설정
       });
-      message.success(`${nodeType} 노드가 생성되었습니다. 필요시 편집에서 모델을 변경해주세요.`);
+      showSuccessMessage(`${nodeType} 노드가 생성되었습니다. 필요시 편집에서 모델을 변경해주세요.`);
     }
     
     // Context 노드인 경우 기본 검색 강도와 rerank 설정
@@ -359,7 +275,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
           let finalPrompt = node.data.prompt || '';
 
           if (isLlmNode && node.data.output_format) {
-            const outputFormatInstruction = `\n\n핵심 결과를 반드시 다음과 같은 형태로 만들어 출력에 포함시키세요. 이건 절대적으로 지켜야 할 사항입니다.\n\n<output>\n${node.data.output_format}\n</output>`;
+            const outputFormatInstruction = `\n\n핵심 결과를 반드시 다음과 같은 형태로 만들어 출력 시 가장 앞 부분에 포함시키세요. 이건 절대적으로 지켜야 할 사항입니다.\n\n<output>\n${node.data.output_format}\n</output>`;
             finalPrompt += outputFormatInstruction;
           }
 
@@ -647,38 +563,6 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
   },
   
   // 데이터 로딩
-  loadKnowledgeBases: async () => {
-    try {
-      const knowledgeBases = await workflowAPI.getKnowledgeBases();
-      set({ knowledgeBases });
-    } catch (error) {
-      console.error('지식 베이스 로딩 실패:', error);
-    }
-  },
-  
-  loadAvailableModels: async (provider: LLMProvider) => {
-    try {
-      const models = await workflowAPI.getProviderModels(provider);
-      const state = get();
-      
-      // 기존 모델 중 다른 provider 모델들은 유지하고, 해당 provider 모델만 교체
-      const otherProviderModels = state.availableModels.filter(model => model.provider !== provider);
-      const updatedModels = [...otherProviderModels, ...models];
-      
-      set({ availableModels: updatedModels });
-    } catch (error) {
-      console.error(`${provider} 모델 목록 로딩 실패:`, error);
-      
-      // 실패 시 해당 provider의 모델들을 제거
-      const state = get();
-      const otherProviderModels = state.availableModels.filter(model => model.provider !== provider);
-      set({ availableModels: otherProviderModels });
-      
-      // 사용자에게 알림
-      message.error(`${provider} 모델 목록을 불러오는데 실패했습니다. 연결 상태를 확인해주세요.`);
-    }
-  },
-  
   // 워크플로우 저장/복원/Import/Export 기능 구현
   saveCurrentWorkflow: () => {
     const { nodes, edges, viewport } = get();
@@ -733,19 +617,6 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       set({ isRestoring: false }); // 에러 시 복원 상태 해제
       return false;
     }
-  },
-
-  // 노드 선택 관련 함수들
-  setSelectedNodeId: (nodeId: string | null) => set({ selectedNodeId: nodeId }),
-
-  // 선택된 노드와 연관된 edges 반환 (들어오는 edge + 나가는 edge)
-  getSelectedNodeEdges: () => {
-    const { selectedNodeId, edges } = get();
-    if (!selectedNodeId) return [];
-    
-    return edges.filter(edge => 
-      edge.source === selectedNodeId || edge.target === selectedNodeId
-    );
   },
   
   resetToInitialState: () => {

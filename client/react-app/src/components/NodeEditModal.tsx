@@ -2,8 +2,9 @@ import React, { useEffect } from 'react';
 import { Modal, Form, Input, Select, Typography, message, Button, Tooltip, Divider } from 'antd';
 import { CopyOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { NodeType, LLMProvider, WorkflowNode, AvailableModel, SearchIntensity, KnowledgeBase } from '../types';
-import { useNodeWorkflowStore } from '../store/nodeWorkflowStore';
+import { useDataLoadingStore } from '../store/dataLoadingStore';
 import { DEFAULT_PROMPTS, OUTPUT_FORMAT_TEMPLATES, PROMPT_VARIABLES } from '../config/defaultPrompts';
+import { UI_COLORS } from '../config/constants';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -17,7 +18,7 @@ interface NodeEditModalProps {
 }
 
 const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, onSave }) => {
-  const { availableModels, loadAvailableModels, knowledgeBases, loadKnowledgeBases } = useNodeWorkflowStore();
+  const { availableModels, loadAvailableModels, knowledgeBases, loadKnowledgeBases } = useDataLoadingStore();
   const [form] = Form.useForm();
   const isLLMNode = node ? [NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION].includes(node.data.nodeType) : false;
   const isContextNode = node ? node.data.nodeType === NodeType.CONTEXT : false;
@@ -74,14 +75,14 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
       });
       
       // 해당 provider의 모델이 아직 로드되지 않았을 때 로드
-      const currentProviderModels = availableModels.filter(model => model.provider === provider);
+      const currentProviderModels = availableModels.filter((model: AvailableModel) => model.provider === provider);
       if (currentProviderModels.length === 0 && isLLMNode) {
         loadAvailableModels(provider);
       }
       
       // context-node의 rerank provider 모델도 로드
       if (isContextNode && node.data.rerank_provider && node.data.rerank_provider !== LLMProvider.NONE) {
-        const rerankProviderModels = availableModels.filter(model => model.provider === node.data.rerank_provider);
+        const rerankProviderModels = availableModels.filter((model: AvailableModel) => model.provider === node.data.rerank_provider);
         if (rerankProviderModels.length === 0) {
           loadAvailableModels(node.data.rerank_provider);
         }
@@ -96,10 +97,10 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
       const currentModel = node.data.model_type;
       
       // 기존 모델이 없거나 현재 provider에 해당하는 모델이 없을 때만 자동 선택
-      const hasValidModel = currentModel && availableModels.some(m => m.value === currentModel && m.provider === currentProvider);
+      const hasValidModel = currentModel && availableModels.some((m: AvailableModel) => m.value === currentModel && m.provider === currentProvider);
       
       if (!hasValidModel) {
-        const providerModels = availableModels.filter(model => model.provider === currentProvider);
+        const providerModels = availableModels.filter((model: AvailableModel) => model.provider === currentProvider);
         
         if (providerModels.length > 0) {
           const defaultModel = getDefaultModelForProvider(currentProvider, providerModels);
@@ -118,10 +119,10 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
         const rerankModel = node.data.rerank_model;
         
         if (rerankProvider && rerankProvider !== LLMProvider.NONE) {
-          const hasValidRerankModel = rerankModel && availableModels.some(m => m.value === rerankModel && m.provider === rerankProvider);
+          const hasValidRerankModel = rerankModel && availableModels.some((m: AvailableModel) => m.value === rerankModel && m.provider === rerankProvider);
           
           if (!hasValidRerankModel) {
-            const rerankProviderModels = availableModels.filter(model => model.provider === rerankProvider);
+            const rerankProviderModels = availableModels.filter((model: AvailableModel) => model.provider === rerankProvider);
             
             if (rerankProviderModels.length > 0) {
               const defaultRerankModel = getDefaultModelForProvider(rerankProvider, rerankProviderModels);
@@ -151,8 +152,8 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
     
     // 로드 완료 후 사용 가능한 모델이 있으면 기본 모델 선택
     setTimeout(() => {
-      const state = useNodeWorkflowStore.getState();
-      const providerModels = state.availableModels.filter(model => model.provider === provider);
+      const state = useDataLoadingStore.getState();
+      const providerModels = state.availableModels.filter((model: AvailableModel) => model.provider === provider);
       console.log('Available models for provider:', providerModels);
       
       if (providerModels.length > 0) {
@@ -303,7 +304,7 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
                 value={form.getFieldValue('model_type')}
               >
                 {availableModels
-                  .filter(model => model.provider === (form.getFieldValue('llm_provider') || LLMProvider.GOOGLE))
+                  .filter((model: AvailableModel) => model.provider === (form.getFieldValue('llm_provider') || LLMProvider.GOOGLE))
                   .map((model: AvailableModel) => (
                     <Option key={model.value} value={model.value}>
                       <Text strong>{model.label}</Text>
@@ -320,7 +321,7 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
                 <span>
                   출력 형식
                   <Tooltip title="LLM이 출력할 내용 중 핵심 결과를 보여줄 형식을 작성하세요. 이 형식으로 출력된 내용이 다음 노드로 전달됩니다.">
-                    <InfoCircleOutlined style={{ marginLeft: 4, color: '#1890ff' }} />
+                    <InfoCircleOutlined style={{ marginLeft: 4, color: UI_COLORS.UI.INFO }} />
                   </Tooltip>
                 </span>
               }
@@ -370,7 +371,7 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
                 <span>
                   프롬프트
                   <Tooltip title="LLM에 전달할 프롬프트를 입력하세요.">
-                    <InfoCircleOutlined style={{ marginLeft: 4, color: '#1890ff' }} />
+                    <InfoCircleOutlined style={{ marginLeft: 4, color: UI_COLORS.UI.INFO }} />
                   </Tooltip>
                 </span>
               }
@@ -403,12 +404,12 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
                 
                 <Divider style={{ margin: '12px 0' }} />
                 
-                <div style={{ fontSize: 12, color: '#666' }}>
+                <div style={{ fontSize: 12, color: UI_COLORS.TEXT.SECONDARY }}>
                   <div style={{ fontWeight: 'bold', marginBottom: 4 }}>사용 가능한 변수:</div>
                   {Object.entries(PROMPT_VARIABLES).map(([variable, description]) => (
                     <div key={variable} style={{ marginBottom: 2 }}>
                       <code style={{ 
-                        background: '#f5f5f5', 
+                        background: UI_COLORS.UI.BACKGROUND_LIGHT, 
                         padding: '1px 4px', 
                         borderRadius: 2,
                         fontSize: 11 
@@ -480,14 +481,14 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
                   form.setFieldsValue({ rerank_model: '' }); // 먼저 초기화
                   
                   // 해당 provider의 모델이 로드되지 않았으면 로드
-                  let providerModels = availableModels.filter(model => model.provider === value);
+                  let providerModels = availableModels.filter((model: AvailableModel) => model.provider === value);
                   
                   if (providerModels.length === 0) {
                     await loadAvailableModels(value);
                     // 로드 후 store에서 다시 가져오기
                     setTimeout(() => {
-                      const state = useNodeWorkflowStore.getState();
-                      const newProviderModels = state.availableModels.filter(model => model.provider === value);
+                      const state = useDataLoadingStore.getState();
+                      const newProviderModels = state.availableModels.filter((model: AvailableModel) => model.provider === value);
                       if (newProviderModels.length > 0) {
                         const defaultModel = getDefaultModelForProvider(value, newProviderModels);
                         if (defaultModel) {
@@ -522,11 +523,11 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
                 disabled={form.getFieldValue('rerank_provider') === LLMProvider.NONE}
               >
                 {availableModels
-                  .filter(model => {
+                  .filter((model: AvailableModel) => {
                     const selectedProvider = form.getFieldValue('rerank_provider');
                     return selectedProvider !== LLMProvider.NONE && model.provider === selectedProvider;
                   })
-                  .map(model => (
+                  .map((model: AvailableModel) => (
                     <Option key={model.value} value={model.value} disabled={model.disabled}>
                       {model.label}
                     </Option>

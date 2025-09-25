@@ -35,8 +35,11 @@ import {
 } from '@ant-design/icons';
 import { NodeWorkflowComponent } from './NodeWorkflowComponent';
 import { useNodeWorkflowStore } from '../store/nodeWorkflowStore';
+import { useNodeSelectionStore } from '../store/nodeSelectionStore';
+import { useViewportStore } from '../store/viewportStore';
 import { WorkflowEdge, NodeType } from '../types';
 import { isConnectionAllowed } from '../utils/nodeWorkflowValidation';
+import { UI_CONFIG, UI_COLORS } from '../config/constants';
 
 
 
@@ -49,18 +52,16 @@ const nodeTypes: NodeTypes = {
 const edgeTypes = {};
 
 // fitView 옵션 - 재생성 방지
-const fitViewOptions = { padding: 0.2 };
+const fitViewOptions = { padding: UI_CONFIG.REACT_FLOW.FIT_VIEW_PADDING };
 
 // ReactFlow 스타일 - 재생성 방지
-const reactFlowStyle = { background: '#fafafa' };
+const reactFlowStyle = { background: UI_CONFIG.REACT_FLOW.BACKGROUND_COLOR };
 
 export const NodeWorkflowCanvas: React.FC = memo(() => {
-  const { 
+  const {
     nodes: storeNodes, 
     edges: storeEdges, 
-    viewport, // 스토어의 뷰포트 상태
     isRestoring, // 복원 상태
-    selectedNodeId, // 선택된 노드 ID
     addEdge: addStoreEdge,
     removeEdge,
     removeNode,
@@ -72,18 +73,15 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
     resetToInitialState,
     exportToJSON,
     importFromJSON,
-    setViewport,
     updateNodePositions,
     executeWorkflowStream, // 워크플로우 스트리밍 실행 함수
     stopWorkflowExecution, // 워크플로우 중단 함수
     isExecuting, // 실행 상태
     isStopping, // 중단 상태
-    
-    // 노드 선택 관리
-    setSelectedNodeId,
   } = useNodeWorkflowStore();
   
-  // 워크플로우 관리 상태
+  const { selectedNodeId, setSelectedNodeId } = useNodeSelectionStore();
+  const { viewport, setViewport } = useViewportStore();  // 워크플로우 관리 상태
   const [importModalVisible, setImportModalVisible] = useState(false);
   const [jsonText, setJsonText] = useState('');
   
@@ -191,13 +189,13 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
         width: 20,
         height: 20,
         color: selectedNodeEdges.some(selectedEdge => selectedEdge.id === edge.id) 
-          ? '#1890ff' // 선택된 노드의 edge는 파란색
-          : '#b1b1b7' // 기본 회색
+          ? UI_COLORS.EDGE.SELECTED // 선택된 노드의 edge는 파란색
+          : UI_COLORS.EDGE.DEFAULT // 기본 회색
       },
       style: {
         stroke: selectedNodeEdges.some(selectedEdge => selectedEdge.id === edge.id) 
-          ? '#1890ff' // 선택된 노드의 edge는 파란색
-          : '#b1b1b7', // 기본 회색
+          ? UI_COLORS.EDGE.SELECTED // 선택된 노드의 edge는 파란색
+          : UI_COLORS.EDGE.DEFAULT, // 기본 회색
         strokeWidth: selectedNodeEdges.some(selectedEdge => selectedEdge.id === edge.id) 
           ? 2 // 선택된 노드의 edge는 더 굵게
           : 1
@@ -487,7 +485,7 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
 
       {/* 상단 타이틀 바 */}
-      <div style={{ padding: '8px 16px', background: '#fff', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ padding: '8px 16px', background: UI_COLORS.PANEL.HEADER_BACKGROUND, borderBottom: `1px solid ${UI_COLORS.PANEL.HEADER_BORDER}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography.Title level={5} style={{ margin: 0 }}>워크플로우 구성</Typography.Title>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
           {!isExecuting && !isStopping ? (
