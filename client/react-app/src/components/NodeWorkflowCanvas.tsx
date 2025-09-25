@@ -31,6 +31,7 @@ import {
   DownloadOutlined,
   UploadOutlined,
   PlayCircleOutlined, // 실행 아이콘 추가
+  StopOutlined, // 중단 아이콘 추가
 } from '@ant-design/icons';
 import { NodeWorkflowComponent } from './NodeWorkflowComponent';
 import { useNodeWorkflowStore } from '../store/nodeWorkflowStore';
@@ -43,6 +44,15 @@ import { isConnectionAllowed } from '../utils/nodeWorkflowValidation';
 const nodeTypes: NodeTypes = {
   workflowNode: NodeWorkflowComponent,
 };
+
+// 에지 타입 정의 - 기본값을 명시적으로 정의하여 재생성 방지
+const edgeTypes = {};
+
+// fitView 옵션 - 재생성 방지
+const fitViewOptions = { padding: 0.2 };
+
+// ReactFlow 스타일 - 재생성 방지
+const reactFlowStyle = { background: '#fafafa' };
 
 export const NodeWorkflowCanvas: React.FC = memo(() => {
   const { 
@@ -65,7 +75,9 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
     setViewport,
     updateNodePositions,
     executeWorkflowStream, // 워크플로우 스트리밍 실행 함수
+    stopWorkflowExecution, // 워크플로우 중단 함수
     isExecuting, // 실행 상태
+    isStopping, // 중단 상태
     
     // 노드 선택 관리
     setSelectedNodeId,
@@ -85,6 +97,13 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
       console.error('스트리밍 실행 오류:', error);
       message.error(`스트리밍 실행 실패: ${error instanceof Error ? error.message : String(error)}`);
     }
+  };
+
+  // 워크플로우 중단 핸들러
+  const handleStopExecution = async () => {
+    // 이미 중단 중이면 아무것도 하지 않음
+    if (isStopping) return;
+    await stopWorkflowExecution();
   };
 
   // ReactFlow 인스턴스 레퍼런스
@@ -142,6 +161,7 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
 
   // 메모이제이션으로 불필요한 재계산 방지
   const memoizedNodeTypes = React.useMemo(() => nodeTypes, []);
+  const memoizedEdgeTypes = React.useMemo(() => edgeTypes, []);
   
   // 선택된 노드의 edges를 계산
   const selectedNodeEdges = React.useMemo(() => {
@@ -470,9 +490,34 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
       <div style={{ padding: '8px 16px', background: '#fff', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography.Title level={5} style={{ margin: 0 }}>워크플로우 구성</Typography.Title>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <Button icon={<PlayCircleOutlined />} type="primary" onClick={handleStreamingExecution} loading={isExecuting}>
-            {isExecuting ? '실행 중...' : '워크플로우 실행'}
-          </Button>
+          {!isExecuting && !isStopping ? (
+            <Button 
+              icon={<PlayCircleOutlined />} 
+              type="primary" 
+              onClick={handleStreamingExecution}
+            >
+              워크플로우 실행
+            </Button>
+          ) : isExecuting && !isStopping ? (
+            <Button 
+              icon={<StopOutlined />} 
+              type="default" 
+              danger 
+              onClick={handleStopExecution}
+            >
+              워크플로우 중단
+            </Button>
+          ) : (
+            <Button 
+              icon={<StopOutlined />} 
+              type="default" 
+              danger 
+              disabled={true}
+              loading={true}
+            >
+              중단 중...
+            </Button>
+          )}
         </div>
       </div>
 
@@ -492,11 +537,12 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
           nodeTypes={memoizedNodeTypes}
+          edgeTypes={memoizedEdgeTypes}
           onInit={onInit}
           onMoveEnd={onViewportChange}
           fitView
-          fitViewOptions={{ padding: 0.2 }}
-          style={{ background: '#fafafa' }}
+          fitViewOptions={fitViewOptions}
+          style={reactFlowStyle}
           edgesReconnectable={true}
         >
           <Background />

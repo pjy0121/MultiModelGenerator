@@ -70,6 +70,12 @@ export const nodeBasedWorkflowAPI = {
     } finally {
       reader.releaseLock();
     }
+  },
+  
+  // 워크플로우 중단
+  stopWorkflowExecution: async (): Promise<{ success: boolean; message: string }> => {
+    const response = await api.post('/stop-workflow');
+    return response.data;
   }
 };
 

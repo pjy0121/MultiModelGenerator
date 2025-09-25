@@ -67,6 +67,9 @@ async def execute_workflow_stream(request: WorkflowExecutionRequest):
         try:
             logger.info(f"Starting streaming workflow execution with {len(request.workflow.nodes)} nodes")
             
+            # 실행 상태 초기화 (새로운 워크플로우 시작)
+            execution_engine.reset_execution_state()
+            
             # 실행 전 검증
             validation_result = validator.validate_workflow(request.workflow)
             if not validation_result["valid"]:
@@ -103,6 +106,19 @@ async def execute_workflow_stream(request: WorkflowExecutionRequest):
             "Content-Type": "text/event-stream"
         }
     )
+
+@app.post("/stop-workflow")
+async def stop_workflow():
+    """워크플로우 실행 중단"""
+    try:
+        execution_engine.stop_execution()
+        return {
+            "success": True,
+            "message": "워크플로우 중단 요청이 처리되었습니다. 현재 실행 중인 노드들이 완료되면 중단됩니다."
+        }
+    except Exception as e:
+        logger.error(f"Failed to stop workflow: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/knowledge-bases", response_model=KnowledgeBaseListResponse)
 async def list_knowledge_bases():
