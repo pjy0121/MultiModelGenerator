@@ -1,6 +1,5 @@
 import axios from 'axios';
 import { 
-  NodeBasedWorkflowResponse, 
   KnowledgeBase, 
   AvailableModel, 
   LLMProvider,
@@ -23,12 +22,6 @@ api.interceptors.response.use(
 // ==================== 노드 기반 워크플로우 API ====================
 
 export const nodeBasedWorkflowAPI = {
-  // 노드 기반 워크플로우 실행
-  executeNodeWorkflow: async (request: WorkflowExecutionRequest): Promise<NodeBasedWorkflowResponse> => {
-    const response = await api.post('/execute-workflow', request);
-    return response.data;
-  },
-
   // 노드 기반 워크플로우 스트리밍 실행
   executeNodeWorkflowStream: async function* (request: WorkflowExecutionRequest) {
     const response = await fetch('http://localhost:5001/execute-workflow-stream', {

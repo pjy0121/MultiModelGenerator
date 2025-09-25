@@ -212,33 +212,17 @@ class NodeExecutor:
             if not client or not client.is_available():
                 raise Exception(f"LLM client not available: {node.llm_provider}")
             
-            messages = [{"role": "user", "content": prompt}]
             full_response = ""
             
-            # 스트리밍 실행
-            if hasattr(client, 'chat_completion_stream'):
-                async for chunk in client.chat_completion_stream(
-                    model=node.model_type,
-                    messages=messages,
-                    temperature=LLM_CONFIG["default_temperature"]
-                ):
-                    if chunk:
-                        full_response += chunk
-                        yield {"type": "stream", "content": chunk}
-            else:
-                # 비스트리밍 클라이언트의 경우 시뮬레이션
-                response = client.chat_completion(
-                    model=node.model_type,
-                    messages=messages,
-                    temperature=LLM_CONFIG["default_temperature"]
-                )
-                full_response = response
-                
-                chunk_size = LLM_CONFIG["chunk_processing_size"]
-                for i in range(0, len(response), chunk_size):
-                    chunk = response[i:i+chunk_size]
+            # 통합된 스트리밍 인터페이스 사용
+            async for chunk in client.generate_stream(
+                prompt=prompt,
+                model=node.model_type,
+                temperature=LLM_CONFIG["default_temperature"]
+            ):
+                if chunk:
+                    full_response += chunk
                     yield {"type": "stream", "content": chunk}
-                    await asyncio.sleep(LLM_CONFIG["simulation_sleep_interval"])
             
             # 결과 파싱
             if full_response:
@@ -425,33 +409,17 @@ class NodeExecutor:
             if not client or not client.is_available():
                 raise Exception(f"LLM client not available: {node.llm_provider}")
             
-            messages = [{"role": "user", "content": prompt}]
             full_response = ""
             
-            # 스트리밍 실행
-            if hasattr(client, 'chat_completion_stream'):
-                async for chunk in client.chat_completion_stream(
-                    model=node.model_type,
-                    messages=messages,
-                    temperature=LLM_CONFIG["default_temperature"]
-                ):
-                    if chunk:
-                        full_response += chunk
-                        yield {"type": "stream", "content": chunk}
-            else:
-                # 비스트리밍 클라이언트의 경우 시뮬레이션
-                response = client.chat_completion(
-                    model=node.model_type,
-                    messages=messages,
-                    temperature=LLM_CONFIG["default_temperature"]
-                )
-                full_response = response
-                
-                chunk_size = LLM_CONFIG["chunk_processing_size"]
-                for i in range(0, len(response), chunk_size):
-                    chunk = response[i:i+chunk_size]
+            # 통합된 스트리밍 인터페이스 사용
+            async for chunk in client.generate_stream(
+                prompt=prompt,
+                model=node.model_type,
+                temperature=LLM_CONFIG["default_temperature"]
+            ):
+                if chunk:
+                    full_response += chunk
                     yield {"type": "stream", "content": chunk}
-                    await asyncio.sleep(LLM_CONFIG["simulation_sleep_interval"])
             
             # 결과 파싱
             if full_response:

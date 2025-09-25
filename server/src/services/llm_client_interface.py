@@ -1,35 +1,28 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, AsyncGenerator, Union, Optional
+from typing import List, Dict, Any, AsyncGenerator
+from ..core.config import NODE_EXECUTION_CONFIG
 
 
 class LLMClientInterface(ABC):
-    """Base interface for all LLM client implementations."""
+    """통합된 LLM 클라이언트 인터페이스 - 스트리밍 전용"""
     
     @abstractmethod
-    def get_available_models(self) -> List[str]:
-        """Get list of available models for this provider."""
+    def is_available(self) -> bool:
+        """클라이언트 사용 가능 여부 확인"""
         pass
     
     @abstractmethod
-    async def generate_response(
+    def get_available_models(self) -> List[Dict[str, Any]]:
+        """사용 가능한 모델 목록 반환"""
+        pass
+    
+    @abstractmethod
+    async def generate_stream(
         self, 
         prompt: str, 
         model: str, 
         temperature: float = 0.3, 
-        max_tokens: int = 2000,
-        stream: bool = False
-    ) -> Union[str, AsyncGenerator[str, None]]:
-        """Generate response from the LLM."""
-        pass
-    
-    @abstractmethod
-    async def generate(
-        self, 
-        prompt: str, 
-        model: str, 
-        temperature: float = 0.3, 
-        max_tokens: int = 2000,
-        stream: bool = False
-    ) -> Union[str, AsyncGenerator[str, None]]:
-        """Alternative interface for generating responses (used by rerank)."""
+        max_tokens: int = NODE_EXECUTION_CONFIG["max_tokens_default"]
+    ) -> AsyncGenerator[str, None]:
+        """스트리밍으로 응답 생성 (통합된 단일 인터페이스)"""
         pass

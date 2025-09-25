@@ -23,8 +23,10 @@ class ReRanker:
         prompt = self._build_rerank_prompt(query, documents)
 
         try:
-            # LLM 호출
-            response = await self.client.generate(prompt, self.model)
+            # LLM 호출 (스트림을 모아서 전체 응답으로 변환)
+            response = ""
+            async for chunk in self.client.generate_stream(prompt, self.model):
+                response += chunk
             
             # LLM 응답 파싱
             reranked_indices = self._parse_rerank_response(response, len(documents))

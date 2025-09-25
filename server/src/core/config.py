@@ -50,6 +50,22 @@ VECTOR_DB_CONFIG = {
     }
 }
 
+# 노드 실행 엔진 설정
+NODE_EXECUTION_CONFIG = {
+    "stream_timeout": 10.0,           # 스트림 완료 대기 시간 (초)
+    "stream_poll_timeout": 0.1,       # 스트림 폴링 간격 (초) 
+    "max_tokens_default": 2000,       # LLM 응답 기본 토큰 수
+    "score_decay_factor": 0.1         # VectorStore mock 점수 감소율
+}
+
+# Admin 설정 
+ADMIN_CONFIG = {
+    "chunk_size_min": 512,           # 최소 청크 크기
+    "chunk_size_max": 8192,          # 최대 청크 크기  
+    "chunk_size_default": 2048,      # 기본 청크 크기
+    "chunk_overlap_ratio": 0.25      # 기본 오버랩 비율 (25%)
+}
+
 # 유틸리티 함수들
 def is_llm_provider_available(provider: str) -> bool:
     """LLM Provider가 사용 가능한지 확인"""

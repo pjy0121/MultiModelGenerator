@@ -1,9 +1,8 @@
-from typing import List, Dict, Any, AsyncGenerator, Union
+from typing import List, Dict, Any
 import asyncio
-import json
 from openai import OpenAI
 from .llm_client_interface import LLMClientInterface
-from ..core.config import INTERNAL_LLM_CONFIG
+from ..core.config import INTERNAL_LLM_CONFIG, NODE_EXECUTION_CONFIG
 
 class InternalLLMClient(LLMClientInterface):
     """내부 LLM API 클라이언트 (OpenAI 패키지 사용)"""
@@ -50,48 +49,19 @@ class InternalLLMClient(LLMClientInterface):
             "disabled": False
         }]
     
-    async def generate_response(
+    async def generate_stream(
         self, 
         prompt: str, 
         model: str, 
         temperature: float = 0.3, 
-        max_tokens: int = 2000,
-        stream: bool = False
-    ) -> Union[str, AsyncGenerator[str, None]]:
-        """Internal LLM을 사용하여 응답 생성"""
-        if not self.is_available():
-            raise Exception("Internal LLM API가 사용 불가능합니다.")
+        max_tokens: int = NODE_EXECUTION_CONFIG["max_tokens_default"]
+    ):
+        """스트리밍으로 응답 생성 (통합된 단일 인터페이스)"""
+        if not self.client:
+            raise RuntimeError("Internal LLM 클라이언트가 초기화되지 않았습니다.")
         
         try:
             messages = [{"role": "user", "content": prompt}]
-            
-            if stream:
-                return self._generate_stream_response(messages, model, temperature, max_tokens)
-            else:
-                response = self.client.chat.completions.create(
-                    model=self.model_name,  # 내부 모델명 사용
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens
-                )
-                
-                if response.choices and response.choices[0].message:
-                    return response.choices[0].message.content.strip()
-                else:
-                    raise Exception("Internal LLM에서 빈 응답을 받았습니다.")
-                    
-        except Exception as e:
-            raise Exception(f"Internal LLM 응답 생성 실패: {str(e)}")
-    
-    async def _generate_stream_response(
-        self, 
-        messages: List[Dict[str, Any]], 
-        model: str, 
-        temperature: float, 
-        max_tokens: int
-    ) -> AsyncGenerator[str, None]:
-        """스트리밍 응답 생성"""
-        try:
             stream = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
@@ -101,22 +71,10 @@ class InternalLLMClient(LLMClientInterface):
             )
             
             for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                    content = chunk.choices[0].delta.content
-                    if content:
-                        yield content
-                        await asyncio.sleep(0.01)  # 작은 지연으로 부드러운 스트리밍
-                        
+                content = chunk.choices[0].delta.content
+                if content is not None:
+                    yield content
+                    await asyncio.sleep(0.01)
+                    
         except Exception as e:
-            raise Exception(f"Internal LLM 스트리밍 응답 생성 실패: {str(e)}")
-    
-    async def generate(
-        self, 
-        prompt: str, 
-        model: str, 
-        temperature: float = 0.3, 
-        max_tokens: int = 2000,
-        stream: bool = False
-    ) -> str:
-        """rerank에서 사용하는 generate 메서드"""
-        return await self.generate_response(prompt, model, temperature, max_tokens, stream)
+            raise RuntimeError(f"Internal LLM API 스트리밍 요청 실패: {e}")
