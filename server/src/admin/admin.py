@@ -1,16 +1,16 @@
 import os
-import sys
 import shutil
 import time
 from typing import Dict, Any
-from ..core.config import Config, ADMIN_CONFIG
+from ..core import config as Config
+from ..core.config import VECTOR_DB_CONFIG, ADMIN_CONFIG
 from ..services.document_processor import DocumentProcessor
 from ..services.vector_store import VectorStore
 
 class KnowledgeBaseAdmin:
     def __init__(self):
         # 루트 디렉토리 생성
-        os.makedirs(Config.VECTOR_DB_ROOT, exist_ok=True)
+        os.makedirs(VECTOR_DB_CONFIG["root_dir"], exist_ok=True)
         self.vector_stores: Dict[str, VectorStore] = {}
 
     def get_vector_store(self, kb_name: str) -> VectorStore:
