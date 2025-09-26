@@ -343,53 +343,54 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
         
         // 노드별 상태 업데이트
         if (chunk.type === 'node_start' && chunk.node_id) {
-          set(state => ({
+          const currentState = get();
+          const currentStartOrder = currentState.nodeStartOrder;
+          
+          set({
             nodeExecutionStates: {
-              ...state.nodeExecutionStates,
+              ...currentState.nodeExecutionStates,
               [chunk.node_id]: 'executing'
             },
-            nodeStartOrder: state.nodeStartOrder.includes(chunk.node_id) 
-              ? state.nodeStartOrder 
-              : [...state.nodeStartOrder, chunk.node_id]
-          }));
+            nodeStartOrder: currentStartOrder.includes(chunk.node_id) 
+              ? currentStartOrder 
+              : [...currentStartOrder, chunk.node_id]
+          });
         } else if (chunk.type === 'stream' && chunk.node_id && chunk.content) {
-          // 스트리밍 업데이트를 배치로 처리하여 성능 최적화
-          set(state => {
-            const currentOutput = state.nodeStreamingOutputs[chunk.node_id] || '';
-            const newOutput = currentOutput + chunk.content;
-            
-            // 불필요한 업데이트 방지
-            if (currentOutput === newOutput) return state;
-            
-            return {
-              ...state,
+          // 스트리밍 업데이트를 안전하게 처리
+          const currentState = get();
+          const currentOutput = currentState.nodeStreamingOutputs[chunk.node_id] || '';
+          const newOutput = currentOutput + chunk.content;
+          
+          // 실제로 변경사항이 있을 때만 업데이트
+          if (currentOutput !== newOutput) {
+            set({
+              ...currentState,
               nodeStreamingOutputs: {
-                ...state.nodeStreamingOutputs,
+                ...currentState.nodeStreamingOutputs,
                 [chunk.node_id]: newOutput
               }
-            };
-          });
+            });
+          }
         } else if (chunk.type === 'node_complete' && chunk.node_id) {
           const status = chunk.success ? 'completed' : 'error';
-          set(state => {
-            const updatedResults = { ...state.nodeExecutionResults };
-            
-            // 모든 노드의 완료 결과를 즉시 저장 (성공/실패 상관없이)
-            updatedResults[chunk.node_id] = {
-              success: chunk.success,
-              description: chunk.description || (chunk.success ? '' : chunk.error),
-              error: chunk.success ? undefined : chunk.error,
-              execution_time: chunk.execution_time
-            };
-            
-            return {
-              ...state,
-              nodeExecutionStates: {
-                ...state.nodeExecutionStates,
-                [chunk.node_id]: status
-              },
-              nodeExecutionResults: updatedResults
-            };
+          const currentState = get();
+          const updatedResults = { ...currentState.nodeExecutionResults };
+          
+          // 모든 노드의 완료 결과를 즉시 저장 (성공/실패 상관없이)
+          updatedResults[chunk.node_id] = {
+            success: chunk.success,
+            description: chunk.description || (chunk.success ? '' : chunk.error),
+            error: chunk.success ? undefined : chunk.error,
+            execution_time: chunk.execution_time
+          };
+          
+          set({
+            ...currentState,
+            nodeExecutionStates: {
+              ...currentState.nodeExecutionStates,
+              [chunk.node_id]: status
+            },
+            nodeExecutionResults: updatedResults
           });
         }
         
