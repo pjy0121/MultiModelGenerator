@@ -3,17 +3,39 @@ import { useEffect } from 'react';
 import { NodeExecutionResultPanel } from './components/NodeExecutionResultPanel';
 import { NodeWorkflowCanvas } from './components/NodeWorkflowCanvas';
 import { useDataLoadingStore } from './store/dataLoadingStore';
+import { useNodeWorkflowStore } from './store/nodeWorkflowStore';
 import './App.css';
 
 const { Header, Content, Sider } = Layout;
 const { Title } = Typography;
 
 function App() {
+  const setPageVisible = useNodeWorkflowStore(state => state.setPageVisible);
+  
   useEffect(() => {
     const store = useDataLoadingStore.getState();
     // 지식베이스만 미리 로드하고, 모델은 필요할 때 로드
     store.loadKnowledgeBases();
   }, []);
+  
+  // 페이지 visibility 변경 감지
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const isVisible = !document.hidden;
+      setPageVisible(isVisible);
+    };
+    
+    // 초기 상태 설정
+    setPageVisible(!document.hidden);
+    
+    // 이벤트 리스너 등록
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // 클린업
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [setPageVisible]);
 
   return (
     <Layout style={{ height: '100vh', width: '100vw', overflow: 'hidden' }}>

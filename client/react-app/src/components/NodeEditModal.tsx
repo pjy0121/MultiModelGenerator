@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
-import { Modal, Form, Input, Select, Typography, message, Button, Tooltip, Divider } from 'antd';
+import { Modal, Form, Input, Select, Typography, Button, Tooltip, Divider, message } from 'antd';
 import { CopyOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { showErrorMessage } from '../utils/messageUtils';
 import { NodeType, LLMProvider, WorkflowNode, AvailableModel, SearchIntensity, KnowledgeBase } from '../types';
 import { useDataLoadingStore } from '../store/dataLoadingStore';
 import { DEFAULT_PROMPTS, OUTPUT_FORMAT_TEMPLATES, PROMPT_VARIABLES } from '../config/defaultPrompts';
@@ -181,7 +182,7 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
       message.success('노드가 성공적으로 업데이트되었습니다.');
       onClose();
     } catch (error) {
-      message.error('폼 검증에 실패했습니다.');
+      showErrorMessage('폼 검증에 실패했습니다.');
     }
   };
 

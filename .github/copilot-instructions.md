@@ -1,159 +1,147 @@
 # MultiModelGenerator Copilot Instructions
 
 ## Project Overview
-Multi-model AI system for requirements extraction from technical documents using a node-based workflow architecture. Supports 5 node types connected in directed graphs: input → generation → ensemble → validation → output.
+Multi-model AI system for requirements extraction from technical documents using a node-based workflow architecture. Supports 5 node types connected in directed graphs: input → generation → ensemble → validation → output + context nodes for RAG integration.
 
 ## Architecture Patterns
 
-### Node-Based Workflow System
+### Node-Based Workflow System (5 Core Types)
 - **Input Nodes**: Plain-text content sources (no pre-nodes, multiple post-nodes allowed)
 - **Generation Nodes**: LLM-powered initial requirement generation (input-node → generation-node)
 - **Ensemble Nodes**: Combines multiple pre-node outputs (multiple pre-nodes → single output)
-- **Validation Nodes**: Sequential validation/refinement of requirements
+- **Validation Nodes**: Sequential validation/refinement of requirements (can chain: validation → validation)
 - **Output Nodes**: Final result display (no post-nodes, single instance per workflow)
+- **Context Nodes**: RAG integration with ChromaDB knowledge bases (must have input-node as pre-node)
 
-### Workflow Connection Rules
-Critical constraints enforced in `project_reference.md`:
+### Critical Connection Rules (Enforced by `workflow_validator.py`)
 - Only ensemble-nodes can have multiple pre-nodes
-- Only input-nodes can have multiple post-nodes  
+- Only input-nodes and context-nodes can have multiple post-nodes  
+- Context-nodes MUST have input-node as pre-node (fails validation otherwise)
 - All nodes need pre/post connections except input (no pre) and output (no post)
-- Workflow execution blocked if connection rules violated
+- Validation-node → validation-node chains are explicitly allowed
 
-### Workflow Execution Engine
-Server-side execution follows dependency resolution pattern in `src/api/`:
+### Real-Time Streaming Execution
+Server-side async streaming with dependency resolution in `node_execution_engine.py`:
 ```python
-# Workflow execution algorithm
-1. Find all input-nodes, add to execution queue
-2. While queue has nodes:
-   - Find nodes where all pre-nodes completed
-   - Execute those nodes in parallel
-   - Add their post-nodes to queue
-   - Remove completed nodes from queue
+# Event-driven parallel execution with real-time updates
+for chunk in response_stream:
+    if chunk.type == 'node_start': # Node begins execution
+    elif chunk.type == 'stream':   # Real-time LLM token streaming  
+    elif chunk.type == 'node_complete': # Node finished
+    elif chunk.type == 'complete': # Workflow finished
 ```
 
-### Output Parsing Pattern
-LLM nodes can use markdown tag-based output extraction via `<output>...</output>` tags:
-```markdown
-Node response with description...
+Frontend receives real-time updates via `nodeWorkflowStore.ts` managing:
+- `nodeExecutionStates`: Track 'idle' | 'executing' | 'completed' | 'error'
+- `nodeStreamingOutputs`: Live token-by-token output accumulation
+- `nodeExecutionResults`: Final results with success/error/execution_time
 
-<output>
-Data passed to next node
-</output>
-```
-If no tags found, entire response becomes output. Parser in `src/core/output_parser.py` handles extraction.
+### State Management Anti-Patterns (CRITICAL)
+Avoid infinite React re-render loops in streaming updates:
+```typescript
+// ❌ WRONG - causes Maximum update depth exceeded
+set(state => ({ ...state, newData }))
 
-### Context Injection Pattern
-LLM nodes receive templated prompts with variable substitution:
-```python
-# Template variables in prompts
-'{input_data}' → concatenated pre-node outputs
-'{context}' → vector store search results  
-```
-Search intensity determines vector store `top_k` parameter for context retrieval.
-
-## Key Development Patterns
-
-### Multi-Provider LLM Factory
-Supports OpenAI and Google models via unified interface in `src/services/llm_factory.py`:
-```python
-client = LLMFactory.get_client(provider)
-models = LLMFactory.get_available_models(provider)
+// ✅ CORRECT - safe functional updates
+set(state => {
+  if (currentOutput === newOutput) return state; // No change
+  return { ...state, nodeStreamingOutputs: { ...state.nodeStreamingOutputs, [nodeId]: newOutput }};
+});
 ```
 
-### Node Configuration System
-Nodes are configured with model, provider, prompt, and node type in `src/core/models.py`:
-```python
-class NodeConfig(BaseModel):
-    id: str
-    model_type: str  # LLM model identifier
-    llm_provider: str  # openai/google
-    content: str  # for input/output nodes
-    # Node types: input-node, generation-node, ensemble-node, validation-node, output-node
+### Context-Node RAG Integration
+Context-nodes perform vector similarity search + optional reranking:
+```typescript
+// Context-node configuration
+{
+  knowledge_base: "sentence_nvme_2-2", // ChromaDB collection
+  search_intensity: "medium", // Controls top_k results
+  rerank_provider: "openai", // Optional: LLM-based reranking
+  rerank_model: "gpt-4o-mini" // Model for reranking
+}
 ```
 
-### API Layer Separation
-- `api_server.py`: REST endpoints and request/response models
-- `node_executors.py`: Node-specific execution logic with LLM integration
-- `node_execution_engine.py`: Core workflow execution engine with dependency resolution
+Context search results inject via `{context}` template variable in downstream LLM prompts.
 
-### Client Integration Pattern
-Python client (`client/client_example.py`) demonstrates GET-based workflow execution with file output:
-```python
-# Save validation results to timestamped files
-filename = f"validation_result_{kb_name}_{keyword}_{timestamp}.txt"
-```
+## Essential Development Workflows
 
-## Essential Commands
-
-### Server Operations (from server/ directory)
+### Testing with pytest (REQUIRED)
+All tests run from `server/tests/` directory using pytest:
 ```powershell
-# Install dependencies
-pip install -r requirements.txt
+# Run all tests
+cd server && pytest tests/ -v
 
-# Start server
-python main.py
+# Specific test categories  
+pytest tests/test_streaming.py -v          # Streaming execution
+pytest tests/test_context_node.py -v      # RAG functionality
+pytest tests/test_validation_chain_bug.py # Connection validation
 
-# Add knowledge base (admin tool)
-python -m src.admin.admin
-
-# Environment setup (.env file required)
-# OPENAI_API_KEY=your_key
-# GOOGLE_API_KEY=your_key
+# Quick test runner scripts
+.\run_tests.bat  # Windows
+./run_tests.sh   # Unix/Linux
 ```
 
+### Google AI Streaming Issues (Common Problem)
+Google AI API streaming often fails with `StopIteration` errors. Current workaround in `google_llm_client.py`:
+```python
+# Use non-streaming API, simulate streaming on client side
+response = genai_model.generate_content(prompt, stream=False)
+if response.text:
+    words = response.text.split()
+    for word in words:
+        yield word + " "
+        await asyncio.sleep(0.05)  # Simulate streaming delay
+```
 
-
-### Testing Workflow
+### Frontend Development (React + Zustand)
 ```powershell
-# Test full workflow (from client/ directory)  
-python client_example.py
-
-# Check knowledge bases
-curl http://localhost:5001/knowledge-bases
-
-# React frontend (from client/react-app/ directory)
-npm install
-npm run dev
+cd client/react-app
+npm install && npm run dev
 ```
 
-## File Organization Conventions
+Key React patterns:
+- `useNodeWorkflowStore()`: Central state for workflow execution
+- `NodeWorkflowCanvas`: ReactFlow-based visual editor with drag-drop
+- `NodeExecutionResultPanel`: Real-time streaming output display with auto-scroll
+- Viewport persistence via localStorage for UX continuity
+
+## File Architecture & Key Locations
 
 ### Server Structure
-- `src/core/`: Data models, configuration, and execution engines
-- `src/api/`: REST endpoints and layer execution logic
-- `src/services/`: External integrations (LLM clients, vector store, document processing)
-- `knowledge_bases/`: ChromaDB instances (git-ignored)
+- `src/core/models.py`: Pydantic models for workflow definition
+- `src/core/workflow_validator.py`: Connection rule enforcement
+- `src/core/node_execution_engine.py`: Async parallel execution engine
+- `src/api/node_executors.py`: Node-specific execution logic
+- `src/services/google_llm_client.py`: Google AI integration (streaming workarounds)
+- `tests/`: pytest test suite (run from server/ directory)
 
-### React Frontend Structure  
-- `src/components/`: Workflow canvas, execution panels, node editors
-- `src/store/`: Zustand store managing workflow state and execution
-- `src/services/`: API client for backend communication
+### React Frontend Structure
+- `src/store/nodeWorkflowStore.ts`: Central Zustand state management
+- `src/components/NodeWorkflowCanvas.tsx`: ReactFlow visual editor
+- `src/components/NodeExecutionResultPanel.tsx`: Streaming results display
+- `src/types/nodeWorkflow.ts`: TypeScript type definitions
 
-### Frontend Workflow Canvas
-ReactFlow-based visual workflow editor with drag-and-drop nodes:
-```tsx
-// Node types in src/components/
-CustomNode: WorkflowNode (Generation/Ensemble/Validation)
-PlaceholderNode: Template for adding new nodes
-NodeEditModal: Model selection and configuration
+### Configuration Patterns
+Node configuration via unified interface:
+```typescript
+// LLM nodes (generation/ensemble/validation)
+{ nodeType: 'generation-node', llm_provider: 'google', model_type: 'gemini-1.5-flash' }
+
+// Context nodes (RAG)  
+{ nodeType: 'context-node', knowledge_base: 'nvme_kb', search_intensity: 'high' }
 ```
-Canvas automatically connects nodes: Generation → Ensemble → Validation chain.
-
-## Critical Integration Points
-
-### Node Input/Output Chain
-Generation outputs feed Ensemble input → Ensemble output feeds first Validation input → Each Validation output feeds next Validation input
-
-### Context Management
-Vector store searches are enhanced during Validation by extracting requirement keywords and performing additional similarity searches to ensure comprehensive context coverage
-
-### State Management (Frontend)
-React store (`src/store/nodeWorkflowStore.ts`) manages complex execution state with step tracking, node results, and real-time updates during workflow execution
 
 ## Environment Dependencies
-- Requires API keys: `OPENAI_API_KEY`, `GOOGLE_API_KEY`
-- ChromaDB for vector storage
-- FastAPI with CORS for React integration
-- File outputs saved to timestamped `.txt` files (not markdown display)
+- API Keys: `OPENAI_API_KEY`, `GOOGLE_API_KEY` in server/.env
+- ChromaDB for vector storage (auto-managed)
+- FastAPI server on :5001, React dev server on :5173
+- Knowledge bases in server/knowledge_bases/ (git-ignored)
 
-When working with this codebase, focus on the node execution pipeline, markdown tag-based output parsing, and the dependency-driven execution order defined by pre-node/post-node relationships.
+## Debugging Workflow Issues
+1. **Validation Errors**: Check `workflow_validator.py` connection rules
+2. **Streaming Hangs**: Verify context-node has input-node pre-connection  
+3. **Google AI Failures**: Check `google_llm_client.py` MAX_TOKENS handling
+4. **React Infinite Loops**: Review state updates in `nodeWorkflowStore.ts`
+5. **Missing Knowledge Bases**: Use `python -m src.admin.admin` to add data
+
+When working with this codebase, prioritize the real-time streaming execution pipeline, understand the strict node connection validation rules, and be aware of the Google AI streaming workarounds.

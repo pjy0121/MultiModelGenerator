@@ -18,70 +18,84 @@ const StreamingOutput: React.FC<StreamingOutputProps> = memo(({ output, isExecut
   const previousOutputLength = useRef<number>(0);
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
   const userScrolledRef = useRef<boolean>(false); // 사용자가 수동으로 스크롤했는지 추적
-  const scrollTimeoutRef = useRef<number | null>(null);
+  const programmaticScrollRef = useRef<boolean>(false); // 프로그래밍 방식 스크롤 추적
+  const lastScrollTopRef = useRef<number>(0); // 마지막 스크롤 위치 추적
 
-  // 사용자가 스크롤 위치를 변경했는지 감지
+  // 사용자가 스크롤 위치를 변경했는지 감지 (개선된 로직)
   const handleScroll = useCallback(() => {
     if (!scrollRef.current) return;
     
-    const scrollElement = scrollRef.current;
-    const isAtBottom = scrollElement.scrollTop + scrollElement.clientHeight >= scrollElement.scrollHeight - 5;
-    
-    // 스크롤 이벤트 디바운싱
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
+    // 프로그래밍 방식 스크롤이면 무시
+    if (programmaticScrollRef.current) {
+      programmaticScrollRef.current = false;
+      return;
     }
     
-    scrollTimeoutRef.current = setTimeout(() => {
-      if (isAtBottom) {
-        // 맨 아래에 있으면 자동 스크롤 활성화
-        setAutoScroll(true);
-        userScrolledRef.current = false;
-      } else if (!userScrolledRef.current) {
-        // 사용자가 위로 스크롤했으면 자동 스크롤 비활성화
-        setAutoScroll(false);
-        userScrolledRef.current = true;
-      }
-    }, 50); // 50ms 디바운싱
+    const scrollElement = scrollRef.current;
+    const currentScrollTop = scrollElement.scrollTop;
+    const scrollHeight = scrollElement.scrollHeight;
+    const clientHeight = scrollElement.clientHeight;
+    const isAtBottom = currentScrollTop + clientHeight >= scrollHeight - 10; // 여유를 좀 더 둠
+    
+    // 사용자가 위로 스크롤했는지 확인 (정확한 감지)
+    const scrolledUp = currentScrollTop < lastScrollTopRef.current - 5; // 작은 변화는 무시
+    const scrolledDown = currentScrollTop > lastScrollTopRef.current + 5;
+    
+    if (scrolledUp && autoScroll && isExecuting) {
+      setAutoScroll(false);
+      userScrolledRef.current = true;
+    } else if (isAtBottom && !autoScroll) {
+      // 맨 아래로 스크롤했으면 자동 스크롤 재활성화
+      setAutoScroll(true);
+      userScrolledRef.current = false;
+    }
+    
+    // 스크롤 위치 업데이트 (디바운싱으로 너무 자주 업데이트되는 것 방지)
+    if (scrolledUp || scrolledDown) {
+      lastScrollTopRef.current = currentScrollTop;
+    }
+  }, [autoScroll, isExecuting]);
+
+  // 프로그래밍 방식으로 스크롤하는 함수
+  const scrollToBottom = useCallback(() => {
+    if (scrollRef.current) {
+      programmaticScrollRef.current = true;
+      const scrollElement = scrollRef.current;
+      scrollElement.scrollTop = scrollElement.scrollHeight;
+      lastScrollTopRef.current = scrollElement.scrollTop;
+    }
   }, []);
 
   // 스트리밍 출력이 업데이트될 때마다 스크롤을 맨 아래로 이동 (자동 스크롤이 활성화된 경우에만)
   useEffect(() => {
     if (scrollRef.current && output && autoScroll && !userScrolledRef.current) {
-      const scrollElement = scrollRef.current;
       const currentOutputLength = output.length;
       
       // 새로운 콘텐츠가 추가되었을 때만 스크롤
       if (currentOutputLength > previousOutputLength.current) {
         // requestAnimationFrame을 사용해서 DOM 업데이트 후에 스크롤
         requestAnimationFrame(() => {
-          if (scrollElement && autoScroll && !userScrolledRef.current) {
-            scrollElement.scrollTop = scrollElement.scrollHeight;
+          if (autoScroll && !userScrolledRef.current) {
+            scrollToBottom();
           }
         });
         
         previousOutputLength.current = currentOutputLength;
       }
     }
-  }, [output, autoScroll]);
+  }, [output, autoScroll, scrollToBottom]);
 
-  // 실행이 시작될 때 자동 스크롤 활성화 및 길이 초기화
+  // 실행이 시작될 때 자동 스크롤 활성화 및 상태 초기화
   useEffect(() => {
     if (isExecuting) {
       setAutoScroll(true);
       userScrolledRef.current = false;
       previousOutputLength.current = 0;
+      lastScrollTopRef.current = 0;
+      // 실행 시작 시 맨 아래로 스크롤
+      setTimeout(() => scrollToBottom(), 100);
     }
-  }, [isExecuting]);
-
-  // 컴포넌트 언마운트 시 타이머 정리
-  useEffect(() => {
-    return () => {
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, []);
+  }, [isExecuting, scrollToBottom]);
 
   if (!output) {
     return null;
@@ -108,12 +122,11 @@ const StreamingOutput: React.FC<StreamingOutputProps> = memo(({ output, isExecut
             border: '1px solid #ffecb5',
             borderRadius: 3
           }} onClick={() => {
+            console.log('자동 스크롤 재개 버튼 클릭');
             setAutoScroll(true);
             userScrolledRef.current = false;
             // 클릭 시 즉시 아래로 스크롤
-            if (scrollRef.current) {
-              scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-            }
+            scrollToBottom();
           }}>
             ⏸️ 자동 스크롤 중지됨 (클릭하여 재개)
           </span>
@@ -129,7 +142,8 @@ const StreamingOutput: React.FC<StreamingOutputProps> = memo(({ output, isExecut
           borderRadius: 4,
           maxHeight: 200,
           overflowY: 'auto',
-          scrollBehavior: 'auto' // 자동 스크롤은 즉시, 사용자 스크롤은 부드럽게
+          scrollBehavior: 'smooth', // 모든 스크롤을 부드럽게
+          WebkitOverflowScrolling: 'touch' // iOS에서 부드러운 스크롤
         }}
       >
         <div 

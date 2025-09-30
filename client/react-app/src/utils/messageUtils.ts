@@ -12,12 +12,12 @@ export const showSuccessMessage = (content: string): void => {
 };
 
 /**
- * 에러 메시지 표시
+ * 에러 메시지 표시 (사용자가 직접 닫을 때까지 표시)
  */
 export const showErrorMessage = (content: string): void => {
   message.error({
     content,
-    duration: UI_CONFIG.MESSAGE_DURATION,
+    duration: 0, // 자동으로 사라지지 않음, 사용자가 직접 닫아야 함
   });
 };
 

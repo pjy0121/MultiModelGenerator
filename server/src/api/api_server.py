@@ -1,7 +1,6 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from copy import deepcopy
 import logging
 import json
 import requests
@@ -9,10 +8,9 @@ import requests
 # Node-based workflow imports
 from ..core.node_execution_engine import NodeExecutionEngine
 from ..core.workflow_validator import WorkflowValidator
-from ..core.config import SERVER_CONFIG, LLM_CONFIG, get_kb_list
+from ..core.config import LLM_CONFIG
 from ..core.models import (
     WorkflowExecutionRequest, 
-    WorkflowExecutionResponse,
     WorkflowDefinition,
     KnowledgeBase,
     KnowledgeBaseListResponse
@@ -37,8 +35,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global instances
-execution_engine = NodeExecutionEngine()
+# Global instances (stateless services only)
 validator = WorkflowValidator()
 vector_store_service = VectorStoreService()
 
@@ -67,8 +64,9 @@ async def execute_workflow_stream(request: WorkflowExecutionRequest):
         try:
             logger.info(f"Starting streaming workflow execution with {len(request.workflow.nodes)} nodes")
             
-            # 실행 상태 초기화 (새로운 워크플로우 시작)
-            execution_engine.reset_execution_state()
+            # 각 워크플로우 실행마다 독립적인 실행 엔진 인스턴스 생성
+            execution_engine = NodeExecutionEngine()
+            logger.info("Created isolated NodeExecutionEngine instance for this workflow")
             
             # 실행 전 검증
             validation_result = validator.validate_workflow(request.workflow)
@@ -82,7 +80,7 @@ async def execute_workflow_stream(request: WorkflowExecutionRequest):
                 yield f"data: {json.dumps(error_details)}\n\n"
                 return
             
-            # 스트리밍으로 워크플로우 실행
+            # 스트리밍으로 워크플로우 실행 (독립적인 인스턴스 사용)
             async for chunk in execution_engine.execute_workflow_stream(
                 workflow=request.workflow
             ):
@@ -109,12 +107,13 @@ async def execute_workflow_stream(request: WorkflowExecutionRequest):
 
 @app.post("/stop-workflow")
 async def stop_workflow():
-    """워크플로우 실행 중단"""
+    """워크플로우 실행 중단 (현재는 독립적인 인스턴스로 인해 전역 중단 방식 비활성화)"""
     try:
-        execution_engine.stop_execution()
+        # TODO: 요청별 실행 컨텍스트 관리 방식으로 개선 필요
+        # 현재는 각 실행이 독립적이므로 전역 중단 기능 비활성화
         return {
             "success": True,
-            "message": "워크플로우 중단 요청이 처리되었습니다. 현재 실행 중인 노드들이 완료되면 중단됩니다."
+            "message": "워크플로우는 현재 독립적으로 실행되고 있어 전역 중단이 지원되지 않습니다."
         }
     except Exception as e:
         logger.error(f"Failed to stop workflow: {e}")
@@ -125,27 +124,31 @@ async def list_knowledge_bases():
     """지식베이스 목록 조회"""
     try:
         knowledge_bases = []
-        kb_names = vector_store_service.get_knowledge_bases()
+        kb_names = await vector_store_service.get_knowledge_bases()
         
-        for name in kb_names:
+        # 병렬로 지식베이스 정보 조회 (성능 향상)
+        import asyncio
+        
+        async def get_kb_info_safe(name: str):
             try:
                 # VectorStoreService의 새로운 메서드 사용 (await 추가)
                 kb_info = await vector_store_service.get_knowledge_base_info(name)
-                
-                knowledge_bases.append(KnowledgeBase(
+                return KnowledgeBase(
                     name=kb_info['name'],
                     chunk_count=kb_info.get('count', 0),  # VectorStore는 'count' 사용
                     created_at=kb_info.get('created_at', 'Unknown')  # 생성일 정보가 없으면 Unknown
-                ))
+                )
             except Exception as e:
                 logger.warning(f"Failed to get info for KB {name}: {e}")
                 # 오류가 발생해도 기본값으로 추가
-                knowledge_bases.append(KnowledgeBase(
+                return KnowledgeBase(
                     name=name,
                     chunk_count=0,  # 기본값
                     created_at="Unknown"
-                ))
-                continue
+                )
+        
+        # 모든 KB 정보를 병렬로 조회
+        knowledge_bases = await asyncio.gather(*[get_kb_info_safe(name) for name in kb_names])
         
         return KnowledgeBaseListResponse(knowledge_bases=knowledge_bases)
         

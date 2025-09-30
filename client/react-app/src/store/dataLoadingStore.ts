@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import { message } from 'antd';
 import { AvailableModel, KnowledgeBase, LLMProvider } from '../types';
 import { workflowAPI } from '../services/api';
+import { showErrorMessage } from '../utils/messageUtils';
 
 interface DataLoadingState {
   // 모델 관리
@@ -49,7 +49,7 @@ export const useDataLoadingStore = create<DataLoadingState>((set, get) => ({
       set({ availableModels: otherProviderModels });
       
       // 사용자에게 알림
-      message.error(`${provider} 모델 목록을 불러오는데 실패했습니다. 연결 상태를 확인해주세요.`);
+      showErrorMessage(`${provider} 모델 목록을 불러오는데 실패했습니다. 연결 상태를 확인해주세요.`);
     }
   },
 }));
