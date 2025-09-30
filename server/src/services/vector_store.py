@@ -1,8 +1,43 @@
 import chromadb
 import os
+import threading
 from typing import List, Dict, Optional
 from ..core.config import VECTOR_DB_CONFIG, get_kb_path
 from .rerank import ReRanker
+
+# 전역 ChromaDB 클라이언트 관리자 (스레드 안전)
+class ChromaDBManager:
+    _instance = None
+    _lock = threading.Lock()
+    
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._clients = {}
+                    cls._instance._client_lock = threading.RLock()
+        return cls._instance
+    
+    def get_client(self, kb_name: str) -> chromadb.PersistentClient:
+        """KB별로 단일 클라이언트 인스턴스 반환 (스레드 안전)"""
+        with self._client_lock:
+            if kb_name not in self._clients:
+                db_path = get_kb_path(kb_name)
+                os.makedirs(db_path, exist_ok=True)
+                print(f"🔗 새 ChromaDB 클라이언트 생성: {kb_name} -> {db_path}")
+                self._clients[kb_name] = chromadb.PersistentClient(path=db_path)
+            return self._clients[kb_name]
+    
+    def clear_client(self, kb_name: str):
+        """특정 KB 클라이언트 제거 (필요시)"""
+        with self._client_lock:
+            if kb_name in self._clients:
+                del self._clients[kb_name]
+                print(f"🗑️ ChromaDB 클라이언트 제거: {kb_name}")
+
+# 전역 매니저 인스턴스
+chroma_manager = ChromaDBManager()
 
 class VectorStore:
     def __init__(self, kb_name: str):
@@ -12,18 +47,32 @@ class VectorStore:
         self.kb_name = kb_name
         self.db_path = get_kb_path(kb_name)
         
-        # 지식 베이스 디렉토리 생성
-        os.makedirs(self.db_path, exist_ok=True)
-        
-        self.client = chromadb.PersistentClient(path=self.db_path)
+        # 전역 매니저에서 공유 클라이언트 가져오기
+        self.client = chroma_manager.get_client(kb_name)
         self.collection = self.get_collection()
+        
+        print(f"📚 VectorStore 초기화 완료: {kb_name}")
 
     def get_collection(self):
-        return self.client.get_or_create_collection(
-            name="spec_documents",
-            metadata={"hnsw:space": "cosine"},
-            embedding_function=self.embedding_function
-        )
+        """컬렉션을 스레드 안전하게 반환"""
+        # ChromaDB 클라이언트는 내부적으로 스레드 안전하지만 
+        # get_or_create_collection 호출을 안전하게 처리
+        try:
+            return self.client.get_or_create_collection(
+                name="spec_documents",
+                metadata={"hnsw:space": "cosine"},
+                embedding_function=self.embedding_function
+            )
+        except Exception as e:
+            print(f"⚠️ 컬렉션 생성/접근 오류 (KB: {self.kb_name}): {e}")
+            # 클라이언트 재생성 시도
+            chroma_manager.clear_client(self.kb_name)
+            self.client = chroma_manager.get_client(self.kb_name)
+            return self.client.get_or_create_collection(
+                name="spec_documents",
+                metadata={"hnsw:space": "cosine"},
+                embedding_function=self.embedding_function
+            )
 
     def store_chunks(self, chunks: List[Dict]) -> None:
         """청크들을 벡터 DB에 저장"""

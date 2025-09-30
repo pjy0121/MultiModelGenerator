@@ -11,7 +11,7 @@ import {
   ValidationResult,
   StreamChunk
 } from '../types';
-import { showSuccessMessage } from '../utils/messageUtils';
+import { showSuccessMessage, showErrorMessage } from '../utils/messageUtils';
 import { nodeBasedWorkflowAPI } from '../services/api';
 import { validateNodeWorkflow, formatValidationErrors } from '../utils/nodeWorkflowValidation';
 import { createWorkflowNode, createInitialNodes } from '../utils/nodeFactory';
@@ -38,6 +38,12 @@ interface NodeWorkflowState {
   nodeStreamingOutputs: Record<string, string>;
   nodeExecutionResults: Record<string, { success: boolean; description?: string; error?: string; execution_time?: number; }>;
   nodeStartOrder: string[]; // 노드 실행 시작 순서 추적
+  
+  // 페이지 visibility 상태 (백그라운드 전환 시 스트리밍 업데이트 제한용)
+  isPageVisible: boolean;
+  
+  // 백그라운드에서 누적된 스트리밍 출력 (페이지가 다시 보일 때 적용)
+  pendingStreamingOutputs: Record<string, string>;
   
   // 검증 상태
   validationResult: ValidationResult | null;
@@ -73,6 +79,9 @@ interface NodeWorkflowState {
   exportToJSON: () => void;
   importFromJSON: (jsonData: string) => boolean;
   setRestoring: (isRestoring: boolean) => void;
+  
+  // 페이지 가시성 상태 관리
+  setPageVisible: (isVisible: boolean) => void;
 }
 
 export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
@@ -99,6 +108,9 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     nodeStreamingOutputs: {},
     nodeExecutionResults: {},
     nodeStartOrder: [], // 노드 실행 시작 순서
+    
+    isPageVisible: true, // 페이지 가시성 초기값
+    pendingStreamingOutputs: {}, // 백그라운드에서 누적된 스트리밍 출력 초기값
 
     setRestoring: (isRestoring: boolean) => set({ isRestoring }),
   
@@ -165,7 +177,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     
     // output-node는 삭제 불가
     if (nodeToRemove.data.nodeType === NodeType.OUTPUT) {
-      message.error('출력 노드는 삭제할 수 없습니다.');
+      showErrorMessage('출력 노드는 삭제할 수 없습니다.');
       throw new Error('출력 노드는 삭제할 수 없습니다.');
     }
     
@@ -173,7 +185,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     if (nodeToRemove.data.nodeType === NodeType.INPUT) {
       const inputNodes = get().nodes.filter(node => node.data.nodeType === NodeType.INPUT);
       if (inputNodes.length <= 1) {
-        message.error('입력 노드는 최소 하나는 존재해야 합니다.');
+        showErrorMessage('입력 노드는 최소 하나는 존재해야 합니다.');
         throw new Error('입력 노드는 최소 하나는 존재해야 합니다.');
       }
     }
@@ -319,7 +331,8 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
         nodeExecutionStates: initialStates,
         nodeStreamingOutputs: initialOutputs,
         nodeExecutionResults: initialResults,
-        nodeStartOrder: [] // 스트리밍 실행 시작 시 초기화
+        nodeStartOrder: [], // 스트리밍 실행 시작 시 초기화
+        pendingStreamingOutputs: {} // 누적 출력도 초기화
       });
       
       // 스트리밍 실행
@@ -341,56 +354,92 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
           // 이미 isStopping이 true로 설정되어 있으므로 추가 처리 불필요
         }
         
-        // 노드별 상태 업데이트
+        // 노드별 상태 업데이트 - 페이지 백그라운드 시 무한 루프 방지
         if (chunk.type === 'node_start' && chunk.node_id) {
-          const currentState = get();
-          const currentStartOrder = currentState.nodeStartOrder;
-          
-          set({
-            nodeExecutionStates: {
-              ...currentState.nodeExecutionStates,
-              [chunk.node_id]: 'executing'
-            },
-            nodeStartOrder: currentStartOrder.includes(chunk.node_id) 
-              ? currentStartOrder 
-              : [...currentStartOrder, chunk.node_id]
+          set(state => {
+            const currentStartOrder = state.nodeStartOrder;
+            const isAlreadyStarted = currentStartOrder.includes(chunk.node_id);
+            const isAlreadyExecuting = state.nodeExecutionStates[chunk.node_id] === 'executing';
+            
+            // 이미 실행 중이고 시작 순서에 포함되어 있으면 상태 변경 없음
+            if (isAlreadyExecuting && isAlreadyStarted) {
+              return state;
+            }
+            
+            return {
+              ...state,
+              nodeExecutionStates: {
+                ...state.nodeExecutionStates,
+                [chunk.node_id]: 'executing'
+              },
+              nodeStartOrder: isAlreadyStarted 
+                ? currentStartOrder 
+                : [...currentStartOrder, chunk.node_id]
+            };
           });
         } else if (chunk.type === 'stream' && chunk.node_id && chunk.content) {
-          // 스트리밍 업데이트를 안전하게 처리
-          const currentState = get();
-          const currentOutput = currentState.nodeStreamingOutputs[chunk.node_id] || '';
-          const newOutput = currentOutput + chunk.content;
-          
-          // 실제로 변경사항이 있을 때만 업데이트
-          if (currentOutput !== newOutput) {
-            set({
-              ...currentState,
+          // 스트리밍 업데이트를 안전하게 처리 - 페이지 백그라운드 시 무한 루프 방지
+          set(state => {
+            if (!state.isPageVisible) {
+              // 페이지가 백그라운드에 있으면 pending 출력에 누적
+              const currentPending = state.pendingStreamingOutputs[chunk.node_id] || '';
+              const newPending = currentPending + chunk.content;
+              
+              return {
+                ...state,
+                pendingStreamingOutputs: {
+                  ...state.pendingStreamingOutputs,
+                  [chunk.node_id]: newPending
+                }
+              };
+            }
+            
+            // 페이지가 보이는 상태에서는 즉시 업데이트
+            const currentOutput = state.nodeStreamingOutputs[chunk.node_id] || '';
+            const newOutput = currentOutput + chunk.content;
+            
+            // 실제로 변경사항이 있을 때만 새 상태 반환
+            if (currentOutput === newOutput) {
+              return state; // 변경사항이 없으면 기존 상태 반환
+            }
+            
+            return {
+              ...state,
               nodeStreamingOutputs: {
-                ...currentState.nodeStreamingOutputs,
+                ...state.nodeStreamingOutputs,
                 [chunk.node_id]: newOutput
               }
-            });
-          }
+            };
+          });
         } else if (chunk.type === 'node_complete' && chunk.node_id) {
           const status = chunk.success ? 'completed' : 'error';
-          const currentState = get();
-          const updatedResults = { ...currentState.nodeExecutionResults };
           
-          // 모든 노드의 완료 결과를 즉시 저장 (성공/실패 상관없이)
-          updatedResults[chunk.node_id] = {
-            success: chunk.success,
-            description: chunk.description || (chunk.success ? '' : chunk.error),
-            error: chunk.success ? undefined : chunk.error,
-            execution_time: chunk.execution_time
-          };
-          
-          set({
-            ...currentState,
-            nodeExecutionStates: {
-              ...currentState.nodeExecutionStates,
-              [chunk.node_id]: status
-            },
-            nodeExecutionResults: updatedResults
+          set(state => {
+            // 이미 완료된 상태이면 중복 업데이트 방지
+            const currentStatus = state.nodeExecutionStates[chunk.node_id];
+            if (currentStatus === status) {
+              return state;
+            }
+            
+            // 모든 노드의 완료 결과를 즉시 저장 (성공/실패 상관없이)
+            const updatedResults = {
+              ...state.nodeExecutionResults,
+              [chunk.node_id]: {
+                success: chunk.success,
+                description: chunk.description || (chunk.success ? '' : chunk.error),
+                error: chunk.success ? undefined : chunk.error,
+                execution_time: chunk.execution_time
+              }
+            };
+            
+            return {
+              ...state,
+              nodeExecutionStates: {
+                ...state.nodeExecutionStates,
+                [chunk.node_id]: status
+              },
+              nodeExecutionResults: updatedResults
+            };
           });
         }
         
@@ -532,7 +581,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       message.info(result.message || '워크플로우 중단 요청이 전송되었습니다.');
     } catch (error) {
       console.error('워크플로우 중단 요청 실패:', error);
-      message.error('워크플로우 중단 요청에 실패했습니다.');
+      showErrorMessage('워크플로우 중단 요청에 실패했습니다.');
       // 실패 시 중단 상태 해제
       set({ isStopping: false });
     }
@@ -557,7 +606,8 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       nodeStreamingOutputs: resetOutputs,
       nodeExecutionResults: resetResults,
       nodeStartOrder: [],
-      executionResult: null
+      executionResult: null,
+      pendingStreamingOutputs: {} // 누적 출력도 초기화
     });
     
     message.success('모든 실행 결과가 초기화되었습니다.');
@@ -579,7 +629,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       localStorage.setItem('node_workflow_state', JSON.stringify(workflowState));
     } catch (error) {
       console.error('워크플로우 저장 실패:', error);
-      message.error('워크플로우 저장에 실패했습니다.');
+      showErrorMessage('워크플로우 저장에 실패했습니다.');
     }
   },
   
@@ -614,7 +664,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       
     } catch (error) {
       console.error('워크플로우 복원 실패:', error);
-      message.error('워크플로우 복원에 실패했습니다.');
+      showErrorMessage('워크플로우 복원에 실패했습니다.');
       set({ isRestoring: false }); // 에러 시 복원 상태 해제
       return false;
     }
@@ -663,7 +713,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       message.success('워크플로우를 파일로 내보냈습니다.');
     } catch (error) {
       console.error('워크플로우 내보내기 실패:', error);
-      message.error('워크플로우 내보내기에 실패했습니다.');
+      showErrorMessage('워크플로우 내보내기에 실패했습니다.');
     }
   },
   
@@ -708,9 +758,42 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       
     } catch (error) {
       console.error('JSON 파싱 오류:', error);
-      message.error('유효하지 않은 JSON 형식입니다.');
+      showErrorMessage('유효하지 않은 JSON 형식입니다.');
       return false;
     }
+  },
+  
+  // 페이지 가시성 상태 업데이트
+  setPageVisible: (isVisible: boolean) => {
+    set(state => {
+      if (isVisible && !state.isPageVisible) {
+        // 페이지가 다시 보이게 될 때, 누적된 출력을 실제 출력에 병합
+        const updatedOutputs = { ...state.nodeStreamingOutputs };
+        let hasUpdates = false;
+        
+        Object.keys(state.pendingStreamingOutputs).forEach(nodeId => {
+          const pendingContent = state.pendingStreamingOutputs[nodeId];
+          if (pendingContent) {
+            updatedOutputs[nodeId] = (updatedOutputs[nodeId] || '') + pendingContent;
+            hasUpdates = true;
+          }
+        });
+        
+        if (hasUpdates) {
+          return {
+            ...state,
+            isPageVisible: isVisible,
+            nodeStreamingOutputs: updatedOutputs,
+            pendingStreamingOutputs: {} // 누적된 출력 초기화
+          };
+        }
+      }
+      
+      return {
+        ...state,
+        isPageVisible: isVisible
+      };
+    });
   }
   };
 });

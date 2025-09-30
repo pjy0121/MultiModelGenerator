@@ -1,13 +1,9 @@
 import os
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 
 load_dotenv()
-
-# 서버 설정
-SERVER_CONFIG = {
-    "host": "localhost",
-    "port": 5001
-}
 
 # API 키 설정
 API_KEYS = {
@@ -28,7 +24,7 @@ INTERNAL_LLM_CONFIG = {
 LLM_CONFIG = {
     "supported_providers": ["openai", "google", "internal"],
     "default_provider": "google", 
-    "default_model": "gemini-1.5-flash",
+    "default_model": "gemini-2.0-flash",
     "default_temperature": 0.1,
     "chunk_processing_size": 10,
     "simulation_sleep_interval": 0.1
@@ -54,7 +50,7 @@ VECTOR_DB_CONFIG = {
 NODE_EXECUTION_CONFIG = {
     "stream_timeout": 10.0,           # 스트림 완료 대기 시간 (초)
     "stream_poll_timeout": 0.1,       # 스트림 폴링 간격 (초) 
-    "max_tokens_default": 200000,       # LLM 응답 기본 토큰 수
+    "max_tokens_default": 128000,     # LLM 응답 기본 토큰 수
     "score_decay_factor": 0.1         # VectorStore mock 점수 감소율
 }
 
@@ -75,8 +71,8 @@ def get_kb_path(kb_name: str) -> str:
     """지식 베이스별 경로 반환"""
     return os.path.join(VECTOR_DB_CONFIG["root_dir"], kb_name)
 
-def get_kb_list() -> list:
-    """존재하는 지식 베이스 목록 반환"""
+def _get_kb_list_sync() -> list:
+    """동기 방식으로 지식 베이스 목록 반환 (내부 사용)"""
     root_dir = VECTOR_DB_CONFIG["root_dir"]
     if not os.path.exists(root_dir):
         return []
@@ -88,3 +84,13 @@ def get_kb_list() -> list:
             kb_list.append(item)
     
     return sorted(kb_list)
+
+async def get_kb_list() -> list:
+    """존재하는 지식 베이스 목록 반환 (비동기)"""
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as executor:
+        return await loop.run_in_executor(executor, _get_kb_list_sync)
+
+def get_kb_list_sync() -> list:
+    """동기 방식으로 지식 베이스 목록 반환 (호환성 유지)"""
+    return _get_kb_list_sync()

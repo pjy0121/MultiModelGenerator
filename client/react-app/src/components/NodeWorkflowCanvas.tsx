@@ -39,6 +39,7 @@ import { useNodeSelectionStore } from '../store/nodeSelectionStore';
 import { useViewportStore } from '../store/viewportStore';
 import { WorkflowEdge, NodeType } from '../types';
 import { isConnectionAllowed } from '../utils/nodeWorkflowValidation';
+import { showErrorMessage } from '../utils/messageUtils';
 import { UI_CONFIG, UI_COLORS } from '../config/constants';
 
 
@@ -93,7 +94,7 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
       });
     } catch (error) {
       console.error('스트리밍 실행 오류:', error);
-      message.error(`스트리밍 실행 실패: ${error instanceof Error ? error.message : String(error)}`);
+      showErrorMessage(`스트리밍 실행 실패: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -304,7 +305,7 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
       const targetNode = storeNodes.find(n => n.id === params.target);
 
       if (!sourceNode || !targetNode) {
-        message.error("연결할 소스 또는 타겟 노드를 찾을 수 없습니다.");
+        showErrorMessage("연결할 소스 또는 타겟 노드를 찾을 수 없습니다.");
         return;
       }
 
@@ -318,7 +319,7 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
         };
         addStoreEdge(newEdge);
       } else {
-        message.error(validation.reason || '연결 규칙에 위배됩니다. 연결할 수 없습니다.');
+        showErrorMessage(validation.reason || '연결 규칙에 위배됩니다. 연결할 수 없습니다.');
       }
     },
     [addStoreEdge, storeNodes, storeEdges]
@@ -331,7 +332,7 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
       const targetNode = storeNodes.find(n => n.id === newConnection.target);
 
       if (!sourceNode || !targetNode) {
-        message.error("연결할 소스 또는 타겟 노드를 찾을 수 없습니다.");
+        showErrorMessage("연결할 소스 또는 타겟 노드를 찾을 수 없습니다.");
         return;
       }
 
@@ -350,7 +351,7 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
         addStoreEdge(newEdge);
         message.success('엣지가 성공적으로 재연결되었습니다.');
       } else {
-        message.error(validation.reason || '연결 규칙에 위배됩니다. 연결할 수 없습니다.');
+        showErrorMessage(validation.reason || '연결 규칙에 위배됩니다. 연결할 수 없습니다.');
       }
     },
     [addStoreEdge, removeEdge, storeNodes, storeEdges]
@@ -477,7 +478,7 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
         }
       }, 50);
     } catch (error) {
-      message.error('유효하지 않은 JSON 형식입니다. 다시 확인해주세요.');
+      showErrorMessage('유효하지 않은 JSON 형식입니다. 다시 확인해주세요.');
     }
   };
 
