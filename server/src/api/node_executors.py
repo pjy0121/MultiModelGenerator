@@ -7,7 +7,7 @@ import asyncio
 import time
 from typing import List, Any, AsyncGenerator
 
-from ..core.models import WorkflowNode, NodeExecutionResult
+from ..core.models import WorkflowNode, NodeExecutionResult, SearchIntensity
 from ..core.output_parser import ResultParser
 from ..core.config import LLM_CONFIG
 from ..services.llm_factory import LLMFactory
@@ -19,8 +19,8 @@ class NodeExecutor:
     
     def __init__(self):
         self.llm_factory = LLMFactory()
-        self.vector_store_service = VectorStoreService()
         self.result_parser = ResultParser()
+        # VectorStoreService는 필요할 때마다 새로 생성하여 블로킹 방지
 
     async def execute_node(self, node: WorkflowNode, pre_outputs: List[str]) -> NodeExecutionResult:
         """노드 실행 (레거시 인터페이스)"""
@@ -38,10 +38,13 @@ class NodeExecutor:
                 # LLM 노드는 context와 input_data를 분리해서 처리
                 return await self._execute_llm_node_with_context(node, pre_outputs, context_outputs)
         except Exception as e:
+            import traceback
+            error_msg = f"Node execution failed: {str(e)}\nTraceback: {traceback.format_exc()}"
+            print(f"[NodeExecutor] Error in node {node.id}: {error_msg}")  # Debug log
             return NodeExecutionResult(
                 node_id=node.id,
                 success=False,
-                error=f"Node execution failed: {str(e)}",
+                error=error_msg,
                 execution_time=0.0
             )
     
@@ -80,9 +83,12 @@ class NodeExecutor:
                 async for chunk in self._execute_llm_node_stream_with_context(node, pre_outputs, context_outputs):
                     yield chunk
         except Exception as e:
+            import traceback
+            error_msg = f"Node execution failed: {str(e)}\nTraceback: {traceback.format_exc()}"
+            print(f"[NodeExecutor Stream] Error in node {node.id}: {error_msg}")  # Debug log
             yield {
                 "type": "error",
-                "message": f"Node execution failed: {str(e)}"
+                "message": error_msg
             }
     
     def _is_text_node(self, node_type: str) -> bool:
@@ -275,7 +281,7 @@ class NodeExecutor:
             
             # 지식베이스 및 검색 강도 확인
             knowledge_base = node.knowledge_base
-            search_intensity = node.search_intensity or "medium"
+            search_intensity = node.search_intensity or SearchIntensity.get_default()
             
             if not knowledge_base:
                 return NodeExecutionResult(
@@ -293,8 +299,9 @@ class NodeExecutor:
                     "model": node.rerank_model
                 }
             
-            # 벡터 DB 검색 실행
-            context_results = await self.vector_store_service.search(
+            # 벡터 DB 검색 실행 - 매번 새로운 인스턴스로 블로킹 방지
+            vector_store_service = VectorStoreService()
+            context_results = await vector_store_service.search(
                 kb_name=knowledge_base,
                 query=input_data,
                 search_intensity=search_intensity,
@@ -345,11 +352,12 @@ class NodeExecutor:
                 }
                 yield {"type": "stream", "content": f"🔄 [{node.id}] 재정렬 설정됨: {node.rerank_provider}/{node.rerank_model}\n"}
             
-            # 벡터 스토어에서 관련 컨텍스트 검색
-            context_results = await self.vector_store_service.search(
+            # 벡터 스토어에서 관련 컨텍스트 검색 - 매번 새로운 인스턴스로 블로킹 방지
+            vector_store_service = VectorStoreService()
+            context_results = await vector_store_service.search(
                 kb_name=node.knowledge_base,
                 query=query,
-                search_intensity=node.search_intensity or "medium",
+                search_intensity=node.search_intensity or SearchIntensity.get_default(),
                 rerank_info=rerank_info
             )
             
@@ -377,20 +385,22 @@ class NodeExecutor:
             yield {"type": "result", "success": False, "error": f"Context search failed: {str(e)}"}
     
     async def _call_llm(self, llm_client: Any, model_type: str, prompt: str) -> str:
-        """LLM 호출"""
+        """LLM 호출 - 스트리밍 인터페이스를 사용하여 전체 응답 수집"""
         try:
-            # generate_response가 async 메서드인 경우 직접 호출
-            if hasattr(llm_client, 'generate_response'):
-                response = await llm_client.generate_response(prompt, model_type)
-                return response
-            else:
-                # 동기 클라이언트의 경우 executor 사용
-                loop = asyncio.get_event_loop()
-                response = await loop.run_in_executor(
-                    None,
-                    lambda: llm_client.generate_response(prompt, model_type)
-                )
-                return response
+            # 스트리밍으로 전체 응답 수집
+            full_response = ""
+            async for chunk in llm_client.generate_stream(
+                prompt=prompt,
+                model=model_type,
+                temperature=0.3
+            ):
+                if chunk:
+                    full_response += chunk
+            
+            if not full_response.strip():
+                raise Exception("Empty response from LLM")
+                
+            return full_response
         except Exception as e:
             raise Exception(f"LLM call failed: {str(e)}")
     

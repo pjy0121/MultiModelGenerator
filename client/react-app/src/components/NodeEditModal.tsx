@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { Modal, Form, Input, Select, Typography, Button, Tooltip, Divider, message } from 'antd';
 import { CopyOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { showErrorMessage } from '../utils/messageUtils';
@@ -141,37 +141,29 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
   }, [availableModels, node?.id]); // node.id 변경 시에만 실행되도록 수정
 
   // Provider 변경 시 모델 목록 로드 및 기본 모델 선택
-  const handleProviderChange = async (provider: LLMProvider) => {
-    console.log('Provider changed to:', provider);
-    
-    // 먼저 모델 선택 초기화
+  const handleProviderChange = useCallback(async (provider: LLMProvider) => {    
     form.setFieldValue('model_type', '');
-    console.log('Model field cleared');
     
-    // 모델 목록 로드 (실패 시 store에서 해당 provider 모델들이 제거됨)
-    await loadAvailableModels(provider);
-    
-    // 로드 완료 후 사용 가능한 모델이 있으면 기본 모델 선택
-    setTimeout(() => {
-      const state = useDataLoadingStore.getState();
-      const providerModels = state.availableModels.filter((model: AvailableModel) => model.provider === provider);
-      console.log('Available models for provider:', providerModels);
+    try {
+      // 모델 목록 로드 (실패 시 store에서 해당 provider 모델들이 제거됨)
+      await loadAvailableModels(provider);
+      
+      // 현재 available models를 직접 사용하여 circular reference 방지
+      const providerModels = availableModels.filter((model: AvailableModel) => model.provider === provider);
       
       if (providerModels.length > 0) {
         const defaultModel = getDefaultModelForProvider(provider, providerModels);
-        
         console.log('Setting default model:', defaultModel);
-        form.setFieldValue('model_type', defaultModel.value);
-        
-        // 설정 후 확인
+        // 다음 틱에 실행하여 상태 충돌 방지
         setTimeout(() => {
-          const currentValue = form.getFieldValue('model_type');
-          console.log('Form model after provider change:', currentValue);
-        }, 10);
+          form.setFieldValue('model_type', defaultModel.value);
+        }, 0);
       }
       // providerModels.length === 0인 경우 모델 필드는 비어있는 상태로 유지됨
-    }, 100);
-  };
+    } catch (error) {
+      console.error('Error in handleProviderChange:', error);
+    }
+  }, [loadAvailableModels, availableModels, form]);
 
   // 저장 핸들러
   const handleSave = async () => {

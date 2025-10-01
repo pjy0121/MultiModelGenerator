@@ -2,6 +2,7 @@ import { Layout, Typography } from 'antd';
 import { useEffect } from 'react';
 import { NodeExecutionResultPanel } from './components/NodeExecutionResultPanel';
 import { NodeWorkflowCanvas } from './components/NodeWorkflowCanvas';
+import { PersistentErrorDisplay } from './components/PersistentErrorDisplay';
 import { useDataLoadingStore } from './store/dataLoadingStore';
 import { useNodeWorkflowStore } from './store/nodeWorkflowStore';
 import './App.css';
@@ -35,7 +36,7 @@ function App() {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [setPageVisible]);
+  }, []); // setPageVisible dependency 제거
 
   return (
     <Layout style={{ height: '100vh', width: '100vw', overflow: 'hidden' }}>
@@ -81,6 +82,9 @@ function App() {
           <NodeExecutionResultPanel />
         </Sider>
       </Layout>
+      
+      {/* 지속적인 에러 메시지 표시 */}
+      <PersistentErrorDisplay />
     </Layout>
   );
 }

@@ -2,8 +2,8 @@ import os
 import shutil
 import time
 from typing import Dict, Any
-from ..core import config as Config
 from ..core.config import VECTOR_DB_CONFIG, ADMIN_CONFIG
+from ..core.utils import get_kb_path, format_file_size, truncate_text, get_kb_list_sync
 from ..services.document_processor import DocumentProcessor
 from ..services.vector_store import VectorStore
 
@@ -72,7 +72,7 @@ class KnowledgeBaseAdmin:
         
         print("\n" + "=" * 60)
         print(f"🎉 지식 베이스 '{kb_name}' 구축이 완료되었습니다!")
-        print(f"📍 저장 위치: {Config.get_kb_path(kb_name)}")
+        print(f"📍 저장 위치: {get_kb_path(kb_name)}")
         print(f"📊 처리된 청크 수: {len(chunks)}")
         print("=" * 60)
         
@@ -149,7 +149,7 @@ class KnowledgeBaseAdmin:
                 return None
             
             # 파일 크기 계산
-            kb_path = Config.get_kb_path(kb_name)
+            kb_path = get_kb_path(kb_name)
             size_bytes = 0
             if os.path.exists(kb_path):
                 for dirpath, dirnames, filenames in os.walk(kb_path):
@@ -176,7 +176,7 @@ class KnowledgeBaseAdmin:
         print(f"🗑️ 지식 베이스 '{kb_name}' 삭제")
         print("=" * 60)
         
-        kb_path = Config.get_kb_path(kb_name)
+        kb_path = get_kb_path(kb_name)
         
         if not os.path.exists(kb_path):
             print(f"❌ 지식 베이스 '{kb_name}'이 존재하지 않습니다.")
@@ -365,7 +365,7 @@ def main():
                 chunk_size, chunk_overlap = admin.get_chunk_mode()
                 
                 # 기존 지식 베이스 덮어쓰기 확인
-                if kb_name in Config.get_kb_list():
+                if kb_name in get_kb_list_sync():
                     overwrite = input(f"⚠️ '{kb_name}' 지식 베이스가 이미 존재합니다. 덮어쓰시겠습니까? (y/N): ").strip().lower()
                     if overwrite != 'y':
                         print("❌ 구축이 취소되었습니다.")
@@ -379,7 +379,7 @@ def main():
             admin.list_knowledge_bases()
         
         elif choice == '3':
-            kb_list = Config.get_kb_list()
+            kb_list = get_kb_list_sync()
             if not kb_list:
                 print("❌ 등록된 지식 베이스가 없습니다.")
                 continue
@@ -402,7 +402,7 @@ def main():
                 admin.check_knowledge_base_status()
         
         elif choice == '4':
-            kb_list = Config.get_kb_list()
+            kb_list = get_kb_list_sync()
             if not kb_list:
                 print("❌ 삭제할 지식 베이스가 없습니다.")
                 continue

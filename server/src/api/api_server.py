@@ -3,17 +3,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import logging
 import json
-import requests
 
 # Node-based workflow imports
 from ..core.node_execution_engine import NodeExecutionEngine
 from ..core.workflow_validator import WorkflowValidator
 from ..core.config import LLM_CONFIG
+from ..core.utils import format_sse_data
 from ..core.models import (
     WorkflowExecutionRequest, 
     WorkflowDefinition,
     KnowledgeBase,
-    KnowledgeBaseListResponse
+    KnowledgeBaseListResponse,
+    SearchIntensity,
+    LLMProvider
 )
 from ..services.vector_store_service import VectorStoreService
 from ..services.llm_factory import LLMFactory
@@ -37,7 +39,7 @@ app.add_middleware(
 
 # Global instances (stateless services only)
 validator = WorkflowValidator()
-vector_store_service = VectorStoreService()
+# vector_store_service는 요청별로 생성
 
 @app.get("/")
 async def health():
@@ -77,14 +79,14 @@ async def execute_workflow_stream(request: WorkflowExecutionRequest):
                     'errors': validation_result['errors'],
                     'warnings': validation_result.get('warnings', [])
                 }
-                yield f"data: {json.dumps(error_details)}\n\n"
+                yield format_sse_data(error_details)
                 return
             
             # 스트리밍으로 워크플로우 실행 (독립적인 인스턴스 사용)
             async for chunk in execution_engine.execute_workflow_stream(
                 workflow=request.workflow
             ):
-                yield f"data: {json.dumps(chunk)}\n\n"
+                yield format_sse_data(chunk)
                 
                 # 완료 또는 에러 시 스트림 종료
                 if chunk.get('type') in ['complete', 'error']:
@@ -93,7 +95,7 @@ async def execute_workflow_stream(request: WorkflowExecutionRequest):
                 
         except Exception as e:
             logger.error(f"Streaming workflow execution failed: {e}")
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield format_sse_data({'type': 'error', 'message': str(e)})
     
     return StreamingResponse(
         generate_stream(),
@@ -123,16 +125,20 @@ async def stop_workflow():
 async def list_knowledge_bases():
     """지식베이스 목록 조회"""
     try:
+        # 요청별 독립적인 VectorStoreService 생성
+        vector_store_service = VectorStoreService()
         knowledge_bases = []
         kb_names = await vector_store_service.get_knowledge_bases()
         
-        # 병렬로 지식베이스 정보 조회 (성능 향상)
+        # 비동기 병렬 처리로 지식베이스 정보 조회 (성능 향상 및 블로킹 방지)
         import asyncio
+        from concurrent.futures import ThreadPoolExecutor
         
         async def get_kb_info_safe(name: str):
             try:
-                # VectorStoreService의 새로운 메서드 사용 (await 추가)
-                kb_info = await vector_store_service.get_knowledge_base_info(name)
+                # 각 KB에 대해 독립적인 VectorStoreService 인스턴스 사용
+                kb_vector_service = VectorStoreService()
+                kb_info = await kb_vector_service.get_knowledge_base_info(name)
                 return KnowledgeBase(
                     name=kb_info['name'],
                     chunk_count=kb_info.get('count', 0),  # VectorStore는 'count' 사용
@@ -167,18 +173,11 @@ async def search_knowledge_base(request: dict):
         if not query or not knowledge_base:
             raise HTTPException(status_code=400, detail="Query and knowledge_base are required")
         
-        # top_k를 search_intensity로 매핑 (간단한 매핑)
-        if top_k <= 7:
-            search_intensity = "very_low"
-        elif top_k <= 10:
-            search_intensity = "low" 
-        elif top_k <= 20:
-            search_intensity = "medium"
-        elif top_k <= 30:
-            search_intensity = "high"
-        else:
-            search_intensity = "very_high"
-            
+        # top_k를 search_intensity로 매핑
+        search_intensity = SearchIntensity.from_top_k(top_k)
+        
+        # 요청별 독립적인 VectorStoreService 생성
+        vector_store_service = VectorStoreService()
         results = await vector_store_service.search(
             kb_name=knowledge_base,
             query=query,
@@ -207,21 +206,32 @@ async def get_available_models(provider: str):
             supported_providers = ", ".join(LLM_CONFIG["supported_providers"])
             raise HTTPException(status_code=400, detail=f"Unsupported provider. Only '{supported_providers}' are supported.")
 
-        # LLMFactory를 통해 직접 클라이언트에서 모델 목록 가져오기
-        client = LLMFactory.get_client(provider)
-        if not client:
-            raise HTTPException(status_code=500, detail=f"Failed to create client for {provider}")
-            
-        if not client.is_available():
-            if provider == "internal":
-                raise HTTPException(
-                    status_code=503, 
-                    detail=f"Internal LLM service is not available. Please check INTERNAL_API_KEY and INTERNAL_API_ENDPOINT environment variables."
-                )
-            else:
-                raise HTTPException(status_code=503, detail=f"{provider} service is not available")
-            
-        models = client.get_available_models()
+        # 요청별 독립적인 LLMFactory 인스턴스로 완전 병렬 처리
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+        
+        def get_models_sync():
+            """동기적 모델 조회를 별도 스레드에서 실행 - 블로킹 방지"""
+            llm_factory = LLMFactory()  # 요청별 독립 인스턴스
+            try:
+                client = llm_factory.get_client(provider)
+                if not client:
+                    raise Exception(f"Failed to create client for {provider}")
+                    
+                if not client.is_available():
+                    if provider == LLMProvider.INTERNAL:
+                        raise Exception("Internal LLM service is not available. Please check INTERNAL_API_KEY and INTERNAL_API_ENDPOINT environment variables.")
+                    else:
+                        raise Exception(f"{provider} service is not available")
+                        
+                return client.get_available_models()
+            except Exception as e:
+                raise e
+        
+        # ThreadPoolExecutor로 완전 비동기 실행하여 모든 요청 블로킹 방지
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            models = await loop.run_in_executor(executor, get_models_sync)
         
         return models
         

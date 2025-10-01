@@ -49,6 +49,9 @@ interface NodeWorkflowState {
   validationResult: ValidationResult | null;
   validationErrors: string[];
   
+  // 에러 메시지 관리
+  persistentErrors: Array<{ id: string; message: string; timestamp: number }>;
+  
   // 노드 실행 상태 업데이트
   setNodeExecutionStatus: (nodeId: string, isExecuting: boolean, isCompleted?: boolean) => void;
   
@@ -82,6 +85,11 @@ interface NodeWorkflowState {
   
   // 페이지 가시성 상태 관리
   setPageVisible: (isVisible: boolean) => void;
+  
+  // 에러 메시지 관리 함수
+  addPersistentError: (errorMessage: string) => void;
+  removePersistentError: (id: string) => void;
+  clearAllPersistentErrors: () => void;
 }
 
 export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
@@ -102,6 +110,9 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     
     validationResult: null,
     validationErrors: [],
+    
+    // 에러 메시지 관리
+    persistentErrors: [],
     
     // 노드별 실행 상태 및 출력
     nodeExecutionStates: {},
@@ -335,6 +346,65 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
         pendingStreamingOutputs: {} // 누적 출력도 초기화
       });
       
+      // 스트리밍 업데이트 배치 처리 변수들 - React 무한 루프 방지
+      let streamBatch: Record<string, string> = {};
+      let pendingBatch: Record<string, string> = {};
+      let batchTimeout: number | null = null;
+      let lastFlushTime = 0;
+      const MIN_FLUSH_INTERVAL = 50; // 20 FPS (50ms) - 더 강력한 throttling
+
+      // 배치 플러시 함수 - React 업데이트 깊이 초과 방지
+      const flushBatch = () => {
+        const now = Date.now();
+        if (now - lastFlushTime < MIN_FLUSH_INTERVAL) {
+          return; // 너무 빈번한 업데이트 방지
+        }
+        
+        if (Object.keys(streamBatch).length > 0 || Object.keys(pendingBatch).length > 0) {
+          set(state => {
+            let hasChanges = false;
+            let newStreamingOutputs = { ...state.nodeStreamingOutputs };
+            let newPendingOutputs = { ...state.pendingStreamingOutputs };
+            
+            // 스트림 배치 적용
+            Object.keys(streamBatch).forEach(nodeId => {
+              const currentOutput = state.nodeStreamingOutputs[nodeId] || '';
+              const newOutput = streamBatch[nodeId];
+              if (currentOutput !== newOutput) {
+                newStreamingOutputs[nodeId] = newOutput;
+                hasChanges = true;
+              }
+            });
+            
+            // 펜딩 배치 적용
+            Object.keys(pendingBatch).forEach(nodeId => {
+              const currentPending = state.pendingStreamingOutputs[nodeId] || '';
+              const newPending = pendingBatch[nodeId];
+              if (currentPending !== newPending) {
+                newPendingOutputs[nodeId] = newPending;
+                hasChanges = true;
+              }
+            });
+            
+            if (!hasChanges) {
+              return state; // 변경사항이 없으면 리렌더링 방지
+            }
+            
+            return {
+              ...state,
+              nodeStreamingOutputs: newStreamingOutputs,
+              pendingStreamingOutputs: newPendingOutputs
+            };
+          });
+          
+          // 배치 초기화
+          streamBatch = {};
+          pendingBatch = {};
+          lastFlushTime = now;
+        }
+        batchTimeout = null;
+      };
+      
       // 스트리밍 실행
       for await (const chunk of nodeBasedWorkflowAPI.executeNodeWorkflowStream(request)) {
         onStreamUpdate(chunk);
@@ -378,39 +448,41 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
             };
           });
         } else if (chunk.type === 'stream' && chunk.node_id && chunk.content) {
-          // 스트리밍 업데이트를 안전하게 처리 - 페이지 백그라운드 시 무한 루프 방지
-          set(state => {
-            if (!state.isPageVisible) {
-              // 페이지가 백그라운드에 있으면 pending 출력에 누적
-              const currentPending = state.pendingStreamingOutputs[chunk.node_id] || '';
-              const newPending = currentPending + chunk.content;
-              
-              return {
-                ...state,
-                pendingStreamingOutputs: {
-                  ...state.pendingStreamingOutputs,
-                  [chunk.node_id]: newPending
-                }
-              };
+          // 스트리밍 콘텐츠를 배치에 누적 - get() 호출 최소화로 무한 루프 방지
+          if (!streamBatch[chunk.node_id]) {
+            // 첫 번째 청크일 때만 현재 상태를 가져옴
+            const currentState = get();
+            const baseOutput = currentState.isPageVisible 
+              ? (currentState.nodeStreamingOutputs[chunk.node_id] || '')
+              : (currentState.pendingStreamingOutputs[chunk.node_id] || '');
+            
+            if (currentState.isPageVisible) {
+              streamBatch[chunk.node_id] = baseOutput + chunk.content;
+            } else {
+              pendingBatch[chunk.node_id] = baseOutput + chunk.content;
             }
-            
-            // 페이지가 보이는 상태에서는 즉시 업데이트
-            const currentOutput = state.nodeStreamingOutputs[chunk.node_id] || '';
-            const newOutput = currentOutput + chunk.content;
-            
-            // 실제로 변경사항이 있을 때만 새 상태 반환
-            if (currentOutput === newOutput) {
-              return state; // 변경사항이 없으면 기존 상태 반환
-            }
-            
-            return {
-              ...state,
-              nodeStreamingOutputs: {
-                ...state.nodeStreamingOutputs,
-                [chunk.node_id]: newOutput
+          } else {
+            // 이후 청크들은 배치에만 누적 (get() 호출 없음)
+            if (streamBatch[chunk.node_id] !== undefined) {
+              streamBatch[chunk.node_id] += chunk.content;
+            } else if (pendingBatch[chunk.node_id] !== undefined) {
+              pendingBatch[chunk.node_id] += chunk.content;
+            } else {
+              // fallback: 현재 상태 확인
+              const currentState = get();
+              if (currentState.isPageVisible) {
+                streamBatch[chunk.node_id] = (currentState.nodeStreamingOutputs[chunk.node_id] || '') + chunk.content;
+              } else {
+                pendingBatch[chunk.node_id] = (currentState.pendingStreamingOutputs[chunk.node_id] || '') + chunk.content;
               }
-            };
-          });
+            }
+          }
+          
+          // 배치 업데이트 스케줄링 (throttled)
+          if (batchTimeout) {
+            clearTimeout(batchTimeout);
+          }
+          batchTimeout = setTimeout(flushBatch, MIN_FLUSH_INTERVAL);
         } else if (chunk.type === 'node_complete' && chunk.node_id) {
           const status = chunk.success ? 'completed' : 'error';
           
@@ -523,6 +595,12 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
         }
       }
       
+      // 스트리밍 완료 시 남은 배치 업데이트 플러시
+      if (batchTimeout) {
+        clearTimeout(batchTimeout);
+      }
+      flushBatch();
+      
     } catch (error: unknown) {
       console.error('스트리밍 워크플로우 실행 에러:', error);
       
@@ -548,7 +626,13 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
         errorMessage = error.message;
       }
       
-      throw new Error(errorMessage);
+      // persistent error로 표시하고 throw하지 않아 무한 루프 방지
+      // store 메서드는 직접 접근할 수 없으므로 message.error 사용
+      message.error({
+        content: `스트리밍 실행 오류: ${errorMessage}`,
+        duration: 0, // 사라지지 않음
+        key: `execution-error-${Date.now()}`,
+      });
     } finally {
       // 중단 상태인지 확인 (상태 정리 전에)
       const currentState = get();
@@ -766,6 +850,11 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
   // 페이지 가시성 상태 업데이트
   setPageVisible: (isVisible: boolean) => {
     set(state => {
+      // 상태가 이미 동일하면 업데이트하지 않음
+      if (state.isPageVisible === isVisible) {
+        return state;
+      }
+      
       if (isVisible && !state.isPageVisible) {
         // 페이지가 다시 보이게 될 때, 누적된 출력을 실제 출력에 병합
         const updatedOutputs = { ...state.nodeStreamingOutputs };
@@ -794,6 +883,53 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
         isPageVisible: isVisible
       };
     });
+  },
+
+  // 에러 메시지 관리 함수
+  addPersistentError: (errorMessage: string) => {
+    const id = Date.now().toString();
+    set(state => ({
+      ...state,
+      persistentErrors: [
+        ...state.persistentErrors,
+        { id, message: errorMessage, timestamp: Date.now() }
+      ]
+    }));
+    
+    // antd message도 함께 표시 (사용자가 놓칠 수 있으므로)
+    message.error({
+      content: errorMessage,
+      duration: 0, // 사라지지 않음
+      key: id, // 중복 방지
+      onClick: () => {
+        // 클릭으로도 닫을 수 있게
+        message.destroy(id);
+      }
+    });
+  },
+
+  removePersistentError: (id: string) => {
+    set(state => ({
+      ...state,
+      persistentErrors: state.persistentErrors.filter(error => error.id !== id)
+    }));
+    
+    // antd message도 함께 제거
+    message.destroy(id);
+  },
+
+  clearAllPersistentErrors: () => {
+    const { persistentErrors } = get();
+    
+    // 모든 antd message 제거
+    persistentErrors.forEach(error => {
+      message.destroy(error.id);
+    });
+    
+    set(state => ({
+      ...state,
+      persistentErrors: []
+    }));
   }
   };
 });

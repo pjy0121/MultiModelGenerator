@@ -4,7 +4,8 @@ VectorStoreService - VectorStore 인스턴스들을 관리하는 단순한 wrapp
 
 from typing import List, Dict, Optional
 from .vector_store import VectorStore
-from ..core.config import NODE_EXECUTION_CONFIG, get_kb_list
+from ..core.config import NODE_EXECUTION_CONFIG
+from ..core.utils import get_kb_list
 
 
 class VectorStoreService:
@@ -15,18 +16,17 @@ class VectorStoreService:
     """
     
     def __init__(self):
-        """VectorStoreService 초기화"""
+        """VectorStoreService 초기화 (인스턴스별 독립 캐시)"""
         self._store_cache: Dict[str, VectorStore] = {}
     
     def get_vector_store(self, kb_name: str) -> VectorStore:
-        """지식베이스별 VectorStore 인스턴스 반환 (캐싱됨)"""
+        """지식베이스별 VectorStore 인스턴스 반환 (인스턴스별 캐시)"""
         if kb_name not in self._store_cache:
             self._store_cache[kb_name] = VectorStore(kb_name)
         return self._store_cache[kb_name]
     
     async def get_knowledge_bases(self) -> List[str]:
         """사용 가능한 지식 베이스 목록 반환 (비동기)"""
-        from ..core.config import get_kb_list
         return await get_kb_list()
     
     async def search(
@@ -68,5 +68,5 @@ class VectorStoreService:
                 raise e
 
 
-# 전역 서비스 인스턴스
-vector_store_service = VectorStoreService()
+# 전역 인스턴스 제거 - 각 요청별로 독립적인 인스턴스 사용
+# vector_store_service = VectorStoreService()  # 제거됨
