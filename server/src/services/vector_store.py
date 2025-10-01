@@ -2,42 +2,12 @@ import chromadb
 import os
 import threading
 from typing import List, Dict, Optional
-from ..core.config import VECTOR_DB_CONFIG, get_kb_path
+from ..core.config import VECTOR_DB_CONFIG
+from ..core.utils import get_kb_path
+from ..core.models import SearchIntensity
 from .rerank import ReRanker
 
-# 전역 ChromaDB 클라이언트 관리자 (스레드 안전)
-class ChromaDBManager:
-    _instance = None
-    _lock = threading.Lock()
-    
-    def __new__(cls):
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._clients = {}
-                    cls._instance._client_lock = threading.RLock()
-        return cls._instance
-    
-    def get_client(self, kb_name: str) -> chromadb.PersistentClient:
-        """KB별로 단일 클라이언트 인스턴스 반환 (스레드 안전)"""
-        with self._client_lock:
-            if kb_name not in self._clients:
-                db_path = get_kb_path(kb_name)
-                os.makedirs(db_path, exist_ok=True)
-                print(f"🔗 새 ChromaDB 클라이언트 생성: {kb_name} -> {db_path}")
-                self._clients[kb_name] = chromadb.PersistentClient(path=db_path)
-            return self._clients[kb_name]
-    
-    def clear_client(self, kb_name: str):
-        """특정 KB 클라이언트 제거 (필요시)"""
-        with self._client_lock:
-            if kb_name in self._clients:
-                del self._clients[kb_name]
-                print(f"🗑️ ChromaDB 클라이언트 제거: {kb_name}")
-
-# 전역 매니저 인스턴스
-chroma_manager = ChromaDBManager()
+# ChromaDBManager 클래스 제거됨 - 각 VectorStore 인스턴스가 독립적인 클라이언트 사용
 
 class VectorStore:
     def __init__(self, kb_name: str):
@@ -47,32 +17,51 @@ class VectorStore:
         self.kb_name = kb_name
         self.db_path = get_kb_path(kb_name)
         
-        # 전역 매니저에서 공유 클라이언트 가져오기
-        self.client = chroma_manager.get_client(kb_name)
-        self.collection = self.get_collection()
+        # 지연 초기화 - 실제 사용할 때만 ChromaDB 파일 접근
+        self.client = None
+        self.collection = None
         
-        print(f"📚 VectorStore 초기화 완료: {kb_name}")
-
     def get_collection(self):
-        """컬렉션을 스레드 안전하게 반환"""
-        # ChromaDB 클라이언트는 내부적으로 스레드 안전하지만 
-        # get_or_create_collection 호출을 안전하게 처리
-        try:
-            return self.client.get_or_create_collection(
-                name="spec_documents",
-                metadata={"hnsw:space": "cosine"},
-                embedding_function=self.embedding_function
-            )
-        except Exception as e:
-            print(f"⚠️ 컬렉션 생성/접근 오류 (KB: {self.kb_name}): {e}")
-            # 클라이언트 재생성 시도
-            chroma_manager.clear_client(self.kb_name)
-            self.client = chroma_manager.get_client(self.kb_name)
-            return self.client.get_or_create_collection(
-                name="spec_documents",
-                metadata={"hnsw:space": "cosine"},
-                embedding_function=self.embedding_function
-            )
+        """컬렉션을 지연 초기화로 반환 (동시성 문제 해결된 버전)"""
+        if self.collection is None:
+            # 각 VectorStore 인스턴스마다 독립적인 ChromaDB 클라이언트 생성
+            if self.client is None:
+                os.makedirs(self.db_path, exist_ok=True)
+                # 동시 접근 시 충돌 방지를 위해 데이터베이스 오픈 시도
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        self.client = chromadb.PersistentClient(path=self.db_path)
+                        break
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            print(f"⚠️ ChromaDB 클라이언트 생성 시도 {attempt + 1} 실패 (KB: {self.kb_name}): {e}")
+                            import time
+                            time.sleep(0.1 + attempt * 0.1)  # 점진적 백오프
+                        else:
+                            raise e
+            
+            # 컬렉션 접근도 재시도 로직 적용
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    self.collection = self.client.get_or_create_collection(
+                        name="spec_documents",
+                        metadata={"hnsw:space": "cosine"},
+                        embedding_function=self.embedding_function
+                    )
+                    break
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        print(f"⚠️ 컬렉션 접근 시도 {attempt + 1} 실패 (KB: {self.kb_name}): {e}")
+                        import time
+                        time.sleep(0.2 + attempt * 0.1)  # 점진적 백오프
+                        # 클라이언트 재생성
+                        self.client = chromadb.PersistentClient(path=self.db_path)
+                    else:
+                        raise e
+        
+        return self.collection
 
     def store_chunks(self, chunks: List[Dict]) -> None:
         """청크들을 벡터 DB에 저장"""
@@ -95,7 +84,7 @@ class VectorStore:
         for i in range(0, len(chunks), batch_size):
             end_idx = min(i + batch_size, len(chunks))
             
-            self.collection.add(
+            self.get_collection().add(
                 ids=ids[i:end_idx],
                 documents=documents[i:end_idx],
                 embeddings=embeddings[i:end_idx],
@@ -105,21 +94,35 @@ class VectorStore:
         print(f"✅ 지식 베이스 '{self.kb_name}' 저장 완료!")
 
     async def _search_initial_chunks(self, query: str, top_k: int) -> List[str]:
-        """초기 벡터 검색을 수행하는 내부 헬퍼 함수"""
+        """초기 벡터 검색을 수행하는 내부 헬퍼 함수 (비동기 개선된 버전)"""
         print(f"🔍 지식 베이스 '{self.kb_name}'에서 키워드 '{query}' 초기 검색 중... (top_k={top_k})")
         
         try:
-            collection_count = self.collection.count()
+            # 비동기로 컴렉션 접근
+            import asyncio
+            collection = await asyncio.get_event_loop().run_in_executor(
+                None, self.get_collection
+            )
+            
+            # 카운트 조회도 비동기로 처리
+            collection_count = await asyncio.get_event_loop().run_in_executor(
+                None, collection.count
+            )
+            
             if collection_count == 0:
                 print("❌ 지식 베이스가 비어있습니다.")
                 return []
             
             actual_top_k = min(top_k, collection_count)
             
-            results = self.collection.query(
-                query_texts=[query],
-                n_results=actual_top_k,
-                include=['documents', 'distances']
+            # 벡터 검색도 비동기로 처리
+            results = await asyncio.get_event_loop().run_in_executor(
+                None, 
+                lambda: collection.query(
+                    query_texts=[query],
+                    n_results=actual_top_k,
+                    include=['documents', 'distances']
+                )
             )
             
             if not results['documents'] or not results['documents'][0]:
@@ -156,8 +159,7 @@ class VectorStore:
             rerank_info: rerank 정보 {"provider": "openai", "model": "gpt-3.5-turbo"}
         """
         # 공통: 검색 파라미터 설정
-        search_intensity_map = VECTOR_DB_CONFIG["search_intensity_map"]
-        search_params = search_intensity_map.get(search_intensity, search_intensity_map["medium"])
+        search_params = SearchIntensity.get_search_params(search_intensity)
 
         top_k_init = search_params["init"]
         
@@ -180,10 +182,16 @@ class VectorStore:
             initial_chunks = await self._search_initial_chunks(query, top_k_init)
             return initial_chunks
     
-    def get_status(self) -> dict:
-        """지식 베이스 상태 정보 반환"""
+    async def get_status(self) -> dict:
+        """지식 베이스 상태 정보 반환 (비동기 개선된 버전)"""
         try:
-            count = self.collection.count()
+            import asyncio
+            collection = await asyncio.get_event_loop().run_in_executor(
+                None, self.get_collection
+            )
+            count = await asyncio.get_event_loop().run_in_executor(
+                None, collection.count
+            )
             return {
                 'exists': True,
                 'count': count,
@@ -218,21 +226,36 @@ class VectorStore:
             return []
     
     async def get_knowledge_base_info(self) -> Dict:
-        """지식 베이스 상세 정보 반환"""
-        try:
-            count = self.collection.count()
+        """지식 베이스 상세 정보 반환 (ChromaDB 파일 접근 최소화)"""
+        import asyncio
+        
+        def get_info_without_chromadb():
+            """ChromaDB 파일에 접근하지 않고 기본 정보만 반환"""
+            # 디렉토리 존재 여부만 확인
+            exists = os.path.exists(self.db_path)
+            
+            # 파일 개수로 대략적인 chunk 수 추정 (ChromaDB 접근 없이)
+            estimated_count = 0
+            if exists:
+                try:
+                    # ChromaDB 디렉토리 내 파일들의 개수로 추정
+                    import glob
+                    files = glob.glob(os.path.join(self.db_path, "**", "*"), recursive=True)
+                    # 대략적인 추정 (정확하지 않지만 블로킹 없음)
+                    estimated_count = max(0, len([f for f in files if os.path.isfile(f)]) // 10)
+                except:
+                    estimated_count = 0
+                    
             return {
                 'name': self.kb_name,
-                'count': count,
+                'count': estimated_count,  # 추정값 (블로킹 방지)
                 'path': self.db_path,
-                'exists': True
+                'exists': exists
             }
-        except Exception as e:
-            return {
-                'name': self.kb_name,
-                'count': 0,
-                'path': self.db_path,
-                'exists': False,
-                'error': str(e)
-            }
+        
+        # 비동기로 실행하여 블로킹 방지
+        loop = asyncio.get_event_loop()
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor() as executor:
+            return await loop.run_in_executor(executor, get_info_without_chromadb)
 

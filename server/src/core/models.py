@@ -10,12 +10,58 @@ class NodeType(str, Enum):
     CONTEXT = "context-node"
     OUTPUT = "output-node"
 
+class LLMProvider(str, Enum):
+    OPENAI = "openai"
+    GOOGLE = "google"
+    INTERNAL = "internal"
+    
+    @classmethod
+    def get_supported_providers(cls) -> List[str]:
+        """지원되는 LLM Provider 목록 반환"""
+        return [cls.OPENAI, cls.GOOGLE, cls.INTERNAL]
+    
+    @classmethod
+    def get_default_provider(cls) -> str:
+        """기본 LLM Provider 반환"""
+        return cls.GOOGLE
+
 class SearchIntensity(str, Enum):
     VERY_LOW = "very_low"
     LOW = "low"
     MEDIUM = "medium" 
     HIGH = "high"
     VERY_HIGH = "very_high"
+    
+    @classmethod
+    def get_search_params(cls, intensity: str) -> Dict[str, int]:
+        """검색 강도에 따른 파라미터 반환"""
+        intensity_map = {
+            cls.VERY_LOW: {"init": 7, "final": 5},
+            cls.LOW: {"init": 10, "final": 7},
+            cls.MEDIUM: {"init": 20, "final": 10},
+            cls.HIGH: {"init": 30, "final": 15},
+            cls.VERY_HIGH: {"init": 50, "final": 20}
+        }
+        return intensity_map.get(intensity, intensity_map[cls.MEDIUM])
+    
+    @classmethod
+    def from_top_k(cls, top_k: int) -> str:
+        """top_k 값을 기반으로 적절한 검색 강도 반환"""
+        if top_k <= 7:
+            return cls.VERY_LOW
+        elif top_k <= 10:
+            return cls.LOW
+        elif top_k <= 20:
+            return cls.MEDIUM
+        elif top_k <= 30:
+            return cls.HIGH
+        else:
+            return cls.VERY_HIGH
+    
+    @classmethod
+    def get_default(cls) -> str:
+        """기본 검색 강도 반환"""
+        return cls.MEDIUM
 
 class RerankInfo(BaseModel):
     """Rerank 설정 정보"""

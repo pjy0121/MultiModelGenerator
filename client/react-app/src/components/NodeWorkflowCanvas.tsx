@@ -88,14 +88,10 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
   
   // 스트리밍 실행 핸들러
   const handleStreamingExecution = async () => {
-    try {
-      await executeWorkflowStream(() => {
-        // 스트리밍 데이터는 이미 store에서 처리되므로 추가 처리 불필요
-      });
-    } catch (error) {
-      console.error('스트리밍 실행 오류:', error);
-      showErrorMessage(`스트리밍 실행 실패: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    // store에서 이미 에러 처리를 하므로 여기서는 단순히 호출만
+    await executeWorkflowStream(() => {
+      // 스트리밍 데이터는 이미 store에서 처리되므로 추가 처리 불필요
+    });
   };
 
   // 워크플로우 중단 핸들러

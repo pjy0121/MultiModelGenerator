@@ -6,51 +6,35 @@ from .google_llm_client import GoogleLLMClient
 from .internal_llm_client import InternalLLMClient
 
 class LLMFactory:
-    """LLM 클라이언트 팩토리"""
+    """LLM 클라이언트 팩토리 (인스턴스 기반 완전 병렬 버전)"""
     
-    _clients: Dict[str, LLMClientInterface] = {}
-    _initialized = False
+    def __init__(self):
+        """인스턴스별 독립적 클라이언트 생성"""
+        self.clients: Dict[str, LLMClientInterface] = {}
+        self._initialize_clients()
     
-    @classmethod
-    def _initialize_clients(cls):
-        """모든 클라이언트 초기화"""
-        if cls._initialized:
-            return
+    def _initialize_clients(self):
+        """인스턴스별 클라이언트 초기화 (블로킹 없는 병렬 처리)"""
             
-        # 사용 가능한 클라이언트들 초기화
+        # 각 인스턴스마다 독립적 클라이언트 생성
         try:
-            print("🔄 OpenAI 클라이언트 생성 중...")
-            cls._clients["openai"] = OpenAIClient()
-            print("✅ OpenAI 클라이언트 생성 완료")
-        except Exception as e:
-            print(f"❌ OpenAI 클라이언트 생성 실패: {e}")
-            import traceback
-            traceback.print_exc()
+            self.clients["openai"] = OpenAIClient()
+        except Exception:
+            pass  # 조용히 실패 처리
             
         try:
-            print("🔄 Google 클라이언트 생성 중...")
-            cls._clients["google"] = GoogleLLMClient()
-            print("✅ Google 클라이언트 생성 완료")
-        except Exception as e:
-            print(f"❌ Google 클라이언트 생성 실패: {e}")
-            import traceback
-            traceback.print_exc()
+            self.clients["google"] = GoogleLLMClient()
+        except Exception:
+            pass  # 조용히 실패 처리
             
         try:
-            print("🔄 Internal LLM 클라이언트 생성 중...")
-            cls._clients["internal"] = InternalLLMClient()
-            print("✅ Internal LLM 클라이언트 생성 완료")
-        except Exception as e:
-            print(f"❌ Internal LLM 클라이언트 생성 실패: {e}")
-            import traceback
-            traceback.print_exc()
-            
-        cls._initialized = True
+            self.clients["internal"] = InternalLLMClient()
+        except Exception:
+            pass  # 조용히 실패 처리
     
-    @classmethod
-    def get_client(cls, provider: str) -> LLMClientInterface:
+    def get_client(self, provider: str) -> LLMClientInterface:
         """
-        지정된 Provider의 클라이언트 반환
+        지정된 Provider의 클라이언트 반환 (인스턴스 기반 완전 병렬)
         
         Args:
             provider: LLM Provider 이름 (필수)
@@ -58,24 +42,19 @@ class LLMFactory:
         Returns:
             LLM 클라이언트 인스턴스
         """
-        cls._initialize_clients()
-        
-        if provider not in cls._clients:
+        if provider not in self.clients:
             raise ValueError(f"지원하지 않는 LLM Provider: {provider}")
             
-        client = cls._clients[provider]
+        client = self.clients[provider]
         if not client.is_available():
             raise RuntimeError(f"{provider} 클라이언트를 사용할 수 없습니다. API 키를 확인하세요.")
             
         return client
     
-    @classmethod
-    def get_available_providers(cls) -> List[str]:
-        """사용 가능한 LLM Provider 목록 반환"""
-        cls._initialize_clients()
-        
+    def get_available_providers(self) -> List[str]:
+        """사용 가능한 LLM Provider 목록 반환 (인스턴스 기반)"""
         available = []
-        for provider, client in cls._clients.items():
+        for provider, client in self.clients.items():
             if client.is_available():
                 available.append(provider)
                 
