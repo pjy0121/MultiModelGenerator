@@ -135,13 +135,14 @@ async def stop_workflow(execution_id: str):
     
     특정 execution_id의 워크플로우를 중단합니다.
     현재 실행 중인 노드는 완료하고, 새로운 노드 실행을 중단합니다.
+    이미 완료되었거나 존재하지 않는 워크플로우에 대한 중단 요청도 성공으로 처리됩니다.
     """
     try:
         if execution_id not in active_executions:
-            logger.warning(f"Execution not found: {execution_id}")
+            logger.info(f"Execution {execution_id} not found or already completed")
             return {
-                "success": False,
-                "message": "실행 중인 워크플로우를 찾을 수 없습니다."
+                "success": True,
+                "message": "워크플로우가 이미 완료되었거나 중단되었습니다."
             }
         
         # 중단 플래그 설정
@@ -154,7 +155,11 @@ async def stop_workflow(execution_id: str):
         }
     except Exception as e:
         logger.error(f"Failed to stop workflow {execution_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # 예외 발생 시에도 중단은 성공으로 처리
+        return {
+            "success": True,
+            "message": "워크플로우 중단이 요청되었습니다."
+        }
 
 @app.get("/knowledge-bases", response_model=KnowledgeBaseListResponse)
 async def list_knowledge_bases():

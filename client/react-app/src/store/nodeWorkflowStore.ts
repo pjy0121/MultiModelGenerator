@@ -316,6 +316,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
             search_intensity: node.data.search_intensity || null,
             rerank_provider: node.data.rerank_provider || null,
             rerank_model: node.data.rerank_model || null,
+            additional_context: node.data.additional_context || null,
 
             output: null,
             executed: false,

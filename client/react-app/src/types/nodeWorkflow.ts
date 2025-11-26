@@ -38,6 +38,7 @@ export interface NodeBasedConfig {
   search_intensity?: SearchIntensity; // context-node용 검색 강도
   rerank_provider?: LLMProvider; // context-node용 rerank LLM Provider
   rerank_model?: string;      // context-node용 rerank 모델
+  additional_context?: string; // context-node용 사용자 정의 컨텍스트
   position: { x: number; y: number };
 }
 
@@ -108,6 +109,7 @@ export interface NodeData extends Record<string, unknown> {
   search_intensity?: SearchIntensity; // context-node용 검색 강도
   rerank_provider?: LLMProvider; // context-node용 rerank LLM Provider
   rerank_model?: string;      // context-node용 rerank 모델
+  additional_context?: string; // context-node용 사용자 정의 컨텍스트
   isExecuting?: boolean;      // 실행 상태 표시용
   isCompleted?: boolean;      // 완료 상태 표시용
 }

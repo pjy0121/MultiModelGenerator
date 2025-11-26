@@ -265,55 +265,71 @@ class NodeExecutor:
         return formatted_prompt if formatted_prompt.strip() else input_data
 
     async def _execute_context_node(self, node: WorkflowNode, pre_outputs: List[str]) -> NodeExecutionResult:
-        """Context 노드 실행 - 벡터 DB에서 컨텍스트 검색"""
+        """
+        Context 노드 실행 - 벡터 DB에서 컨텍스트 검색 + 사용자 정의 컨텍스트 추가
+        지식베이스가 없을 경우 additional_context만 사용 가능
+        """
         start_time = time.time()
         
         try:
             # 입력 데이터 준비 (pre_outputs 결합)
             input_data = " ".join(pre_outputs) if pre_outputs else ""
-            if not input_data.strip():
-                return NodeExecutionResult(
-                    node_id=node.id,
-                    success=False,
-                    error="Context search requires input data from pre-nodes",
-                    execution_time=time.time() - start_time
-                )
             
             # 지식베이스 및 검색 강도 확인
             knowledge_base = node.knowledge_base
             search_intensity = node.search_intensity or SearchIntensity.get_default()
+            additional_context = node.additional_context or ""
             
-            if not knowledge_base:
-                return NodeExecutionResult(
-                    node_id=node.id,
-                    success=False,
-                    error="Knowledge base not specified for context node",
-                    execution_time=time.time() - start_time
+            context_parts = []
+            
+            # 지식베이스가 설정되어 있고 "none"이 아니면 검색 수행
+            if knowledge_base and knowledge_base.lower() != "none":
+                if not input_data.strip():
+                    return NodeExecutionResult(
+                        node_id=node.id,
+                        success=False,
+                        error="Context search requires input data from pre-nodes",
+                        execution_time=time.time() - start_time
+                    )
+                
+                # context-node 자체의 rerank 설정 사용
+                rerank_info = None
+                if (node.rerank_provider and node.rerank_provider != "none" and node.rerank_model):
+                    rerank_info = {
+                        "provider": node.rerank_provider,
+                        "model": node.rerank_model
+                    }
+                
+                # 벡터 DB 검색 실행
+                vector_store_service = VectorStoreService()
+                context_results = await vector_store_service.search(
+                    kb_name=knowledge_base,
+                    query=input_data,
+                    search_intensity=search_intensity,
+                    rerank_info=rerank_info
                 )
+                
+                if context_results:
+                    context_parts.append("\n".join(context_results))
             
-            # context-node 자체의 rerank 설정 사용
-            rerank_info = None
-            if (node.rerank_provider and node.rerank_provider != "none" and node.rerank_model):
-                rerank_info = {
-                    "provider": node.rerank_provider,
-                    "model": node.rerank_model
-                }
+            # 추가 컨텍스트가 있으면 추가
+            if additional_context.strip():
+                context_parts.append(additional_context.strip())
             
-            # 벡터 DB 검색 실행 - 매번 새로운 인스턴스로 블로킹 방지
-            vector_store_service = VectorStoreService()
-            context_results = await vector_store_service.search(
-                kb_name=knowledge_base,
-                query=input_data,
-                search_intensity=search_intensity,
-                rerank_info=rerank_info
-            )
-            
-            context_content = "\n".join(context_results) if context_results else "No relevant context found."
+            # 최종 컨텍스트 결합
+            if not context_parts:
+                context_content = "No context available."
+                description = "No knowledge base search performed and no additional context provided"
+            else:
+                context_content = "\n\n".join(context_parts)
+                kb_info = f" from knowledge base '{knowledge_base}'" if (knowledge_base and knowledge_base.lower() != "none") else ""
+                additional_info = " + user-defined context" if additional_context.strip() else ""
+                description = f"Context prepared{kb_info}{additional_info}"
             
             return NodeExecutionResult(
                 node_id=node.id,
                 success=True,
-                description=f"Found {len(context_results)} relevant context chunks from knowledge base '{knowledge_base}'",
+                description=description,
                 output=context_content,
                 execution_time=time.time() - start_time
             )
@@ -322,26 +338,31 @@ class NodeExecutor:
             return NodeExecutionResult(
                 node_id=node.id,
                 success=False,
-                error=f"Context search failed: {str(e)}",
+                error=f"Context preparation failed: {str(e)}",
                 execution_time=time.time() - start_time
             )
     
     async def _execute_context_node_stream(self, node: WorkflowNode, pre_outputs: List[str]):
-        """Context 노드 스트리밍 실행"""
+        """
+        Context 노드 스트리밍 실행
+        지식베이스가 없을 경우 additional_context만 사용 가능
+        """
         try:
             # 입력 데이터 준비
             query = "\n".join(pre_outputs) if pre_outputs else ""
+            knowledge_base = node.knowledge_base
+            additional_context = node.additional_context or ""
             
-            if not query.strip():
-                yield {"type": "result", "success": False, "error": "No input data for context search"}
-                return
+            context_parts = []
             
-            if not node.knowledge_base:
-                yield {"type": "result", "success": False, "error": "No knowledge base selected"}
-                return
-            
-            # 검색 시작 알림
-            yield {"type": "stream", "content": f"🔍 [{node.id}] 지식 베이스 '{node.knowledge_base}' 검색 중...\n"}
+            # 지식베이스가 설정되어 있고 "none"이 아니면 검색 수행
+            if knowledge_base and knowledge_base.lower() != "none":
+                if not query.strip():
+                    yield {"type": "result", "success": False, "error": "No input data for context search"}
+                    return
+                
+                # 검색 시작 알림
+                yield {"type": "stream", "content": f"🔍 [{node.id}] 지식 베이스 '{knowledge_base}' 검색 중...\n"}
             
             # rerank 정보 설정
             rerank_info = None
@@ -352,33 +373,49 @@ class NodeExecutor:
                 }
                 yield {"type": "stream", "content": f"🔄 [{node.id}] 재정렬 설정됨: {node.rerank_provider}/{node.rerank_model}\n"}
             
-            # 벡터 스토어에서 관련 컨텍스트 검색 - 매번 새로운 인스턴스로 블로킹 방지
-            vector_store_service = VectorStoreService()
-            context_results = await vector_store_service.search(
-                kb_name=node.knowledge_base,
-                query=query,
-                search_intensity=node.search_intensity or SearchIntensity.get_default(),
-                rerank_info=rerank_info
-            )
+            # 지식베이스 검색 수행 (설정되어 있고 "none"이 아닐 경우)
+            if knowledge_base and knowledge_base.lower() != "none":
+                # 벡터 스토어에서 관련 컨텍스트 검색
+                vector_store_service = VectorStoreService()
+                context_results = await vector_store_service.search(
+                    kb_name=knowledge_base,
+                    query=query,
+                    search_intensity=node.search_intensity or SearchIntensity.get_default(),
+                    rerank_info=rerank_info
+                )
+                
+                if context_results:
+                    context_parts.append("\n".join(context_results))
+                    yield {"type": "stream", "content": f"✅ [{node.id}] {len(context_results)}개의 관련 컨텍스트를 찾았습니다.\n"}
+                else:
+                    yield {"type": "stream", "content": f"⚠️ [{node.id}] 지식베이스에서 관련 컨텍스트를 찾지 못했습니다.\n"}
             
-            if context_results:
-                context_content = "\n".join(context_results)
-                yield {"type": "stream", "content": f"✅ [{node.id}] {len(context_results)}개의 관련 컨텍스트를 찾았습니다.\n"}
+            # 추가 컨텍스트가 있으면 추가
+            if additional_context.strip():
+                context_parts.append(additional_context.strip())
+                yield {"type": "stream", "content": f"📝 [{node.id}] 사용자 정의 컨텍스트가 추가되었습니다.\n"}
+            
+            # 최종 컨텍스트 결합
+            if not context_parts:
+                yield {"type": "stream", "content": f"⚠️ [{node.id}] 사용 가능한 컨텍스트가 없습니다.\n"}
+                yield {
+                    "type": "parsed_result",
+                    "success": True,
+                    "description": "No context available",
+                    "output": "No context available.",
+                    "execution_time": 0.0
+                }
+            else:
+                context_content = "\n\n".join(context_parts)
+                kb_info = f" from KB '{knowledge_base}'" if (knowledge_base and knowledge_base.lower() != "none") else ""
+                additional_info = " + user-defined" if additional_context.strip() else ""
+                description = f"Context prepared{kb_info}{additional_info}"
                 
                 yield {
                     "type": "parsed_result",
                     "success": True,
-                    "description": f"Found {len(context_results)} relevant context chunks from knowledge base '{node.knowledge_base}'",
+                    "description": description,
                     "output": context_content,
-                    "execution_time": 0.0
-                }
-            else:
-                yield {"type": "stream", "content": f"⚠️ [{node.id}] 관련 컨텍스트를 찾지 못했습니다.\n"}
-                yield {
-                    "type": "parsed_result",
-                    "success": True,
-                    "description": "No relevant context found",
-                    "output": "",
                     "execution_time": 0.0
                 }
         except Exception as e:

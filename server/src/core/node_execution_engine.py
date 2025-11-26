@@ -302,15 +302,20 @@ class NodeExecutionEngine:
 
             # 이벤트 기반 실행 루프
             while total_completed < total_nodes:
-                # 중단 요청 체크 (한 번만 로그)
-                if self.is_stopping and not self.stop_logged:
-                    logger.info("Workflow execution stopped by user request")
-                    self.stop_logged = True
-                    # 현재 실행 중인 태스크들을 취소하지 않고 완료되기를 기다림
-                    yield {
-                        "type": "stop_requested",
-                        "message": "워크플로우 중단이 요청되었습니다. 현재 실행 중인 노드들이 완료되면 중단됩니다."
-                    }
+                # 중단 요청 체크 - 루프 시작 시 즉시 확인
+                if self.is_stopping:
+                    if not self.stop_logged:
+                        logger.info("Workflow execution stopped by user request")
+                        self.stop_logged = True
+                        yield {
+                            "type": "stop_requested",
+                            "message": "워크플로우 중단이 요청되었습니다. 현재 실행 중인 노드들이 완료되면 중단됩니다."
+                        }
+                    
+                    # 활성 태스크가 없으면 즉시 중단
+                    if not active_tasks:
+                        logger.info("Workflow execution stopping - no active tasks")
+                        break
                 
                 # 스트리밍 출력 처리
                 try:
@@ -330,10 +335,12 @@ class NodeExecutionEngine:
                         if completed_node_id in active_tasks:
                             del active_tasks[completed_node_id]
                         
-                        # 중단 요청이 있고 더 이상 활성 태스크가 없다면 루프 종료
-                        if self.is_stopping and not active_tasks:
-                            logger.info("Workflow execution stopping - all active tasks completed")
-                            break
+                        # 중단 요청이 있으면 새로운 노드 시작하지 않고 다음 루프로
+                        if self.is_stopping:
+                            if not active_tasks:
+                                logger.info("Workflow execution stopping - all active tasks completed")
+                                break
+                            continue  # 새 노드 시작하지 않고 루프 계속
                         
                         # 즉시 post-node들 확인하고 실행 가능한 노드 시작
                         for edge in workflow.edges:
@@ -348,10 +355,6 @@ class NodeExecutionEngine:
                                 # 의존성 체크: 모든 pre-node가 완료되었는지 확인
                                 pre_nodes = set(pre_nodes_map.get(target_node_id, []))
                                 if pre_nodes.issubset(self.completed_nodes):
-                                    # 중단 요청이 있으면 새로운 노드 시작 안함
-                                    if self.is_stopping:
-                                        continue
-                                        
                                     target_node = node_lookup[target_node_id]
                                     
                                     # 노드 실행 시작 알림을 먼저 발생시킴 (딜레이 최소화)
@@ -485,10 +488,9 @@ class NodeExecutionEngine:
             context_outputs = [self.node_outputs[ctx_id] for ctx_id in context_node_ids]
             pre_outputs = [self.node_outputs[pre_id] for pre_id in regular_pre_node_ids]
 
-            # context가 있는 LLM 노드인지 확인하고 적절한 스트리밍 메서드 호출
-            if (node.type in ["generation-node", "ensemble-node", "validation-node"] 
-                and context_outputs and hasattr(self.node_executor, 'execute_node_stream_with_context')):
-                # context-aware 스트리밍 실행
+            # LLM 노드는 항상 context-aware 실행 (context가 없어도 분리 처리 필요)
+            if node.type in ["generation-node", "ensemble-node", "validation-node"]:
+                # context-aware 스트리밍 실행 (context가 비어있어도 OK)
                 async for chunk in self.node_executor.execute_node_stream_with_context(node, pre_outputs, context_outputs):
                     if chunk["type"] == "stream":
                         accumulated_output += chunk["content"] 
@@ -499,7 +501,7 @@ class NodeExecutionEngine:
                         final_result = chunk
                         parsed_result = chunk.get("output")
             else:
-                # 기존 방식으로 스트리밍 실행 (모든 pre_outputs 합쳐서)
+                # 텍스트 노드는 기존 방식으로 실행 (모든 pre_outputs 합쳐서)
                 all_pre_outputs = pre_outputs + context_outputs
                 async for chunk in self.node_executor.execute_node_stream(node, all_pre_outputs):
                     if chunk["type"] == "stream":
@@ -537,6 +539,10 @@ class NodeExecutionEngine:
         """워크플로우 실행 중단 요청"""
         self.is_stopping = True
         logger.info("Workflow execution stop requested")
+    
+    def stop(self):
+        """워크플로우 실행 중단 요청 (API 호환용 alias)"""
+        self.stop_execution()
     
     def reset_execution_state(self):
         """실행 상태 초기화"""

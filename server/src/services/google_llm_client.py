@@ -95,33 +95,61 @@ class GoogleLLMClient(LLMClientInterface):
             
             print(f"🔄 Google AI 응답 생성 시작...")
             
-            # 비동기 스트리밍 응답 생성 (executor를 통한 완전 병렬화)
+            # 비동기 스트리밍 응답 생성 - 실시간 청크 전송
             try:
                 import concurrent.futures
                 
-                # 동기 스트리밍을 별도 스레드에서 실행하여 블로킹 방지
-                def _sync_generate():
+                # 큐를 통한 실시간 스트리밍
+                chunk_queue = asyncio.Queue()
+                
+                # 메인 이벤트 루프 참조 저장 (별도 스레드에서 사용)
+                main_loop = asyncio.get_event_loop()
+                
+                def _sync_generate_to_queue():
+                    """동기 스트리밍을 큐로 실시간 전송"""
                     try:
                         response = genai_model.generate_content(prompt, stream=True)
-                        chunks = []
                         for chunk in response:
                             if hasattr(chunk, 'text') and chunk.text:
-                                chunks.append(chunk.text)
-                        return chunks
+                                # 메인 루프에 큐 put 요청
+                                asyncio.run_coroutine_threadsafe(
+                                    chunk_queue.put(chunk.text), 
+                                    main_loop
+                                )
+                        # 완료 신호
+                        asyncio.run_coroutine_threadsafe(
+                            chunk_queue.put(None), 
+                            main_loop
+                        )
                     except Exception as e:
-                        raise e
+                        asyncio.run_coroutine_threadsafe(
+                            chunk_queue.put(Exception(str(e))), 
+                            main_loop
+                        )
                 
-                # ThreadPoolExecutor로 완전 비동기화
-                loop = asyncio.get_event_loop()
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    chunks = await loop.run_in_executor(executor, _sync_generate)
+                # ThreadPoolExecutor로 별도 스레드에서 실행
+                executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                main_loop.run_in_executor(executor, _sync_generate_to_queue)
                 
-                print(f"✅ Google AI 응답 객체 생성 완료")
+                print(f"✅ Google AI 스트리밍 시작")
                 
-                # 비동기적으로 청크 전송
-                for chunk in chunks:
+                # 큐에서 실시간으로 청크 받아서 전송
+                while True:
+                    chunk = await chunk_queue.get()
+                    
+                    # 완료 신호
+                    if chunk is None:
+                        break
+                    
+                    # 에러 체크
+                    if isinstance(chunk, Exception):
+                        raise chunk
+                    
+                    # 청크 즉시 전송
                     yield chunk
-                    await asyncio.sleep(0.01)  # 다른 태스크에게 제어권 양보
+                    await asyncio.sleep(0)  # 다른 태스크에게 제어권 양보
+                
+                executor.shutdown(wait=False)
                         
             except Exception as stream_e:
                 error_detail = traceback.format_exc()
