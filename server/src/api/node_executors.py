@@ -334,7 +334,7 @@ class NodeExecutor:
                     # 검색은 했지만 결과가 없는 경우
                     description = f"No context found from KB '{knowledge_base}' ({found_chunks}/{total_chunks} chunks found)"
                 else:
-                    description = "No knowledge base search performed and no additional context provided"
+                    description = "No knowledge base search performed and no additional context provided."
             else:
                 context_content = "\n\n".join(context_parts)
                 # description에 청크 수 정보 포함
