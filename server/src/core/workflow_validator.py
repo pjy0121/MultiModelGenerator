@@ -112,9 +112,9 @@ class WorkflowValidator:
                     errors.append(f"노드 '{node_id}'에는 최소 하나의 post-node가 있어야 합니다.")
             
             # 조건 3: pre-node 개수 제한 규칙
-            # - output-node, ensemble-node: 제한 없음
-            # - generation-node, validation-node: input-node 최대 1개 + context-node 최대 1개
-            # - 다른 노드들: 일반 pre-node 1개 + context-node 최대 1개
+            # - output-node, ensemble-node: 제한 없음 (여러 context-node 허용)
+            # - generation-node, validation-node: input-node 최대 1개 + 여러 context-node 허용
+            # - 다른 노드들: 일반 pre-node 1개 + 여러 context-node 허용
             
             context_pre_nodes = []
             input_pre_nodes = []
@@ -130,10 +130,7 @@ class WorkflowValidator:
                     else:
                         other_pre_nodes.append(pre_node_id)
             
-            # context-node는 모든 노드에서 최대 1개만 허용
-            if len(context_pre_nodes) > 1:
-                node_name = self._format_node_name(node_id, node.type)
-                errors.append(f"{node_name}: context-node는 최대 1개만 연결할 수 있습니다.")
+            # context-node는 여러 개 허용 (제한 제거)
             
             # 노드 타입별 pre-node 제한 검사
             if node.type == NodeType.GENERATION:
