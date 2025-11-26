@@ -6,7 +6,7 @@ import sys
 import os
 
 # Add server directory to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'server'))
 
 from src.services.llm_factory import LLMFactory
 
@@ -15,13 +15,14 @@ def test_llm_clients():
     print("Testing LLM clients...")
     
     try:
-        # Test getting available providers
-        providers = LLMFactory.get_available_providers()
+        # Test getting available providers with instance-based factory
+        llm_factory = LLMFactory()
+        providers = llm_factory.get_available_providers()
         print(f"Available providers: {providers}")
         
         # Test getting Google client
         if "google" in providers:
-            client = LLMFactory.get_client("google")
+            client = llm_factory.get_client("google")
             print(f"Google client: {client}")
             print(f"Google available: {client.is_available()}")
         else:
@@ -29,7 +30,7 @@ def test_llm_clients():
             
         # Test getting OpenAI client
         if "openai" in providers:
-            client = LLMFactory.get_client("openai")
+            client = llm_factory.get_client("openai")
             print(f"OpenAI client: {client}")
             print(f"OpenAI available: {client.is_available()}")
         else:
