@@ -33,10 +33,14 @@ class VectorStoreService:
         self,
         kb_name: str, 
         query: str, 
-        search_intensity: str = "medium",
+        search_intensity: str = "standard",
         rerank_info: Optional[Dict] = None
-    ) -> List[str]:
-        """벡터 검색 (VectorStore에 직접 위임, 에러 복구 포함)"""
+    ) -> Dict:
+        """벡터 검색 (VectorStore에 직접 위임, 에러 복구 포함)
+        
+        Returns:
+            Dict with 'chunks', 'total_chunks', 'found_chunks'
+        """
         try:
             store = self.get_vector_store(kb_name)
             return await store.search(query, search_intensity, rerank_info)

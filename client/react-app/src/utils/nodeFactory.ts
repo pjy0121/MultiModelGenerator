@@ -31,11 +31,11 @@ export const createWorkflowNode = (nodeType: NodeType, position: { x: number; y:
     // 기본 출력 형식 템플릿 적용
     nodeData.output_format = OUTPUT_FORMAT_TEMPLATES[nodeType as keyof typeof OUTPUT_FORMAT_TEMPLATES] || '';
     
-    // 노드 타입에 따른 기본 검색 강도 설정
+    // 노드 타입에 따른 기본 검색 모드 설정
     if (nodeType === NodeType.VALIDATION) {
-      nodeData.search_intensity = SearchIntensity.VERY_LOW; // validation-node: 매우 낮음
+      nodeData.search_intensity = SearchIntensity.STANDARD; // validation-node: 표준 검색
     } else {
-      nodeData.search_intensity = SearchIntensity.MEDIUM; // generation, ensemble: 보통
+      nodeData.search_intensity = SearchIntensity.STANDARD; // generation, ensemble: 표준 검색
     }
   }
   

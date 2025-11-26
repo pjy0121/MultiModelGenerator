@@ -165,7 +165,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     if (nodeType === NodeType.CONTEXT) {
       const state = get();
       state.updateNode(newNode.id, {
-        search_intensity: SearchIntensity.MEDIUM,
+        search_intensity: SearchIntensity.STANDARD,
         rerank_provider: LLMProvider.NONE, // 기본값: 재정렬 사용 안 함
         rerank_model: undefined
       });

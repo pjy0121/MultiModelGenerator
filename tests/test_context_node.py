@@ -25,7 +25,7 @@ class TestContextNode:
                     "type": "context-node",
                     "position": {"x": 200, "y": 50},
                     "knowledge_base": "sentence_nvme_2-2",
-                    "search_intensity": "medium"
+                    "search_intensity": "standard"
                 },
                 {
                     "id": "gen_1",

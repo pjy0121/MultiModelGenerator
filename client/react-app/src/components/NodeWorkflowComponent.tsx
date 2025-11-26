@@ -241,18 +241,13 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = memo(
               <div style={{ marginBottom: 8 }}>
                 <div style={{ marginBottom: 4 }}>
                   <Text style={{ fontSize: 10, color: '#666' }}>
-                    <strong>{data.knowledge_base && `Base: ${data.knowledge_base}`}</strong>
+                    <strong>{data.knowledge_base && data.knowledge_base !== 'none' ? `Base: ${data.knowledge_base}` : 'Base: 없음'}</strong>
                   </Text>
                   <br />
                   <Text style={{ fontSize: 10, color: '#666' }}>
-                    <strong>{data.knowledge_base && data.search_intensity ? `Intensity: ${getSearchIntensityLabel(data.search_intensity)}` : ''}</strong>
+                    <strong>{data.knowledge_base && data.knowledge_base !== 'none' && data.search_intensity ? `Intensity: ${getSearchIntensityLabel(data.search_intensity)}` : ''}</strong>
                   </Text>
                 </div>
-                {!data.knowledge_base && (
-                  <Text style={{ fontSize: 10, color: '#ff4d4f', fontStyle: 'italic' }}>
-                    ⚠️ 지식 베이스가 설정되지 않았습니다
-                  </Text>
-                )}
               </div>
             )}
             

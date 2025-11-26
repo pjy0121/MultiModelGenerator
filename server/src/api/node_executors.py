@@ -281,9 +281,13 @@ class NodeExecutor:
             additional_context = node.additional_context or ""
             
             context_parts = []
+            total_chunks = 0
+            found_chunks = 0
+            kb_searched = False  # 지식베이스 검색 수행 여부
             
             # 지식베이스가 설정되어 있고 "none"이 아니면 검색 수행
             if knowledge_base and knowledge_base.lower() != "none":
+                kb_searched = True
                 if not input_data.strip():
                     return NodeExecutionResult(
                         node_id=node.id,
@@ -302,15 +306,19 @@ class NodeExecutor:
                 
                 # 벡터 DB 검색 실행
                 vector_store_service = VectorStoreService()
-                context_results = await vector_store_service.search(
+                search_result = await vector_store_service.search(
                     kb_name=knowledge_base,
                     query=input_data,
                     search_intensity=search_intensity,
                     rerank_info=rerank_info
                 )
                 
+                context_results = search_result["chunks"]
+                total_chunks = search_result["total_chunks"]
+                found_chunks = search_result["found_chunks"]
+                
                 if context_results:
-                    # 지식베이스 이름을 출력 앞에 추가
+                    # 지식베이스 이름만 출력 앞에 추가 (청크 수 정보는 description에 포함)
                     kb_header = f"=== Knowledge Base: {knowledge_base} ==="
                     kb_content = "\n".join(context_results)
                     context_parts.append(f"{kb_header}\n{kb_content}")
@@ -322,10 +330,18 @@ class NodeExecutor:
             # 최종 컨텍스트 결합
             if not context_parts:
                 context_content = "No context available."
-                description = "No knowledge base search performed and no additional context provided"
+                if kb_searched:
+                    # 검색은 했지만 결과가 없는 경우
+                    description = f"No context found from KB '{knowledge_base}' ({found_chunks}/{total_chunks} chunks found)"
+                else:
+                    description = "No knowledge base search performed and no additional context provided"
             else:
                 context_content = "\n\n".join(context_parts)
-                kb_info = f" from knowledge base '{knowledge_base}'" if (knowledge_base and knowledge_base.lower() != "none") else ""
+                # description에 청크 수 정보 포함
+                if kb_searched:
+                    kb_info = f" from KB '{knowledge_base}' ({found_chunks}/{total_chunks} chunks found)"
+                else:
+                    kb_info = ""
                 additional_info = " + user-defined context" if additional_context.strip() else ""
                 description = f"Context prepared{kb_info}{additional_info}"
             
@@ -357,9 +373,13 @@ class NodeExecutor:
             additional_context = node.additional_context or ""
             
             context_parts = []
+            total_chunks = 0
+            found_chunks = 0
+            kb_searched = False  # 지식베이스 검색 수행 여부
             
             # 지식베이스가 설정되어 있고 "none"이 아니면 검색 수행
             if knowledge_base and knowledge_base.lower() != "none":
+                kb_searched = True
                 if not query.strip():
                     yield {"type": "result", "success": False, "error": "No input data for context search"}
                     return
@@ -377,24 +397,28 @@ class NodeExecutor:
                 yield {"type": "stream", "content": f"🔄 [{node.id}] 재정렬 설정됨: {node.rerank_provider}/{node.rerank_model}\n"}
             
             # 지식베이스 검색 수행 (설정되어 있고 "none"이 아닐 경우)
-            if knowledge_base and knowledge_base.lower() != "none":
+            if kb_searched:
                 # 벡터 스토어에서 관련 컨텍스트 검색
                 vector_store_service = VectorStoreService()
-                context_results = await vector_store_service.search(
+                search_result = await vector_store_service.search(
                     kb_name=knowledge_base,
                     query=query,
                     search_intensity=node.search_intensity or SearchIntensity.get_default(),
                     rerank_info=rerank_info
                 )
                 
+                context_results = search_result["chunks"]
+                total_chunks = search_result["total_chunks"]
+                found_chunks = search_result["found_chunks"]
+                
                 if context_results:
-                    # 지식베이스 이름을 출력 앞에 추가
+                    # 지식베이스 이름만 출력 앞에 추가 (청크 수 정보는 description과 스트림 메시지에 포함)
                     kb_header = f"=== Knowledge Base: {knowledge_base} ==="
                     kb_content = "\n".join(context_results)
                     context_parts.append(f"{kb_header}\n{kb_content}")
-                    yield {"type": "stream", "content": f"✅ [{node.id}] {len(context_results)}개의 관련 컨텍스트를 찾았습니다.\n"}
+                    yield {"type": "stream", "content": f"✅ [{node.id}] 전체 {total_chunks}개 청크 중 {found_chunks}개의 관련 컨텍스트를 찾았습니다.\n"}
                 else:
-                    yield {"type": "stream", "content": f"⚠️ [{node.id}] 지식베이스에서 관련 컨텍스트를 찾지 못했습니다.\n"}
+                    yield {"type": "stream", "content": f"⚠️ [{node.id}] 지식베이스 (전체 {total_chunks}개 청크)에서 관련 컨텍스트를 찾지 못했습니다.\n"}
             
             # 추가 컨텍스트가 있으면 추가
             if additional_context.strip():
@@ -405,16 +429,24 @@ class NodeExecutor:
             # 최종 컨텍스트 결합
             if not context_parts:
                 yield {"type": "stream", "content": f"⚠️ [{node.id}] 사용 가능한 컨텍스트가 없습니다.\n"}
+                if kb_searched:
+                    description = f"No context found from KB '{knowledge_base}' ({found_chunks}/{total_chunks} chunks found)"
+                else:
+                    description = "No context available"
                 yield {
                     "type": "parsed_result",
                     "success": True,
-                    "description": "No context available",
+                    "description": description,
                     "output": "No context available.",
                     "execution_time": 0.0
                 }
             else:
                 context_content = "\n\n".join(context_parts)
-                kb_info = f" from KB '{knowledge_base}'" if (knowledge_base and knowledge_base.lower() != "none") else ""
+                # description에 청크 수 정보 포함
+                if kb_searched:
+                    kb_info = f" from KB '{knowledge_base}' ({found_chunks}/{total_chunks} chunks)"
+                else:
+                    kb_info = ""
                 additional_info = " + user-defined" if additional_context.strip() else ""
                 description = f"Context prepared{kb_info}{additional_info}"
                 

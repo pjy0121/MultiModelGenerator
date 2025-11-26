@@ -164,7 +164,7 @@ class VectorStore:
         query: str,
         search_intensity: str,
         rerank_info: Optional[Dict[str, str]] = None
-    ) -> List[str]:
+    ) -> Dict[str, any]:
         """
         통합 검색 메서드 - 공통 로직을 하나로 통합
         
@@ -172,7 +172,19 @@ class VectorStore:
             query: 검색 쿼리
             search_intensity: 검색 강도
             rerank_info: rerank 정보 {"provider": "openai", "model": "gpt-3.5-turbo"}
+            
+        Returns:
+            Dict with 'chunks' (검색 결과), 'total_chunks' (전체 청크 수), 'found_chunks' (검색된 청크 수)
         """
+        # 전체 청크 수 조회
+        import asyncio
+        collection = await asyncio.get_event_loop().run_in_executor(
+            None, self.get_collection
+        )
+        total_chunks = await asyncio.get_event_loop().run_in_executor(
+            None, collection.count
+        )
+        
         # 공통: 검색 파라미터 설정
         search_params = SearchIntensity.get_search_params(search_intensity)
 
@@ -183,19 +195,20 @@ class VectorStore:
             initial_chunks = await self._search_initial_chunks(query, top_k_init)
             
             if not initial_chunks:
-                return []
+                return {"chunks": [], "total_chunks": total_chunks, "found_chunks": 0}
             
             top_k_final = search_params["final"]
             try:
                 reranker = ReRanker(provider=rerank_info["provider"], model=rerank_info["model"])
                 reranked_chunks = await reranker.rerank_documents(query, initial_chunks, top_k_final)
-                return reranked_chunks
+                return {"chunks": reranked_chunks, "total_chunks": total_chunks, "found_chunks": len(reranked_chunks)}
             except Exception as e:
                 print(f"⚠️ 재정렬 중 오류 발생: {e}. 초기 검색 결과의 일부를 반환합니다.")
-                return initial_chunks[:top_k_final]
+                result_chunks = initial_chunks[:top_k_final]
+                return {"chunks": result_chunks, "total_chunks": total_chunks, "found_chunks": len(result_chunks)}
         else:
             initial_chunks = await self._search_initial_chunks(query, top_k_init)
-            return initial_chunks
+            return {"chunks": initial_chunks, "total_chunks": total_chunks, "found_chunks": len(initial_chunks)}
     
     async def get_status(self) -> dict:
         """지식 베이스 상태 정보 반환 (비동기 개선된 버전)"""
@@ -241,29 +254,26 @@ class VectorStore:
             return []
     
     async def get_knowledge_base_info(self) -> Dict:
-        """지식 베이스 상세 정보 반환 (ChromaDB 파일 접근 최소화)"""
+        """지식 베이스 상세 정보 반환 (실제 ChromaDB 청크 개수 포함)"""
         import asyncio
         
-        def get_info_without_chromadb():
-            """ChromaDB 파일에 접근하지 않고 기본 정보만 반환"""
-            # 디렉토리 존재 여부만 확인
+        def get_info_with_chromadb():
+            """ChromaDB에서 실제 청크 개수 조회"""
             exists = os.path.exists(self.db_path)
             
-            # 파일 개수로 대략적인 chunk 수 추정 (ChromaDB 접근 없이)
-            estimated_count = 0
+            actual_count = 0
             if exists:
                 try:
-                    # ChromaDB 디렉토리 내 파일들의 개수로 추정
-                    import glob
-                    files = glob.glob(os.path.join(self.db_path, "**", "*"), recursive=True)
-                    # 대략적인 추정 (정확하지 않지만 블로킹 없음)
-                    estimated_count = max(0, len([f for f in files if os.path.isfile(f)]) // 10)
-                except:
-                    estimated_count = 0
+                    # 실제 ChromaDB 컬렉션에서 개수 조회
+                    collection = self.get_collection()
+                    actual_count = collection.count()
+                except Exception as e:
+                    print(f"⚠️ ChromaDB 개수 조회 실패 ({self.kb_name}): {e}")
+                    actual_count = 0
                     
             return {
                 'name': self.kb_name,
-                'count': estimated_count,  # 추정값 (블로킹 방지)
+                'count': actual_count,  # 실제 청크 개수
                 'path': self.db_path,
                 'exists': exists
             }
@@ -272,5 +282,5 @@ class VectorStore:
         loop = asyncio.get_event_loop()
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor() as executor:
-            return await loop.run_in_executor(executor, get_info_without_chromadb)
+            return await loop.run_in_executor(executor, get_info_with_chromadb)
 
