@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import logging
 import json
+import uuid
+from typing import Dict, Optional
 
 # Node-based workflow imports
 from ..core.node_execution_engine import NodeExecutionEngine
@@ -41,6 +43,9 @@ app.add_middleware(
 validator = WorkflowValidator()
 # vector_store_service는 요청별로 생성
 
+# Active workflow executions tracking (multi-user support)
+active_executions: Dict[str, NodeExecutionEngine] = {}
+
 @app.get("/")
 async def health():
     return {"status": "Node-based workflow API is running", "version": "2.0.0"}
@@ -61,14 +66,25 @@ async def execute_workflow_stream(request: WorkflowExecutionRequest):
     Node-based 워크플로우 실행 (스트리밍)
     LLM 응답을 실시간으로 스트리밍하면서 최종 파싱된 결과도 반환
     """
+    # Generate unique execution ID for this workflow
+    execution_id = str(uuid.uuid4())
     
     async def generate_stream():
+        execution_engine = None
         try:
-            logger.info(f"Starting streaming workflow execution with {len(request.workflow.nodes)} nodes")
+            logger.info(f"Starting streaming workflow execution {execution_id} with {len(request.workflow.nodes)} nodes")
             
-            # 각 워크플로우 실행마다 독립적인 실행 엔진 인스턴스 생성
+            # 실행 엔진 생성 및 등록
             execution_engine = NodeExecutionEngine()
-            logger.info("Created isolated NodeExecutionEngine instance for this workflow")
+            active_executions[execution_id] = execution_engine
+            logger.info(f"Registered execution {execution_id} for stop control")
+            
+            # 첫 이벤트로 execution_id 전달
+            yield format_sse_data({
+                'type': 'execution_started',
+                'execution_id': execution_id,
+                'message': 'Workflow execution started'
+            })
             
             # 실행 전 검증
             validation_result = validator.validate_workflow(request.workflow)
@@ -94,8 +110,13 @@ async def execute_workflow_stream(request: WorkflowExecutionRequest):
                     break
                 
         except Exception as e:
-            logger.error(f"Streaming workflow execution failed: {e}")
+            logger.error(f"Streaming workflow execution {execution_id} failed: {e}")
             yield format_sse_data({'type': 'error', 'message': str(e)})
+        finally:
+            # 실행 완료 시 정리
+            if execution_id in active_executions:
+                del active_executions[execution_id]
+                logger.info(f"Cleaned up execution {execution_id}")
     
     return StreamingResponse(
         generate_stream(),
@@ -107,18 +128,32 @@ async def execute_workflow_stream(request: WorkflowExecutionRequest):
         }
     )
 
-@app.post("/stop-workflow")
-async def stop_workflow():
-    """워크플로우 실행 중단 (현재는 독립적인 인스턴스로 인해 전역 중단 방식 비활성화)"""
+@app.post("/stop-workflow/{execution_id}")
+async def stop_workflow(execution_id: str):
+    """
+    워크플로우 실행 중단
+    
+    특정 execution_id의 워크플로우를 중단합니다.
+    현재 실행 중인 노드는 완료하고, 새로운 노드 실행을 중단합니다.
+    """
     try:
-        # TODO: 요청별 실행 컨텍스트 관리 방식으로 개선 필요
-        # 현재는 각 실행이 독립적이므로 전역 중단 기능 비활성화
+        if execution_id not in active_executions:
+            logger.warning(f"Execution not found: {execution_id}")
+            return {
+                "success": False,
+                "message": "실행 중인 워크플로우를 찾을 수 없습니다."
+            }
+        
+        # 중단 플래그 설정
+        active_executions[execution_id].stop()
+        logger.info(f"Stop signal sent to execution {execution_id}")
+        
         return {
             "success": True,
-            "message": "워크플로우는 현재 독립적으로 실행되고 있어 전역 중단이 지원되지 않습니다."
+            "message": "중단 요청이 전송되었습니다. 실행 중인 노드는 완료 후 중단됩니다."
         }
     except Exception as e:
-        logger.error(f"Failed to stop workflow: {e}")
+        logger.error(f"Failed to stop workflow {execution_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/knowledge-bases", response_model=KnowledgeBaseListResponse)

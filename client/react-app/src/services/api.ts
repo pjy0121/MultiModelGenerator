@@ -76,8 +76,8 @@ export const nodeBasedWorkflowAPI = {
   },
   
   // 워크플로우 중단
-  stopWorkflowExecution: async (): Promise<{ success: boolean; message: string }> => {
-    const response = await api.post(API_CONFIG.ENDPOINTS.STOP_WORKFLOW);
+  stopWorkflowExecution: async (executionId: string): Promise<{ success: boolean; message: string }> => {
+    const response = await api.post(`${API_CONFIG.ENDPOINTS.STOP_WORKFLOW}/${executionId}`);
     return response.data;
   }
 };

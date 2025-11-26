@@ -84,7 +84,7 @@ class KnowledgeBaseAdmin:
         print("📋 지식 베이스 목록")
         print("=" * 60)
         
-        kb_list = Config.get_kb_list()
+        kb_list = get_kb_list_sync()
         
         if not kb_list:
             print("❌ 등록된 지식 베이스가 없습니다.")
@@ -124,7 +124,8 @@ class KnowledgeBaseAdmin:
         # 샘플 검색 테스트
         print("\n🔍 샘플 검색 테스트...")
         try:
-            sample_results = vector_store.collection.query(
+            collection = vector_store.get_collection()
+            sample_results = collection.query(
                 query_texts=["test"],
                 n_results=1
             )
@@ -227,8 +228,8 @@ class KnowledgeBaseAdmin:
                 print("❌ 지식 베이스 이름을 입력해주세요.")
                 continue
             
-            # 파일명으로 사용할 수 없는 문자 제거
-            safe_name = "".join(c for c in kb_name if c.isalnum() or c in (' ', '-', '_')).strip()
+            # 파일명으로 사용할 수 없는 문자 제거 (., -, _ 허용)
+            safe_name = "".join(c for c in kb_name if c.isalnum() or c in (' ', '-', '_', '.')).strip()
             safe_name = safe_name.replace(' ', '_')
             
             if not safe_name:
