@@ -310,7 +310,10 @@ class NodeExecutor:
                 )
                 
                 if context_results:
-                    context_parts.append("\n".join(context_results))
+                    # 지식베이스 이름을 출력 앞에 추가
+                    kb_header = f"=== Knowledge Base: {knowledge_base} ==="
+                    kb_content = "\n".join(context_results)
+                    context_parts.append(f"{kb_header}\n{kb_content}")
             
             # 추가 컨텍스트가 있으면 추가
             if additional_context.strip():
@@ -385,14 +388,18 @@ class NodeExecutor:
                 )
                 
                 if context_results:
-                    context_parts.append("\n".join(context_results))
+                    # 지식베이스 이름을 출력 앞에 추가
+                    kb_header = f"=== Knowledge Base: {knowledge_base} ==="
+                    kb_content = "\n".join(context_results)
+                    context_parts.append(f"{kb_header}\n{kb_content}")
                     yield {"type": "stream", "content": f"✅ [{node.id}] {len(context_results)}개의 관련 컨텍스트를 찾았습니다.\n"}
                 else:
                     yield {"type": "stream", "content": f"⚠️ [{node.id}] 지식베이스에서 관련 컨텍스트를 찾지 못했습니다.\n"}
             
             # 추가 컨텍스트가 있으면 추가
             if additional_context.strip():
-                context_parts.append(additional_context.strip())
+                additional_header = "=== Additional Context ==="
+                context_parts.append(f"{additional_header}\n{additional_context.strip()}")
                 yield {"type": "stream", "content": f"📝 [{node.id}] 사용자 정의 컨텍스트가 추가되었습니다.\n"}
             
             # 최종 컨텍스트 결합
