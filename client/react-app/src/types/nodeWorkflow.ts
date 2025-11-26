@@ -66,7 +66,8 @@ export interface NodeBasedExecutionResult {
 
 // 스트림 데이터 타입
 export interface StreamChunk {
-  type: 'node_start' | 'node_streaming' | 'node_complete' | 'workflow_complete' | 'validation_error' | 'error';
+  type: 'execution_started' | 'node_start' | 'node_streaming' | 'node_complete' | 'workflow_complete' | 'validation_error' | 'stop_requested' | 'error';
+  execution_id?: string;  // execution_started 이벤트에서 전달
   node_id?: string;
   content?: string;
   results?: NodeBasedExecutionResult[];

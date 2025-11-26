@@ -31,6 +31,7 @@ interface NodeWorkflowState {
   // 실행 상태
   isExecuting: boolean;
   isStopping: boolean; // 워크플로우 중단 중인 상태
+  currentExecutionId: string | null; // 현재 실행 중인 워크플로우의 ID
   executionResult: NodeBasedWorkflowResponse | null;
   
   // 노드별 실행 상태 및 스트리밍 출력
@@ -106,6 +107,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     
     isExecuting: false,
     isStopping: false, // 중단 상태 초기값
+    currentExecutionId: null, // 실행 ID 초기값
     executionResult: null,
     
     validationResult: null,
@@ -288,7 +290,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       throw new Error(detailedMessage);
     }
 
-    set({ isExecuting: true, executionResult: null });
+    set({ isExecuting: true, executionResult: null, currentExecutionId: null });
     
     try {
       // 서버가 기대하는 WorkflowExecutionRequest 형식으로 변환
@@ -408,6 +410,12 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       // 스트리밍 실행
       for await (const chunk of nodeBasedWorkflowAPI.executeNodeWorkflowStream(request)) {
         onStreamUpdate(chunk);
+        
+        // execution_id 수신 및 저장
+        if (chunk.type === 'execution_started' && chunk.execution_id) {
+          set({ currentExecutionId: chunk.execution_id });
+          console.log('Execution ID received:', chunk.execution_id);
+        }
         
         // validation_error 타입 처리
         if (chunk.type === 'validation_error') {
@@ -565,7 +573,8 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
               ...completedStates // 완료된 노드 상태 업데이트
             },
             isExecuting: false,
-            isStopping: false // 워크플로우 완료 시 중단 상태도 정리
+            isStopping: false, // 워크플로우 완료 시 중단 상태도 정리
+            currentExecutionId: null // 실행 ID 정리
           }));
           
           // 중단 요청이 있었다면 여기서 처리 완료
@@ -617,7 +626,8 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       
       set({ 
         isExecuting: false,
-        nodeExecutionStates: updatedStates
+        nodeExecutionStates: updatedStates,
+        currentExecutionId: null // 에러 시도 정리
         // 완료된 노드의 결과와 출력은 유지
       });
       
@@ -641,7 +651,8 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       // 실행 상태 및 중단 상태 정리
       set({ 
         isExecuting: false,
-        isStopping: false
+        isStopping: false,
+        currentExecutionId: null // 정리
       });
       
       // 중단된 경우 메시지 표시
@@ -656,12 +667,18 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     const state = get();
     if (!state.isExecuting || state.isStopping) return;
     
+    const executionId = state.currentExecutionId;
+    if (!executionId) {
+      showErrorMessage('실행 ID를 찾을 수 없습니다.');
+      return;
+    }
+    
     // 중단 상태로 전환
     set({ isStopping: true });
     
     try {
       // 서버에 중단 요청
-      const result = await nodeBasedWorkflowAPI.stopWorkflowExecution();
+      const result = await nodeBasedWorkflowAPI.stopWorkflowExecution(executionId);
       message.info(result.message || '워크플로우 중단 요청이 전송되었습니다.');
     } catch (error) {
       console.error('워크플로우 중단 요청 실패:', error);

@@ -31,7 +31,15 @@ LLM_CONFIG = {
 # 벡터 DB 설정
 VECTOR_DB_CONFIG = {
     "root_dir": "./knowledge_bases",
-    "embedding_model": "all-MiniLM-L6-v2",  # name or path
+    # TEI (Text Embeddings Inference) 설정
+    "tei_enabled": os.getenv("TEI_ENABLED", "true").lower() == "true",  # TEI 사용 여부
+    "tei_base_url": os.getenv("TEI_BASE_URL", "http://localhost:8080"),  # TEI 서버 주소
+    "tei_timeout": int(os.getenv("TEI_TIMEOUT", "30")),  # TEI 요청 타임아웃 (초)
+    "tei_model_name": "BAAI/bge-m3",  # TEI 서버에서 사용하는 모델
+    "embedding_dimension": 1024,  # BAAI/bge-m3 임베딩 차원
+    # 로컬 embedding 설정 (TEI 사용 안 할 때 fallback)
+    "local_embedding_model": "all-MiniLM-L6-v2",  # name or path
+    # 문서 처리 설정
     "chunk_size": 6000,
     "chunk_overlap": 100,
     "similarity_threshold": 0.85

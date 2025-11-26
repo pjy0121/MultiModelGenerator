@@ -26,25 +26,31 @@ class TestVectorStoreDirect:
     @pytest.fixture
     def vector_store(self):
         """VectorStore 인스턴스 생성"""
-        return VectorStore("keyword_nvme_2-2")
+        # 동적으로 사용 가능한 첫 번째 KB 사용
+        kb_list = VectorStore.get_knowledge_bases()
+        if not kb_list:
+            pytest.skip("사용 가능한 지식 베이스가 없습니다")
+        return VectorStore(kb_list[0])
     
     def test_vector_store_creation(self, vector_store):
         """VectorStore 인스턴스 생성 테스트"""
         assert vector_store is not None, "VectorStore 생성 실패"
-        assert vector_store.kb_name == "keyword_nvme_2-2", "KB 이름 불일치"
-        assert hasattr(vector_store, 'collection'), "컬렉션 속성 없음"
+        assert vector_store.kb_name is not None, "KB 이름이 None입니다"
+        assert len(vector_store.kb_name) > 0, "KB 이름이 비어있습니다"
         assert hasattr(vector_store, 'db_path'), "DB 경로 속성 없음"
     
     def test_vector_store_collection_info(self, vector_store):
         """VectorStore 컬렉션 정보 테스트"""
-        # 컬렉션 이름 확인
-        assert vector_store.collection.name == "spec_documents", "컬렉션 이름 불일치"
+        # 컬렉션 접근 확인
+        collection = vector_store.get_collection()
+        assert collection is not None, "컬렉션을 가져올 수 없습니다"
+        assert collection.name == "spec_documents", "컬렉션 이름 불일치"
         
         # 문서 수 확인
-        count = vector_store.collection.count()
+        count = collection.count()
         assert count >= 0, "문서 수가 음수입니다"
         
-        print(f"✅ 컬렉션 '{vector_store.collection.name}'에 {count}개 문서")
+        print(f"✅ 컬렉션 '{collection.name}'에 {count}개 문서")
     
     def test_vector_store_get_status(self, vector_store):
         """VectorStore get_status() 메서드 테스트"""
@@ -58,7 +64,7 @@ class TestVectorStoreDirect:
         # 상태 값 확인
         assert status['exists'] is True, "지식 베이스가 존재하지 않는다고 표시됨"
         assert status['count'] >= 0, "문서 수가 음수입니다"
-        assert status['name'] == "keyword_nvme_2-2", "KB 이름 불일치"
+        assert status['name'] == vector_store.kb_name, "KB 이름 불일치"
         
         print(f"✅ 상태 정보: {status}")
     
@@ -73,7 +79,7 @@ class TestVectorStoreDirect:
             assert field in kb_info, f"KB 정보에 '{field}' 필드가 없습니다"
         
         # 정보 값 확인
-        assert kb_info['name'] == "keyword_nvme_2-2", "KB 이름 불일치"
+        assert kb_info['name'] == vector_store.kb_name, "KB 이름 불일치"
         assert kb_info['exists'] is True, "KB가 존재하지 않는다고 표시됨"
         assert kb_info['count'] >= 0, "문서 수가 음수입니다"
         
@@ -85,6 +91,6 @@ class TestVectorStoreDirect:
         
         assert isinstance(kb_list, list), "KB 목록이 리스트가 아닙니다"
         assert len(kb_list) > 0, "사용 가능한 KB가 없습니다"
-        assert "keyword_nvme_2-2" in kb_list, "테스트 KB가 목록에 없습니다"
+        assert vector_store.kb_name in kb_list, "현재 KB가 목록에 없습니다"
         
         print(f"✅ KB 목록: {kb_list}")

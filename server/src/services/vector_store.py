@@ -11,8 +11,19 @@ from .rerank import ReRanker
 
 class VectorStore:
     def __init__(self, kb_name: str):
-        self.embedding_function = chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name=VECTOR_DB_CONFIG["embedding_model"])
+        # TEI 또는 로컬 embedding 함수 선택
+        config = VECTOR_DB_CONFIG
+        if config.get('tei_enabled', False):
+            from .tei_embedding import TEIEmbeddingFunction
+            self.embedding_function = TEIEmbeddingFunction(
+                base_url=config.get('tei_base_url', 'http://localhost:8080'),
+                timeout=config.get('tei_timeout', 30)
+            )
+        else:
+            # 로컬 sentence-transformers 사용
+            self.embedding_function = chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction(
+                model_name=config.get('local_embedding_model', 'all-MiniLM-L6-v2')
+            )
 
         self.kb_name = kb_name
         self.db_path = get_kb_path(kb_name)
@@ -67,12 +78,16 @@ class VectorStore:
         """청크들을 벡터 DB에 저장"""
         print(f"💾 지식 베이스 '{self.kb_name}'에 {len(chunks)}개 청크 저장 중...")
         
-        # 기존 데이터 삭제 (새로 저장하는 경우)
+        collection = self.get_collection()
+        
+        # 기존 데이터 삭제 (안전한 방법: 기존 ID 조회 후 삭제)
         try:
-            self.collection.delete()
-            self.collection = self.get_collection()
-        except:
-            pass
+            existing_data = collection.get()
+            if existing_data and existing_data['ids']:
+                collection.delete(ids=existing_data['ids'])
+                print(f"🗑️  기존 {len(existing_data['ids'])}개 청크 삭제됨")
+        except Exception as e:
+            print(f"⚠️ 기존 데이터 삭제 중 오류 (무시하고 계속): {e}")
         
         ids = [f"chunk_{chunk['id']}" for chunk in chunks]
         documents = [chunk['content'] for chunk in chunks]
@@ -84,7 +99,7 @@ class VectorStore:
         for i in range(0, len(chunks), batch_size):
             end_idx = min(i + batch_size, len(chunks))
             
-            self.get_collection().add(
+            collection.add(
                 ids=ids[i:end_idx],
                 documents=documents[i:end_idx],
                 embeddings=embeddings[i:end_idx],

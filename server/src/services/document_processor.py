@@ -1,19 +1,52 @@
 import PyPDF2
 import re
 from typing import List, Dict
-from sentence_transformers import SentenceTransformer
 from ..core.config import VECTOR_DB_CONFIG
+
+# TEI 또는 로컬 모델 조건부 import
+config = VECTOR_DB_CONFIG
+if config.get('tei_enabled', False):
+    from .tei_embedding import TEIClient
+else:
+    from sentence_transformers import SentenceTransformer
 
 class DocumentProcessor:
     def __init__(self, chunk_size: int = None, chunk_overlap: int = None):
         self.chunk_size = chunk_size or VECTOR_DB_CONFIG["chunk_size"]
         self.chunk_overlap = chunk_overlap or VECTOR_DB_CONFIG["chunk_overlap"]
-        try:
-            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-        except Exception as e:
-            print(f"⚠️ 임베딩 모델 로드 실패: {e}")
-            print("💡 sentence-transformers 라이브러리가 설치되어 있는지 확인하세요.")
-            raise
+        
+        # TEI 또는 로컬 모델 선택
+        config = VECTOR_DB_CONFIG
+        self.use_tei = config.get('tei_enabled', False)
+        
+        if self.use_tei:
+            # TEI 클라이언트 초기화
+            self.tei_client = TEIClient(
+                base_url=config.get('tei_base_url', 'http://localhost:8080'),
+                timeout=config.get('tei_timeout', 30)
+            )
+            
+            # TEI 서버 연결 테스트
+            success, message = self.tei_client.test_connection()
+            if success:
+                print(f"✅ {message}")
+                print(f"📊 TEI 서버: {config.get('tei_base_url')}")
+                print(f"🤖 모델: {config.get('tei_model_name', 'BAAI/bge-m3')}")
+                print(f"📐 임베딩 차원: {config.get('embedding_dimension', 1024)}")
+            else:
+                print(f"❌ {message}")
+                print(f"💡 TEI 서버를 시작하거나 config.py에서 tei_enabled=False로 설정하세요")
+                raise RuntimeError(f"TEI 서버 연결 실패: {message}")
+        else:
+            # 로컬 sentence-transformers 모델 사용
+            try:
+                model_name = config.get('local_embedding_model', 'all-MiniLM-L6-v2')
+                self.embedding_model = SentenceTransformer(model_name)
+                print(f"✅ 로컬 임베딩 모델 로드: {model_name}")
+            except Exception as e:
+                print(f"⚠️ 임베딩 모델 로드 실패: {e}")
+                print("💡 sentence-transformers 라이브러리가 설치되어 있는지 확인하세요.")
+                raise
     
     def extract_text_from_pdf(self, pdf_path: str) -> str:
         """PDF에서 텍스트 추출"""
@@ -89,9 +122,15 @@ class DocumentProcessor:
         print("임베딩 생성 중...")
         
         contents = [chunk['content'] for chunk in chunks]
-        embeddings = self.embedding_model.encode(contents, show_progress_bar=True)
+        
+        # TEI 또는 로컬 모델 사용
+        if self.use_tei:
+            embeddings = self.tei_client.encode(contents)
+        else:
+            embeddings = self.embedding_model.encode(contents, show_progress_bar=True)
+            embeddings = [emb.tolist() for emb in embeddings]
         
         for i, chunk in enumerate(chunks):
-            chunk['embedding'] = embeddings[i].tolist()
+            chunk['embedding'] = embeddings[i] if isinstance(embeddings[i], list) else embeddings[i].tolist()
         
         return chunks
