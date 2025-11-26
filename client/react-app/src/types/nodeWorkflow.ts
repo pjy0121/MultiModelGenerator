@@ -18,11 +18,9 @@ export enum LLMProvider {
 }
 
 export enum SearchIntensity {
-  VERY_LOW = "very_low",
-  LOW = "low",      
-  MEDIUM = "medium", 
-  HIGH = "high",
-  VERY_HIGH = "very_high"
+  EXACT = "exact",
+  STANDARD = "standard",
+  COMPREHENSIVE = "comprehensive"
 }
 
 // ==================== 노드 기반 워크플로우 핵심 타입들 ====================

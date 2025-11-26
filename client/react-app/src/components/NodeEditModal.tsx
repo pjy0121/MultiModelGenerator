@@ -49,17 +49,16 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
       // 노드 타입에 따른 기본 검색 강도 설정
       const getDefaultSearchIntensity = () => {
         if (node.data.search_intensity) {
-          return node.data.search_intensity; // 이미 설정된 값이 있으면 사용
+          // 유효한 값인지 확인
+          const validValues = [SearchIntensity.EXACT, SearchIntensity.STANDARD, SearchIntensity.COMPREHENSIVE];
+          if (validValues.includes(node.data.search_intensity as SearchIntensity)) {
+            return node.data.search_intensity;
+          }
+          // 유효하지 않은 값이면 기본값 반환
+          return SearchIntensity.STANDARD;
         }
-        
-        switch (node.data.nodeType) {
-          case NodeType.VALIDATION:
-            return SearchIntensity.VERY_LOW; // validation-node는 매우 낮음
-          case NodeType.GENERATION:
-          case NodeType.ENSEMBLE:
-          default:
-            return SearchIntensity.MEDIUM; // generation, ensemble는 보통
-        }
+        // 모든 노드 타입에서 표준 검색을 기본값으로 사용
+        return SearchIntensity.STANDARD;
       };
 
       form.setFieldsValue({
@@ -446,14 +445,18 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
               label="검색 강도"
               name="search_intensity"
               rules={[{ required: true, message: '검색 강도를 선택해주세요.' }]}
-              tooltip="벡터 DB 검색 시 얼마나 많은 관련 문서를 찾을지 결정합니다."
+              tooltip="문서 검색 강도를 선택합니다."
             >
               <Select>
-                <Option value={SearchIntensity.VERY_LOW}>매우 낮음 (초기 10개, re-rank 5개)</Option>
-                <Option value={SearchIntensity.LOW}>낮음 (초기 15개, re-rank 7개)</Option>
-                <Option value={SearchIntensity.MEDIUM}>보통 (초기 20개, re-rank 10개)</Option>
-                <Option value={SearchIntensity.HIGH}>높음 (초기 30개, re-rank 15개)</Option>
-                <Option value={SearchIntensity.VERY_HIGH}>매우 높음 (초기 50개, re-rank 20개)</Option>
+                <Option value={SearchIntensity.EXACT}>
+                  🎯 정확 (최대한 정확하게 검색)
+                </Option>
+                <Option value={SearchIntensity.STANDARD}>
+                  ⚖️ 기본 (균형잡힌 검색)
+                </Option>
+                <Option value={SearchIntensity.COMPREHENSIVE}>
+                  🔬 포괄 (광범위한 문맥 검색)
+                </Option>
               </Select>
             </Form.Item>
 

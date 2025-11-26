@@ -74,7 +74,7 @@ class TestKnowledgeBaseLoading:
             results = await vector_store_service.search(
                 kb_name=first_kb,
                 query="specification",
-                search_intensity="medium"
+                search_intensity="standard"
             )
             
             assert isinstance(results, list), "검색 결과가 리스트가 아닙니다"

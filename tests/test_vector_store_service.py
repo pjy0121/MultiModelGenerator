@@ -97,7 +97,7 @@ class TestVectorStoreService:
         results = await vector_store_service.search(
             kb_name=first_kb,
             query="NVMe specification",
-            search_intensity="low"  # top_k=3에 해당
+            search_intensity="standard"  # 표준 검색 모드
         )
         
         assert isinstance(results, list), "검색 결과가 리스트가 아닙니다"

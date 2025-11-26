@@ -43,13 +43,11 @@ export const NODE_CONFIG = {
     'context-node': '컨텍스트 노드'
   },
   
-  // 검색 강도 표시 매핑
+  // 검색 모드 표시 매핑
   SEARCH_INTENSITY_LABELS: {
-    'very_low': '매우 낮음',
-    'low': '낮음',
-    'medium': '보통',
-    'high': '높음',
-    'very_high': '매우 높음'
+    'exact': '정확 검색',
+    'standard': '표준 검색',
+    'comprehensive': '포괄 검색'
   }
 };
 

@@ -26,42 +26,49 @@ class LLMProvider(str, Enum):
         return cls.GOOGLE
 
 class SearchIntensity(str, Enum):
-    VERY_LOW = "very_low"
-    LOW = "low"
-    MEDIUM = "medium" 
-    HIGH = "high"
-    VERY_HIGH = "very_high"
+    EXACT = "exact"
+    STANDARD = "standard"
+    COMPREHENSIVE = "comprehensive"
     
     @classmethod
     def get_search_params(cls, intensity: str) -> Dict[str, int]:
-        """검색 강도에 따른 파라미터 반환"""
+        """검색 모드에 따른 파라미터 반환
+        
+        - EXACT (정확 검색): 정확한 키워드 매칭 중심, 특정 용어 찾기
+          init: 20개 (재정렬 전, ~3%), final: 10개 (재정렬 후, ~1.4%)
+          사용 예: "SMART", "NVMe 2.0", "Error Code 0x05"
+          
+        - STANDARD (표준 검색): 일반적인 균형잡힌 검색, 대부분의 사용 사례 [기본값]
+          init: 50개 (재정렬 전, ~7%), final: 30개 (재정렬 후, ~4%)
+          사용 예: "SMART 속성 값", "전력 관리 모드", "오류 복구 절차"
+          
+        - COMPREHENSIVE (포괄 검색): 관련 문맥까지 포괄적 검색, 복잡한 분석
+          init: 70개 (재정렬 전, ~10%), final: 40개 (재정렬 후, ~6%)
+          사용 예: "PCIe 전력 관리의 모든 상태 전환 방법과 제약사항"
+          
+        * 600-700개 청크 기준 최적화됨
+        """
         intensity_map = {
-            cls.VERY_LOW: {"init": 7, "final": 5},
-            cls.LOW: {"init": 10, "final": 7},
-            cls.MEDIUM: {"init": 20, "final": 10},
-            cls.HIGH: {"init": 30, "final": 15},
-            cls.VERY_HIGH: {"init": 50, "final": 20}
+            cls.EXACT: {"init": 20, "final": 10},
+            cls.STANDARD: {"init": 50, "final": 30},
+            cls.COMPREHENSIVE: {"init": 70, "final": 40}
         }
-        return intensity_map.get(intensity, intensity_map[cls.MEDIUM])
+        return intensity_map.get(intensity, intensity_map[cls.STANDARD])
     
     @classmethod
     def from_top_k(cls, top_k: int) -> str:
-        """top_k 값을 기반으로 적절한 검색 강도 반환"""
-        if top_k <= 7:
-            return cls.VERY_LOW
-        elif top_k <= 10:
-            return cls.LOW
-        elif top_k <= 20:
-            return cls.MEDIUM
-        elif top_k <= 30:
-            return cls.HIGH
+        """top_k 값을 기반으로 적절한 검색 모드 반환"""
+        if top_k <= 25:
+            return cls.EXACT
+        elif top_k <= 55:
+            return cls.STANDARD
         else:
-            return cls.VERY_HIGH
+            return cls.COMPREHENSIVE
     
     @classmethod
     def get_default(cls) -> str:
-        """기본 검색 강도 반환"""
-        return cls.MEDIUM
+        """기본 검색 모드 반환 (균형잡힌 표준 검색)"""
+        return cls.STANDARD
 
 class RerankInfo(BaseModel):
     """Rerank 설정 정보"""
