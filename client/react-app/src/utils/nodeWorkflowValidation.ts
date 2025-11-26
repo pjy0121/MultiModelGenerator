@@ -76,12 +76,20 @@ export function isConnectionAllowed(
     
     // 노드 타입별 제한
     if (targetType === NodeType.GENERATION || targetType === NodeType.VALIDATION) {
-      // generation-node, validation-node: input-node 최대 1개 + context-node 최대 1개
-      if (sourceType === NodeType.INPUT && inputPreNodes.length >= 1) {
-        return { allowed: false, reason: `${targetType}는 input-node를 최대 1개만 연결받을 수 있습니다.` };
+      // generation-node: input-node 최대 1개 + context-node 최대 1개만
+      // validation-node: 다른 노드 1개 + context-node 최대 1개만
+      if (sourceType === NodeType.CONTEXT && contextPreNodes.length >= 1) {
+        return { allowed: false, reason: `${targetType}는 context-node를 최대 1개만 연결받을 수 있습니다.` };
       }
-      if (sourceType !== NodeType.INPUT && sourceType !== NodeType.CONTEXT) {
-        return { allowed: false, reason: `${targetType}는 input-node와 context-node에서만 연결받을 수 있습니다.` };
+      
+      // context가 아닌 다른 pre-node가 이미 있으면 추가 연결 불가
+      if (sourceType !== NodeType.CONTEXT && (inputPreNodes.length + otherPreNodes.length) >= 1) {
+        return { allowed: false, reason: `${targetType}는 context-node를 제외한 pre-node를 최대 1개만 연결받을 수 있습니다.` };
+      }
+      
+      // generation-node는 input-node와 context-node만 허용
+      if (targetType === NodeType.GENERATION && sourceType !== NodeType.INPUT && sourceType !== NodeType.CONTEXT) {
+        return { allowed: false, reason: "생성 노드는 입력 노드와 컨텍스트 노드에서만 연결받을 수 있습니다." };
       }
     } else {
       // 다른 노드들: context-node 제외하고 일반 pre-node 1개만

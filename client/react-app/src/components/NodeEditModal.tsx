@@ -69,10 +69,11 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
         model_type: node.data.model_type || '',
         prompt: node.data.prompt || '',
         output_format: node.data.output_format || '',
-        knowledge_base: node.data.knowledge_base || '',
+        knowledge_base: node.data.knowledge_base || (isContextNode ? 'none' : ''),
         search_intensity: getDefaultSearchIntensity(),
         rerank_provider: node.data.rerank_provider || LLMProvider.NONE, // 기본값: 재정렬 사용 안 함
         rerank_model: node.data.rerank_model || null,
+        additional_context: node.data.additional_context || '',
       });
       
       // 해당 provider의 모델이 아직 로드되지 않았을 때 로드
@@ -424,10 +425,12 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
             <Form.Item
               label="지식 베이스"
               name="knowledge_base"
-              rules={[{ required: true, message: '지식 베이스를 선택해주세요.' }]}
-              tooltip="검색에 사용할 지식 베이스를 선택합니다."
+              tooltip="검색에 사용할 지식 베이스를 선택합니다. '없음'을 선택하면 추가 내용만 사용합니다."
             >
               <Select placeholder="지식 베이스 선택">
+                <Option value="none">
+                  <Text type="secondary">없음</Text>
+                </Option>
                 {knowledgeBases.map((kb: KnowledgeBase) => (
                   <Option key={kb.name} value={kb.name}>
                     <Text strong>{kb.name}</Text>
@@ -454,6 +457,26 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
               </Select>
             </Form.Item>
 
+            <Divider style={{ margin: '16px 0' }} />
+            
+            <Form.Item
+              label={
+                <span>
+                  추가 내용
+                  <Tooltip title="지식 베이스 검색 결과에 추가로 포함할 사용자 정의 컨텍스트를 입력합니다. 지식 베이스를 선택하지 않고 이 내용만 사용할 수도 있습니다.">
+                    <InfoCircleOutlined style={{ marginLeft: 4, color: UI_COLORS.UI.INFO }} />
+                  </Tooltip>
+                </span>
+              }
+              name="additional_context"
+            >
+              <TextArea
+                rows={6}
+                placeholder="추가로 포함할 컨텍스트를 입력하세요. (선택사항)"
+                style={{ fontFamily: 'Consolas, "Courier New", monospace' }}
+              />
+            </Form.Item>
+            
             <Divider style={{ margin: '16px 0' }} />
             
             <Form.Item

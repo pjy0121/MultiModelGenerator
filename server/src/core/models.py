@@ -93,6 +93,8 @@ class WorkflowNode(BaseModel):
     # context-node용 rerank 설정 (새로 추가)
     rerank_provider: Optional[str] = Field(None, description="Rerank LLM provider for context-node")
     rerank_model: Optional[str] = Field(None, description="Rerank LLM model for context-node")
+    # context-node용 추가 컨텍스트 (사용자 정의 내용)
+    additional_context: Optional[str] = Field(None, description="Additional user-defined context for context-node")
     output: Optional[Any] = Field(None, description="Execution result")
     executed: bool = Field(default=False)
     error: Optional[str] = Field(None, description="")
