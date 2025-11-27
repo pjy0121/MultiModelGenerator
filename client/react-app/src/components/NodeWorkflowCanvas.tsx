@@ -332,7 +332,9 @@ export const NodeWorkflowCanvas: React.FC = memo(() => {
         return;
       }
 
-      const validation = isConnectionAllowed(sourceNode, targetNode, storeNodes, storeEdges);
+      // ✅ 재연결 시에는 기존 edge를 제외하고 검증해야 함
+      const edgesWithoutOld = storeEdges.filter(e => e.id !== oldEdge.id);
+      const validation = isConnectionAllowed(sourceNode, targetNode, storeNodes, edgesWithoutOld);
 
       if (validation.allowed) {
         // 기존 엣지 제거
