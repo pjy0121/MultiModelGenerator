@@ -255,19 +255,53 @@ class VectorStore:
             }
     
     def get_knowledge_bases(self) -> List[str]:
-        """사용 가능한 지식 베이스 목록 반환"""
+        """사용 가능한 지식 베이스 목록 반환 (재귀적으로 모든 하위 폴더 검색)"""
         try:
             kb_base_path = os.path.join(os.path.dirname(__file__), '..', '..', 'knowledge_bases')
+            kb_base_path = os.path.abspath(kb_base_path)
+            
             if not os.path.exists(kb_base_path):
                 return []
             
             knowledge_bases = []
-            for item in os.listdir(kb_base_path):
-                item_path = os.path.join(kb_base_path, item)
-                if os.path.isdir(item_path):
-                    knowledge_bases.append(item)
             
-            return knowledge_bases
+            def scan_directory(current_path: str, relative_path: str = ""):
+                """재귀적으로 디렉토리 스캔 - chroma.sqlite3 파일이 있는 디렉토리만 KB로 간주"""
+                try:
+                    for item in os.listdir(current_path):
+                        item_path = os.path.join(current_path, item)
+                        
+                        if os.path.isdir(item_path):
+                            # chroma.sqlite3 파일이 있고 크기가 0보다 크면 KB로 간주
+                            chroma_file = os.path.join(item_path, 'chroma.sqlite3')
+                            if os.path.exists(chroma_file):
+                                try:
+                                    # 파일 크기 확인 (빈 파일 제외)
+                                    file_size = os.path.getsize(chroma_file)
+                                    if file_size > 0:
+                                        # 상대 경로 포함하여 저장
+                                        if relative_path:
+                                            kb_name = f"{relative_path}/{item}"
+                                        else:
+                                            kb_name = item
+                                        knowledge_bases.append(kb_name)
+                                    else:
+                                        # 빈 chroma.sqlite3 파일은 무시하고 하위 폴더 스캔
+                                        new_relative = f"{relative_path}/{item}" if relative_path else item
+                                        scan_directory(item_path, new_relative)
+                                except OSError:
+                                    # 파일 크기 확인 실패 시 하위 폴더 스캔
+                                    new_relative = f"{relative_path}/{item}" if relative_path else item
+                                    scan_directory(item_path, new_relative)
+                            else:
+                                # chroma.sqlite3가 없으면 하위 폴더 스캔
+                                new_relative = f"{relative_path}/{item}" if relative_path else item
+                                scan_directory(item_path, new_relative)
+                except Exception as e:
+                    print(f"디렉토리 스캔 실패 ({current_path}): {e}")
+            
+            scan_directory(kb_base_path)
+            return sorted(knowledge_bases)
             
         except Exception as e:
             print(f"지식 베이스 목록 조회 실패: {e}")

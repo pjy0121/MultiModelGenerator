@@ -12,8 +12,17 @@ from .config import VECTOR_DB_CONFIG
 
 
 def get_kb_path(kb_name: str) -> str:
-    """지식 베이스별 경로 반환"""
-    return os.path.join(VECTOR_DB_CONFIG["root_dir"], kb_name)
+    """지식 베이스별 경로 반환 (폴더 구조 지원)
+    
+    Args:
+        kb_name: 지식 베이스 이름 (경로 포함 가능, 예: 'folder1/kb_name')
+    
+    Returns:
+        절대 경로
+    """
+    # 경로 구분자를 OS에 맞게 정규화
+    kb_name_normalized = kb_name.replace('/', os.sep).replace('\\', os.sep)
+    return os.path.join(VECTOR_DB_CONFIG["root_dir"], kb_name_normalized)
 
 
 def _get_kb_list_sync() -> List[str]:
