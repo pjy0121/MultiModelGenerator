@@ -1,11 +1,12 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { Modal, Form, Input, Select, Typography, Button, Tooltip, Divider, message } from 'antd';
-import { CopyOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { CopyOutlined, InfoCircleOutlined, SettingOutlined } from '@ant-design/icons';
 import { showErrorMessage } from '../utils/messageUtils';
 import { NodeType, LLMProvider, WorkflowNode, AvailableModel, SearchIntensity, KnowledgeBase } from '../types';
 import { useDataLoadingStore } from '../store/dataLoadingStore';
 import { DEFAULT_PROMPTS, OUTPUT_FORMAT_TEMPLATES, PROMPT_VARIABLES } from '../config/defaultPrompts';
 import { UI_COLORS } from '../config/constants';
+import KnowledgeBaseManageModal from './KnowledgeBaseManageModal';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -21,6 +22,7 @@ interface NodeEditModalProps {
 const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, onSave }) => {
   const { availableModels, loadAvailableModels, knowledgeBases, loadKnowledgeBases } = useDataLoadingStore();
   const [form] = Form.useForm();
+  const [kbManageModalVisible, setKbManageModalVisible] = useState<boolean>(false);
   const isLLMNode = node ? [NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION].includes(node.data.nodeType) : false;
   const isContextNode = node ? node.data.nodeType === NodeType.CONTEXT : false;
 
@@ -421,8 +423,19 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
         {/* Context 노드 (context-node) */}
         {isContextNode && (
           <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontWeight: 500 }}>지식 베이스</span>
+              <Button
+                type="default"
+                size="small"
+                icon={<SettingOutlined />}
+                onClick={() => setKbManageModalVisible(true)}
+              >
+                목록 수정
+              </Button>
+            </div>
+            
             <Form.Item
-              label="지식 베이스"
               name="knowledge_base"
               tooltip="검색에 사용할 지식 베이스를 선택합니다. '없음'을 선택하면 추가 내용만 사용합니다."
             >
@@ -566,6 +579,13 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
           </>
         )}
       </Form>
+
+      {/* 지식 베이스 관리 모달 */}
+      <KnowledgeBaseManageModal
+        visible={kbManageModalVisible}
+        onClose={() => setKbManageModalVisible(false)}
+        onRefresh={loadKnowledgeBases}
+      />
     </Modal>
   );
 };

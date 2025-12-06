@@ -96,5 +96,84 @@ export const workflowAPI = {
     const response = await api.get(`${API_CONFIG.ENDPOINTS.AVAILABLE_MODELS}/${provider}`);
     // 서버 응답이 이미 클라이언트 형식과 일치하므로 그대로 반환
     return response.data;
+  },
+
+  // 지식 베이스 삭제
+  deleteKnowledgeBase: async (kbName: string): Promise<{ success: boolean; message: string }> => {
+    const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/delete`, { kb_name: kbName });
+    return response.data;
+  },
+
+  // 지식 베이스 이름 변경
+  renameKnowledgeBase: async (oldName: string, newName: string): Promise<{ success: boolean; message: string; old_name: string; new_name: string }> => {
+    const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/rename`, { old_name: oldName, new_name: newName });
+    return response.data;
+  },
+
+  // 지식 베이스 이동
+  moveKnowledgeBase: async (kbName: string, targetFolder: string): Promise<{ success: boolean; message: string; old_path: string; new_path: string }> => {
+    const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/move`, { kb_name: kbName, target_folder: targetFolder });
+    return response.data;
+  },
+
+  // 지식 베이스 디렉토리 구조 조회
+  getKnowledgeBaseStructure: async (): Promise<{ structure: Record<string, any> }> => {
+    const response = await api.get(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/structure`);
+    return response.data;
+  },
+
+  // 폴더 생성
+  createFolder: async (folderPath: string): Promise<{ success: boolean; message: string; folder_path: string }> => {
+    const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/create-folder`, { folder_path: folderPath });
+    return response.data;
+  },
+
+  // 폴더 삭제
+  deleteFolder: async (folderPath: string): Promise<{ success: boolean; message: string; folder_path: string }> => {
+    const response = await api.delete(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/delete-folder`, { data: { folder_path: folderPath } });
+    return response.data;
+  },
+
+  // 폴더 이름 변경
+  renameFolder: async (oldPath: string, newName: string): Promise<{ success: boolean; message: string; old_path: string; new_path: string }> => {
+    const response = await api.put(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/rename-folder`, { old_path: oldPath, new_name: newName });
+    return response.data;
+  },
+
+  // 폴더 이동
+  moveFolder: async (oldPath: string, targetFolder: string): Promise<{ success: boolean; message: string; old_path: string; new_path: string }> => {
+    const response = await api.put(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/move-folder`, { old_path: oldPath, target_folder: targetFolder });
+    return response.data;
+  },
+
+  // 지식 베이스 생성
+  createKnowledgeBase: async (
+    kbName: string, 
+    chunkType: 'keyword' | 'sentence' | 'custom', 
+    contentBase64: string,
+    contentType: 'base64' | 'plain' | 'file',
+    fileType?: 'pdf' | 'txt',
+    chunkSize?: number,
+    chunkOverlap?: number,
+    targetFolder?: string
+  ): Promise<{ success: boolean; message: string; kb_name: string }> => {
+    const payload: any = {
+      kb_name: kbName,
+      chunk_type: chunkType,
+      chunk_size: chunkSize,
+      chunk_overlap: chunkOverlap,
+      target_folder: targetFolder
+    };
+    
+    if (contentType === 'file') {
+      payload.file_content = contentBase64;
+      payload.file_type = fileType || 'pdf';
+    } else {
+      payload.text_content = contentBase64;
+      payload.text_type = contentType;  // 'base64' or 'plain'
+    }
+    
+    const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/create`, payload);
+    return response.data;
   }
 };
