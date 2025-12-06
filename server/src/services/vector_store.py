@@ -108,9 +108,15 @@ class VectorStore:
         
         print(f"✅ 지식 베이스 '{self.kb_name}' 저장 완료!")
 
-    async def _search_initial_chunks(self, query: str, top_k: int) -> List[str]:
-        """초기 벡터 검색을 수행하는 내부 헬퍼 함수 (비동기 개선된 버전)"""
-        print(f"🔍 지식 베이스 '{self.kb_name}'에서 키워드 '{query}' 초기 검색 중... (top_k={top_k})")
+    async def _search_initial_chunks(self, query: str, top_k: int, threshold: float) -> List[str]:
+        """초기 벡터 검색을 수행하는 내부 헬퍼 함수 (비동기 개선된 버전)
+        
+        Args:
+            query: 검색 쿼리
+            top_k: 초기 검색 개수
+            threshold: cosine distance 임계값
+        """
+        print(f"🔍 지식 베이스 '{self.kb_name}'에서 키워드 '{query}' 초기 검색 중... (top_k={top_k}, threshold={threshold:.2f})")
         
         try:
             # 비동기로 컴렉션 접근
@@ -147,12 +153,23 @@ class VectorStore:
             initial_chunks = results['documents'][0]
             distances = results['distances'][0] if results['distances'] else []
             
+            # 거리(distance)와 유사도(similarity) 정보 출력
+            print(f"🔍 검색된 {len(initial_chunks)}개 청크의 거리 범위: {min(distances):.3f} ~ {max(distances):.3f}")
+            print(f"   임계값: {threshold:.2f} (이하만 통과) - Cosine similarity: {1-threshold:.2f} 이상")
+            
+            # 거리 기반 필터링 (cosine distance: 0=identical, 2=opposite)
             filtered_chunks = [
                 chunk for chunk, distance in zip(initial_chunks, distances)
-                if distance <= VECTOR_DB_CONFIG["similarity_threshold"]
+                if distance <= threshold
             ]
             
-            print(f"📚 1차 필터링 후 {len(filtered_chunks)}개 관련 청크 발견.")
+            print(f"📚 임계값 필터링 후 {len(filtered_chunks)}개 관련 청크 발견 (전체 {len(initial_chunks)}개 중)")
+            
+            # 필터링된 청크가 없으면 상위 결과라도 반환 (최소 1개)
+            if not filtered_chunks and initial_chunks:
+                print(f"⚠️ 임계값을 통과한 청크가 없어 가장 유사한 1개 청크 반환 (distance: {distances[0]:.3f})")
+                filtered_chunks = [initial_chunks[0]]
+            
             return filtered_chunks
 
         except Exception as e:
@@ -185,14 +202,17 @@ class VectorStore:
             None, collection.count
         )
         
-        # 공통: 검색 파라미터 설정
+        # 공통: 검색 파라미터 설정 (top_k, threshold 모두 포함)
         search_params = SearchIntensity.get_search_params(search_intensity)
 
         top_k_init = search_params["init"]
+        threshold = search_params["threshold"]
+        
+        print(f"🎯 검색 강도: {search_intensity} (초기 {top_k_init}개, threshold {threshold:.2f}, similarity {1-threshold:.2f}+)")
         
         # rerank 사용 시에는 더 많은 초기 검색, 아니면 final과 동일
         if rerank_info:
-            initial_chunks = await self._search_initial_chunks(query, top_k_init)
+            initial_chunks = await self._search_initial_chunks(query, top_k_init, threshold)
             
             if not initial_chunks:
                 return {"chunks": [], "total_chunks": total_chunks, "found_chunks": 0}
@@ -207,7 +227,7 @@ class VectorStore:
                 result_chunks = initial_chunks[:top_k_final]
                 return {"chunks": result_chunks, "total_chunks": total_chunks, "found_chunks": len(result_chunks)}
         else:
-            initial_chunks = await self._search_initial_chunks(query, top_k_init)
+            initial_chunks = await self._search_initial_chunks(query, top_k_init, threshold)
             return {"chunks": initial_chunks, "total_chunks": total_chunks, "found_chunks": len(initial_chunks)}
     
     async def get_status(self) -> dict:

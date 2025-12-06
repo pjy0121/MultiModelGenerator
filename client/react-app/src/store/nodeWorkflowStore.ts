@@ -502,12 +502,21 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
               return state;
             }
             
+            // ✅ 실패한 경우에도 지금까지 받은 스트리밍 출력을 보존
+            const currentStreamingOutput = state.nodeStreamingOutputs[chunk.node_id] || '';
+            
+            // 실패했지만 스트리밍 출력이 있는 경우 에러 메시지만 추가
+            const description = chunk.description || (chunk.success ? '' : chunk.error);
+            const finalDescription = !chunk.success && currentStreamingOutput 
+              ? `${currentStreamingOutput}\n\n[Error] ${description}`
+              : description;
+            
             // 모든 노드의 완료 결과를 즉시 저장 (성공/실패 상관없이)
             const updatedResults = {
               ...state.nodeExecutionResults,
               [chunk.node_id]: {
                 success: chunk.success,
-                description: chunk.description || (chunk.success ? '' : chunk.error),
+                description: finalDescription,
                 error: chunk.success ? undefined : chunk.error,
                 execution_time: chunk.execution_time
               }
@@ -520,6 +529,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
                 [chunk.node_id]: status
               },
               nodeExecutionResults: updatedResults
+              // ✅ nodeStreamingOutputs는 명시적으로 삭제하지 않으므로 유지됨
             };
           });
         }
@@ -639,10 +649,14 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       
       // persistent error로 표시하고 throw하지 않아 무한 루프 방지
       // store 메서드는 직접 접근할 수 없으므로 message.error 사용
+      const id = `execution-error-${Date.now()}`;
       message.error({
         content: `스트리밍 실행 오류: ${errorMessage}`,
         duration: 0, // 사라지지 않음
-        key: `execution-error-${Date.now()}`,
+        key: id,
+        onClick: () => {
+          message.destroy(id);
+        }
       });
     } finally {
       // 중단 상태인지 확인 (상태 정리 전에)
@@ -914,13 +928,11 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       ]
     }));
     
-    // antd message도 함께 표시 (사용자가 놓칠 수 있으므로)
     message.error({
       content: errorMessage,
       duration: 0, // 사라지지 않음
       key: id, // 중복 방지
       onClick: () => {
-        // 클릭으로도 닫을 수 있게
         message.destroy(id);
       }
     });

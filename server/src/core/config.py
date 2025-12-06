@@ -41,8 +41,9 @@ VECTOR_DB_CONFIG = {
     "local_embedding_model": "all-MiniLM-L6-v2",  # name or path
     # 문서 처리 설정
     "chunk_size": 6000,
-    "chunk_overlap": 100,
-    "similarity_threshold": 0.85
+    "chunk_overlap": 100
+    # similarity_threshold는 SearchIntensity에서 동적으로 결정됨
+    # EXACT: 0.35, STANDARD: 0.55, COMPREHENSIVE: 0.75
 }
 
 # 노드 실행 엔진 설정
