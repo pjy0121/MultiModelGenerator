@@ -36,6 +36,27 @@ app = FastAPI(
 # 파일 시스템 작업을 위한 글로벌 락 (동시성 문제 해결)
 fs_lock = asyncio.Lock()
 
+# VectorStoreService 인스턴스 추적 (KB 삭제/이름 변경 시 연결 닫기용)
+_active_vector_services: Dict[int, VectorStoreService] = {}
+
+def register_vector_service(service: VectorStoreService):
+    """VectorStoreService 인스턴스 등록"""
+    service_id = id(service)
+    _active_vector_services[service_id] = service
+    return service_id
+
+def close_kb_in_all_services(kb_name: str):
+    """모든 활성 VectorStoreService에서 특정 KB의 연결 닫기"""
+    import gc
+    for service_id, service in list(_active_vector_services.items()):
+        try:
+            service.close_and_remove_kb(kb_name)
+        except Exception as e:
+            logger.warning(f"KB '{kb_name}' 닫기 실패 (service {service_id}): {e}")
+    # 가비지 컬렉션 강제 실행
+    gc.collect()
+    logger.info(f"✅ 모든 서비스에서 KB '{kb_name}' 연결 닫힘")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -170,8 +191,9 @@ async def stop_workflow(execution_id: str):
 async def list_knowledge_bases():
     """지식베이스 목록 조회"""
     try:
-        # 요청별 독립적인 VectorStoreService 생성
+        # 요청별 독립적인 VectorStoreService 생성 및 등록
         vector_store_service = VectorStoreService()
+        register_vector_service(vector_store_service)
         knowledge_bases = []
         kb_names = await vector_store_service.get_knowledge_bases()
         
@@ -183,6 +205,7 @@ async def list_knowledge_bases():
             try:
                 # 각 KB에 대해 독립적인 VectorStoreService 인스턴스 사용
                 kb_vector_service = VectorStoreService()
+                register_vector_service(kb_vector_service)
                 kb_info = await kb_vector_service.get_knowledge_base_info(name)
                 return KnowledgeBase(
                     name=kb_info['name'],
@@ -230,28 +253,39 @@ async def get_knowledge_base_structure():
                         folder_marker = os.path.join(item_path, '.folder_marker')
                         chroma_file = os.path.join(item_path, 'chroma.sqlite3')
                         
-                        is_kb = False
                         is_folder = os.path.exists(folder_marker)
                         
-                        # KB 판별: .folder_marker가 없고, chroma.sqlite3가 있으며, UUID 형식의 하위 디렉토리가 있음
-                        if not is_folder and os.path.exists(chroma_file):
-                            try:
-                                file_size = os.path.getsize(chroma_file)
-                                if file_size > 0:
-                                    # UUID 형식의 하위 디렉토리 확인 (ChromaDB의 실제 데이터)
-                                    # 예: 14b532e1-53cf-4b9e-8b24-cef36ef24839
-                                    has_uuid_dir = False
-                                    for subitem in os.listdir(item_path):
-                                        subitem_path = os.path.join(item_path, subitem)
-                                        if os.path.isdir(subitem_path) and len(subitem) == 36 and subitem.count('-') == 4:
-                                            has_uuid_dir = True
-                                            break
-                                    is_kb = has_uuid_dir
-                            except OSError:
-                                pass
+                        # KB 판별: .folder_marker가 없고, chroma.sqlite3가 있으면 KB
+                        # 폴더로 판정되면 KB가 될 수 없음
+                        is_kb = False
+                        chunk_count = 0
                         
-                        # 상대 경로 계산
-                        new_relative = f"{relative_path}/{item}" if relative_path else item
+                        if not is_folder:
+                            if os.path.exists(chroma_file):
+                                try:
+                                    file_size = os.path.getsize(chroma_file)
+                                    # chroma.sqlite3가 존재하고 크기가 0보다 크면 KB
+                                    if file_size > 0:
+                                        is_kb = True
+                                        # KB의 chunk 개수 가져오기
+                                        try:
+                                            from ..services.vector_store import VectorStore
+                                            new_relative = f"{relative_path}/{item}" if relative_path else item
+                                            vector_store = VectorStore(new_relative)
+                                            collection = vector_store.get_collection()
+                                            chunk_count = collection.count()
+                                            logger.info(f"KB '{new_relative}' has {chunk_count} chunks")
+                                        except Exception as e:
+                                            logger.warning(f"Failed to get chunk count for {item}: {e}")
+                                            chunk_count = 0
+                                except OSError as e:
+                                    logger.warning(f"Failed to check chroma file size for {item}: {e}")
+                                    pass
+                        
+                        # 상대 경로 계산 (중복 방지)
+                        if not is_kb:  # KB가 아닌 경우만 여기서 계산
+                            new_relative = f"{relative_path}/{item}" if relative_path else item
+                        
                         item_id = f"{'kb' if is_kb else 'folder'}_{new_relative.replace('/', '_')}"
                         
                         if is_kb:
@@ -260,7 +294,8 @@ async def get_knowledge_base_structure():
                                 "type": "kb",
                                 "name": item,
                                 "parent": parent_id,
-                                "actualKbName": new_relative
+                                "actualKbName": new_relative,
+                                "chunkCount": chunk_count
                             }
                         else:
                             # 폴더로 간주 (빈 폴더일 수 있음)
@@ -401,8 +436,9 @@ async def search_knowledge_base(request: dict):
         # top_k를 search_intensity로 매핑
         search_intensity = SearchIntensity.from_top_k(top_k)
         
-        # 요청별 독립적인 VectorStoreService 생성
+        # 요청별 독립적인 VectorStoreService 생성 및 등록
         vector_store_service = VectorStoreService()
+        register_vector_service(vector_store_service)
         results = await vector_store_service.search(
             kb_name=knowledge_base,
             query=query,
@@ -433,6 +469,7 @@ async def delete_knowledge_base(request: dict):
             
             from ..core.utils import get_kb_path
             import time
+            import gc
             
             kb_path = get_kb_path(kb_name)
             
@@ -443,23 +480,40 @@ async def delete_knowledge_base(request: dict):
             if not os.path.exists(kb_path):
                 raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found at '{kb_path}'")
             
-            # ChromaDB 파일 잠금 해제를 위한 재시도 로직
-            max_retries = 3
+            # CRITICAL: 모든 VectorStoreService에서 이 KB의 ChromaDB 연결 닫기
+            logger.info(f"🔒 KB '{kb_name}'의 모든 ChromaDB 연결 닫는 중...")
+            close_kb_in_all_services(kb_name)
+            await asyncio.sleep(0.3)  # 파일 핸들이 완전히 닫힐 시간 제공
+            
+            # ChromaDB 파일 잠금 해제를 위한 강화된 재시도 로직
+            max_retries = 5
             for attempt in range(max_retries):
                 try:
+                    # 가비지 컬렉션 강제 실행 (ChromaDB 파일 핸들 해제)
+                    gc.collect()
+                    await asyncio.sleep(0.1)  # 비동기 대기
+                    
+                    # readonly 속성 제거 함수
+                    def remove_readonly(func, path, excinfo):
+                        try:
+                            os.chmod(path, 0o777)
+                            func(path)
+                        except Exception as e:
+                            logger.warning(f"Failed to remove readonly for {path}: {e}")
+                    
                     # 디렉토리 전체 삭제
-                    shutil.rmtree(kb_path)
+                    shutil.rmtree(kb_path, onerror=remove_readonly)
                     logger.info(f"Knowledge base '{kb_name}' deleted successfully")
                     break
-                except PermissionError as pe:
+                except (PermissionError, OSError) as pe:
                     if attempt < max_retries - 1:
-                        logger.warning(f"Permission error deleting '{kb_name}', retrying... (attempt {attempt + 1})")
-                        time.sleep(0.5)  # 0.5초 대기 후 재시도
+                        logger.warning(f"Error deleting '{kb_name}', retrying... (attempt {attempt + 1}/{max_retries}): {pe}")
+                        await asyncio.sleep(0.5 + attempt * 0.2)  # 점진적 백오프
                     else:
                         logger.error(f"Failed to delete '{kb_name}' after {max_retries} attempts: {pe}")
                         raise HTTPException(
                             status_code=500, 
-                            detail=f"Cannot delete knowledge base: file is in use. Please close any applications using it and try again."
+                            detail=f"Cannot delete knowledge base: files are in use. Please close any applications using them and try again. Error: {str(pe)}"
                         )
             
             return {
@@ -541,6 +595,7 @@ async def rename_knowledge_base(request: dict):
                 raise HTTPException(status_code=400, detail="New name must be different from old name")
             
             from ..core.utils import get_kb_path
+            import gc
             
             old_path = get_kb_path(old_name)
             
@@ -559,8 +614,33 @@ async def rename_knowledge_base(request: dict):
             if os.path.exists(new_path):
                 raise HTTPException(status_code=409, detail=f"Knowledge base '{new_name}' already exists")
             
-            # 디렉토리 이름 변경
-            os.rename(old_path, new_path)
+            # CRITICAL: 모든 VectorStoreService에서 이 KB의 ChromaDB 연결 닫기
+            logger.info(f"🔒 KB '{old_name}'의 모든 ChromaDB 연결 닫는 중...")
+            close_kb_in_all_services(old_name)
+            await asyncio.sleep(0.3)  # 파일 핸들이 완전히 닫힐 시간 제공
+            
+            # ChromaDB 파일 잠금 해제를 위한 재시도 로직
+            max_retries = 5
+            for attempt in range(max_retries):
+                try:
+                    # 가비지 컬렉션 강제 실행 (ChromaDB 파일 핸들 해제)
+                    gc.collect()
+                    await asyncio.sleep(0.1)  # 비동기 대기
+                    
+                    # 디렉토리 이름 변경
+                    os.rename(old_path, new_path)
+                    logger.info(f"Knowledge base renamed successfully on attempt {attempt + 1}")
+                    break
+                except (PermissionError, OSError) as e:
+                    if attempt < max_retries - 1:
+                        logger.warning(f"Error renaming '{old_name}', retrying... (attempt {attempt + 1}/{max_retries}): {e}")
+                        await asyncio.sleep(0.5 + attempt * 0.2)  # 점진적 백오프
+                    else:
+                        logger.error(f"Failed to rename '{old_name}' after {max_retries} attempts: {e}")
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Cannot rename knowledge base: files are in use. Please close any applications using them and try again. Error: {str(e)}"
+                        )
             
             # 새 상대 경로 계산
             kb_base_path = os.path.join(os.path.dirname(__file__), '..', '..', 'knowledge_bases')
@@ -736,37 +816,97 @@ async def move_knowledge_base(request: dict):
             logger.error(f"Failed to move knowledge base '{kb_name}': {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
+# Helper functions for KB creation
+def _process_plain_text(text_content: str) -> str:
+    """Plain text 처리"""
+    logger.info("Using plain text directly")
+    return text_content
+
+def _process_base64_text(text_content_base64: str) -> str:
+    """Base64 인코딩된 텍스트 처리"""
+    import base64
+    logger.info("Processing base64 text content...")
+    try:
+        text_bytes = base64.b64decode(text_content_base64, validate=True)
+        text = text_bytes.decode('utf-8')
+        logger.info("Successfully decoded base64 text")
+        return text
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid base64 content: {str(e)}")
+
+def _process_file_upload(file_content_base64: str, file_type: str, doc_processor) -> str:
+    """파일 업로드 처리 (PDF 또는 TXT)"""
+    import base64
+    import tempfile
+    
+    logger.info(f"Processing {file_type.upper()} file...")
+    
+    try:
+        file_content = base64.b64decode(file_content_base64)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid base64 file content: {str(e)}")
+    
+    if file_type == "pdf":
+        # PDF 파일 처리
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+            temp_file.write(file_content)
+            temp_pdf_path = temp_file.name
+        
+        try:
+            text = doc_processor.extract_text_from_pdf(temp_pdf_path)
+            logger.info(f"Extracted text from PDF: {len(text)} characters")
+            return text
+        finally:
+            try:
+                os.unlink(temp_pdf_path)
+            except:
+                pass
+    
+    elif file_type == "txt":
+        # TXT 파일 처리 (다중 인코딩 지원)
+        try:
+            text = file_content.decode('utf-8')
+            logger.info(f"Loaded text from TXT file (UTF-8): {len(text)} characters")
+        except UnicodeDecodeError:
+            try:
+                text = file_content.decode('cp949')  # 한글 Windows
+                logger.info(f"Loaded text from TXT file (CP949): {len(text)} characters")
+            except:
+                text = file_content.decode('latin-1')  # 최후의 수단
+                logger.info(f"Loaded text from TXT file (Latin-1): {len(text)} characters")
+        return text
+    
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_type}")
+
 @app.post("/knowledge-bases/create")
 async def create_knowledge_base(request: dict):
-    """지식 베이스 생성 (base64 인코딩된 텍스트 또는 PDF 파일로부터)"""
+    """지식 베이스 생성 (plain text, base64 text, 또는 파일 업로드)"""
     async with fs_lock:
         try:
+            # 요청 파라미터 추출
             kb_name_input = request.get("kb_name", "")
-            chunk_type = request.get("chunk_type", "sentence")  # keyword, sentence, custom
-            text_content_base64 = request.get("text_content", "")
+            chunk_type = request.get("chunk_type", "sentence")
+            text_content = request.get("text_content", "")
             file_content_base64 = request.get("file_content", "")
             chunk_size = request.get("chunk_size", 8000)
             chunk_overlap = request.get("chunk_overlap", 200)
-            target_folder = request.get("target_folder", "")  # 폴더 경로
+            target_folder = request.get("target_folder", "")
             
+            # 입력 검증
             if not kb_name_input:
                 raise HTTPException(status_code=400, detail="kb_name is required")
             
-            if not text_content_base64 and not file_content_base64:
+            if not text_content and not file_content_base64:
                 raise HTTPException(status_code=400, detail="Either text_content or file_content is required")
             
             if chunk_type not in ["keyword", "sentence", "custom"]:
                 raise HTTPException(status_code=400, detail="chunk_type must be one of: keyword, sentence, custom")
             
-            # KB 이름에 prefix 추가
-            prefix_map = {
-                "keyword": "keyword_",
-                "sentence": "sentence_",
-                "custom": "custom_"
-            }
+            # KB 이름 및 경로 설정
+            prefix_map = {"keyword": "keyword-", "sentence": "sentence-", "custom": "custom-"}
             kb_name = f"{prefix_map[chunk_type]}{kb_name_input}"
             
-            # 대상 폴더 경로 계산
             kb_base_path = os.path.join(os.path.dirname(__file__), '..', '..', 'knowledge_bases')
             kb_base_path = os.path.abspath(kb_base_path)
             
@@ -777,7 +917,6 @@ async def create_knowledge_base(request: dict):
                 kb_full_name = kb_name
                 kb_dir = kb_base_path
             
-            # 대상 폴더가 없으면 생성
             os.makedirs(kb_dir, exist_ok=True)
             
             from ..core.utils import get_kb_path
@@ -786,94 +925,48 @@ async def create_knowledge_base(request: dict):
             logger.info(f"KB Create request - kb_name: '{kb_name}', chunk_type: '{chunk_type}', target_folder: '{target_folder}'")
             logger.info(f"Full KB name: '{kb_full_name}', path: '{kb_path}'")
             
-            # KB가 이미 존재하는지 확인
             if os.path.exists(kb_path):
                 raise HTTPException(status_code=409, detail=f"Knowledge base '{kb_name}' already exists in this location")
             
-            # chunk_type에 따라 chunk_size 설정
+            # chunk_type에 따라 chunk_size 자동 설정
             if chunk_type == "keyword":
                 chunk_size = 1000
                 chunk_overlap = 100
             elif chunk_type == "sentence":
                 chunk_size = 8000
                 chunk_overlap = 200
-            # custom은 사용자 지정 값 사용
             
             logger.info(f"Building KB with chunk_size={chunk_size}, chunk_overlap={chunk_overlap}")
             
-            # DocumentProcessor와 VectorStore를 사용하여 지식 베이스 구축
+            # DocumentProcessor 및 VectorStore 초기화
             from ..services.document_processor import DocumentProcessor
             from ..services.vector_store import VectorStore
-            import base64
-            import tempfile
             
             doc_processor = DocumentProcessor(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
             vector_store = VectorStore(kb_full_name)
             
-            # 파일 처리 (PDF 또는 TXT)
+            # 입력 방식에 따라 텍스트 추출
             if file_content_base64:
-                file_type = request.get("file_type", "pdf")  # pdf 또는 txt
-                logger.info(f"Processing {file_type.upper()} file...")
-                
-                try:
-                    file_content = base64.b64decode(file_content_base64)
-                except Exception as e:
-                    raise HTTPException(status_code=400, detail=f"Invalid base64 file content: {str(e)}")
-                
-                if file_type == "pdf":
-                    # 임시 파일로 저장
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
-                        temp_file.write(file_content)
-                        temp_pdf_path = temp_file.name
-                    
-                    try:
-                        # PDF에서 텍스트 추출
-                        text = doc_processor.extract_text_from_pdf(temp_pdf_path)
-                        logger.info(f"Extracted text from PDF: {len(text)} characters")
-                    finally:
-                        # 임시 파일 삭제
-                        try:
-                            os.unlink(temp_pdf_path)
-                        except:
-                            pass
-                else:  # txt
-                    # TXT 파일은 직접 디코딩
-                    try:
-                        text = file_content.decode('utf-8')
-                        logger.info(f"Loaded text from TXT file: {len(text)} characters")
-                    except UnicodeDecodeError:
-                        # UTF-8 실패 시 다른 인코딩 시도
-                        try:
-                            text = file_content.decode('cp949')  # 한글 Windows
-                            logger.info(f"Loaded text from TXT file (CP949): {len(text)} characters")
-                        except:
-                            text = file_content.decode('latin-1')  # 최후의 수단
-                            logger.info(f"Loaded text from TXT file (Latin-1): {len(text)} characters")
+                # 파일 업로드 처리
+                file_type = request.get("file_type", "pdf")
+                text = _process_file_upload(file_content_base64, file_type, doc_processor)
             
-            # 텍스트 직접 처리
-            elif text_content_base64:
-                text_type = request.get("text_type", "plain")  # base64 또는 plain
-                logger.info(f"Processing {text_type} text content...")
+            elif text_content:
+                # 텍스트 입력 처리
+                text_type = request.get("text_type", "plain")
                 
                 if text_type == "base64":
-                    # base64 디코딩
-                    try:
-                        text_bytes = base64.b64decode(text_content_base64, validate=True)
-                        text = text_bytes.decode('utf-8')
-                        logger.info("Successfully decoded base64 text")
-                    except Exception as e:
-                        raise HTTPException(status_code=400, detail=f"Invalid base64 content: {str(e)}")
+                    text = _process_base64_text(text_content)
                 else:  # plain
-                    # plain text 그대로 사용
-                    text = text_content_base64
-                    logger.info("Using plain text directly")
-                
-                logger.info(f"Text length: {len(text)} characters")
+                    text = _process_plain_text(text_content)
             
+            # 텍스트 검증
             if not text.strip():
                 raise HTTPException(status_code=400, detail="Text content is empty")
             
-            # 청킹
+            logger.info(f"Text length: {len(text)} characters")
+            
+            # 청킹 및 임베딩 생성
             logger.info("Starting chunking...")
             chunks = doc_processor.semantic_chunking(text)
             logger.info(f"Created {len(chunks)} chunks")
@@ -881,7 +974,6 @@ async def create_knowledge_base(request: dict):
             if not chunks:
                 raise HTTPException(status_code=400, detail="Failed to create chunks from text")
             
-            # 임베딩 생성
             logger.info("Generating embeddings...")
             chunks_with_embeddings = doc_processor.generate_embeddings(chunks)
             logger.info("Embeddings generated")

@@ -70,6 +70,30 @@ class VectorStoreService:
                 return await store.get_knowledge_base_info()
             else:
                 raise e
+    
+    def close_and_remove_kb(self, kb_name: str):
+        """특정 KB의 VectorStore 연결을 닫고 캐시에서 제거 (삭제/이름 변경 전 호출)"""
+        if kb_name in self._store_cache:
+            try:
+                store = self._store_cache[kb_name]
+                store.close()  # ChromaDB 연결 닫기
+                del self._store_cache[kb_name]
+                print(f"✅ VectorStore '{kb_name}' 캐시에서 제거됨")
+            except Exception as e:
+                print(f"⚠️ VectorStore '{kb_name}' 제거 중 오류: {e}")
+                # 오류가 발생해도 캐시에서는 제거
+                if kb_name in self._store_cache:
+                    del self._store_cache[kb_name]
+    
+    def close_all(self):
+        """모든 VectorStore 연결 닫기 (서버 종료 시 호출)"""
+        for kb_name, store in list(self._store_cache.items()):
+            try:
+                store.close()
+                print(f"✅ VectorStore '{kb_name}' 연결 닫힘")
+            except Exception as e:
+                print(f"⚠️ VectorStore '{kb_name}' 닫기 중 오류: {e}")
+        self._store_cache.clear()
 
 
 # 전역 인스턴스 제거 - 각 요청별로 독립적인 인스턴스 사용
