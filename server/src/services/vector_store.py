@@ -337,4 +337,21 @@ class VectorStore:
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor() as executor:
             return await loop.run_in_executor(executor, get_info_with_chromadb)
+    
+    def close(self):
+        """ChromaDB 연결을 명시적으로 닫아 파일 잠금 해제"""
+        try:
+            if self.collection is not None:
+                self.collection = None
+            if self.client is not None:
+                # ChromaDB client의 연결 닫기
+                try:
+                    # PersistentClient는 명시적인 close 메서드가 없으므로
+                    # 참조를 None으로 설정하고 가비지 컬렉션에 맡김
+                    self.client = None
+                except Exception as e:
+                    print(f"⚠️ ChromaDB client 닫기 중 오류: {e}")
+            print(f"✅ VectorStore '{self.kb_name}' 연결 닫힘")
+        except Exception as e:
+            print(f"⚠️ VectorStore 닫기 중 오류: {e}")
 
