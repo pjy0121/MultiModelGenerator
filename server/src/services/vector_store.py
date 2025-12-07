@@ -31,6 +31,37 @@ class VectorStore:
         # 지연 초기화 - 실제 사용할 때만 ChromaDB 파일 접근
         self.client = None
         self.collection = None
+        self._closed = False
+    
+    def __enter__(self):
+        """Context manager 진입"""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager 종료 - 자동으로 연결 닫기"""
+        self.close()
+        return False
+    
+    def close(self):
+        """ChromaDB 연결 명시적으로 닫기"""
+        if self._closed:
+            return
+        
+        try:
+            # 컬렉션과 클라이언트 참조 제거
+            self.collection = None
+            if self.client is not None:
+                # ChromaDB client는 명시적 close가 없으므로 참조만 제거
+                self.client = None
+            
+            # 가비지 컬렉션 강제 실행
+            import gc
+            gc.collect()
+            
+            self._closed = True
+            print(f"✅ VectorStore '{self.kb_name}' 연결 닫힘")
+        except Exception as e:
+            print(f"⚠️ VectorStore '{self.kb_name}' 닫기 중 오류: {e}")
         
     def get_collection(self):
         """컬렉션을 지연 초기화로 반환 (동시성 문제 해결된 버전)"""

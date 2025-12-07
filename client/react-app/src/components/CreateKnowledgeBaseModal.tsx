@@ -147,31 +147,32 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
       width={600}
       okText="생성"
       cancelText="취소"
+      zIndex={2000}
     >
       <Form
         form={form}
         layout="vertical"
         initialValues={{
-          chunk_type: 'sentence',
-          chunk_size: 8000,
-          chunk_overlap: 200
+          chunk_type: 'keyword',
+          chunk_size: 1000,
+          chunk_overlap: 100
         }}
       >
         <Form.Item
           label="지식 베이스 이름"
           name="kb_name"
           rules={[{ required: true, message: '지식 베이스 이름을 입력해주세요.' }]}
-          extra={`생성될 이름: ${chunkType}_[입력한 이름]`}
+          extra={`생성될 이름: ${chunkType}-[입력한 이름]`}
         >
-          <Input placeholder="예: nvme_spec" />
+          <Input placeholder="예: nvme_spec_2.2" />
         </Form.Item>
 
         <Form.Item
           label="청킹 타입"
         >
           <Select value={chunkType} onChange={handleChunkTypeChange}>
-            <Select.Option value="keyword">Keyword (1000자, 100 오버랩)</Select.Option>
-            <Select.Option value="sentence">Sentence (8000자, 200 오버랩)</Select.Option>
+            <Select.Option value="keyword">Keyword (Chunk Size: 1000, Overlap: 100)</Select.Option>
+            <Select.Option value="sentence">Sentence (Chunk Size: 8000, Overlap: 200)</Select.Option>
             <Select.Option value="custom">Custom (사용자 지정)</Select.Option>
           </Select>
         </Form.Item>
@@ -210,7 +211,6 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
         {inputMode === 'base64' ? (
           <Form.Item
             label="Base64 인코딩된 텍스트"
-            extra="base64로 인코딩된 텍스트를 붙여넣으세요."
           >
             <TextArea
               rows={10}
@@ -223,7 +223,6 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
         ) : inputMode === 'plain' ? (
           <Form.Item
             label="텍스트 내용"
-            extra="일반 텍스트를 입력하세요."
           >
             <TextArea
               rows={10}
@@ -236,7 +235,6 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
         ) : (
           <Form.Item
             label="파일 업로드"
-            extra="PDF 또는 TXT 파일을 선택하세요. 자동으로 텍스트가 추출됩니다."
           >
             <Upload
               accept=".pdf,.txt"
@@ -250,8 +248,6 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
         )}
 
         <div style={{ fontSize: '12px', color: '#888', marginTop: '8px' }}>
-          <p style={{ margin: '4px 0' }}>※ prefix는 자동으로 추가됩니다 (keyword_, sentence_, custom_)</p>
-          <p style={{ margin: '4px 0' }}>※ 입력한 내용은 자동으로 청킹되어 VectorDB에 저장됩니다.</p>
           {(inputMode === 'plain' || inputMode === 'base64') && <p style={{ margin: '4px 0' }}>※ 텍스트 길이: {textContent.length} 문자</p>}
           {inputMode === 'file' && fileBase64 && <p style={{ margin: '4px 0' }}>※ {fileType.toUpperCase()} 파일이 선택되었습니다.</p>}
           {currentFolder && <p style={{ margin: '4px 0' }}>※ 생성 위치: /{currentFolder}</p>}
