@@ -54,7 +54,7 @@ Context-nodes perform vector similarity search + optional reranking:
 ```typescript
 // Context-node configuration
 {
-  knowledge_base: "sentence_nvme_2-2", // ChromaDB collection
+  knowledge_base: "sentence-nvme_2-2", // ChromaDB collection
   search_intensity: "medium", // Controls top_k results
   rerank_provider: "openai", // Optional: LLM-based reranking
   rerank_model: "gpt-4o-mini" // Model for reranking

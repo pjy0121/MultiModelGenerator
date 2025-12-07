@@ -130,7 +130,7 @@ export const workflowAPI = {
 
   // 폴더 삭제
   deleteFolder: async (folderPath: string): Promise<{ success: boolean; message: string; folder_path: string }> => {
-    const response = await api.delete(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/delete-folder`, { data: { folder_path: folderPath } });
+    const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/delete-folder`, { folder_path: folderPath });
     return response.data;
   },
 
@@ -174,6 +174,44 @@ export const workflowAPI = {
     }
     
     const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/create`, payload);
+    return response.data;
+  },
+
+  // 🔒 폴더 보호 설정
+  protectFolder: async (folderPath: string, password: string, reason?: string): Promise<{ success: boolean; message: string; folder_path: string }> => {
+    const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/protect-folder`, { 
+      folder_path: folderPath, 
+      password: password,
+      reason: reason || ''
+    });
+    return response.data;
+  },
+
+  // 🔓 폴더 보호 해제
+  unprotectFolder: async (folderPath: string, password: string): Promise<{ success: boolean; message: string; folder_path: string }> => {
+    const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/unprotect-folder`, { 
+      folder_path: folderPath, 
+      password: password
+    });
+    return response.data;
+  },
+
+  // 🔒 지식 베이스 보호 설정
+  protectKnowledgeBase: async (kbName: string, password: string, reason?: string): Promise<{ success: boolean; message: string; kb_name: string }> => {
+    const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/protect`, { 
+      kb_name: kbName, 
+      password: password,
+      reason: reason || ''
+    });
+    return response.data;
+  },
+
+  // 🔓 지식 베이스 보호 해제
+  unprotectKnowledgeBase: async (kbName: string, password: string): Promise<{ success: boolean; message: string; kb_name: string }> => {
+    const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/unprotect`, { 
+      kb_name: kbName, 
+      password: password
+    });
     return response.data;
   }
 };

@@ -159,3 +159,20 @@ class ErrorResponse(BaseModel):
     error: str = Field(..., description="Error message")
     detail: Optional[str] = Field(None, description="Error detail")
     node_id: Optional[str] = Field(None, description="Error node ID")
+
+class ProtectionRequest(BaseModel):
+    """폴더 또는 KB 보호 요청"""
+    path: str = Field(..., description="Folder path or KB name to protect")
+    password: str = Field(..., description="Password for protection")
+    reason: Optional[str] = Field("", description="Optional reason for protection")
+
+class UnprotectionRequest(BaseModel):
+    """폴더 또는 KB 보호 해제 요청"""
+    path: str = Field(..., description="Folder path or KB name to unprotect")
+    password: str = Field(..., description="Password for verification")
+
+class VerifyProtectionRequest(BaseModel):
+    """보호 상태 및 비밀번호 검증 요청"""
+    path: str = Field(..., description="Folder path or KB name to verify")
+    type: str = Field(..., description="Type: 'folder' or 'kb'")
+    password: str = Field(..., description="Password to verify")

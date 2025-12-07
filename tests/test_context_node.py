@@ -33,7 +33,7 @@ class TestContextNode:
                         "id": "context_1",
                         "nodeType": "context-node",
                         "label": "Context",
-                        "knowledge_base": "sentence_nvme_2-2",
+                        "knowledge_base": "sentence-nvme_2-2",
                         "search_intensity": "standard",
                         "rerank_provider": "none",
                         "rerank_model": None
@@ -91,8 +91,8 @@ class TestContextNode:
             if not kb_names:
                 pytest.skip("No knowledge bases available")
             
-            # Use first available KB if sentence_nvme_2-2 doesn't exist
-            if "sentence_nvme_2-2" not in kb_names:
+            # Use first available KB if sentence-nvme_2-2 doesn't exist
+            if "sentence-nvme_2-2" not in kb_names:
                 context_workflow["nodes"][1]["data"]["knowledge_base"] = kb_names[0]
                 
             payload = {

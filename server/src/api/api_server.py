@@ -13,6 +13,14 @@ from ..core.node_execution_engine import NodeExecutionEngine
 from ..core.workflow_validator import WorkflowValidator
 from ..core.config import LLM_CONFIG
 from ..core.utils import format_sse_data
+from ..core.path_resolver import PathResolver
+from ..core.filesystem_utils import safe_delete_with_retry, safe_rename_with_retry
+from ..core.protection_utils import (
+    create_secure_marker,
+    remove_secure_marker,
+    is_protected,
+    check_protection_before_operation
+)
 from ..core.models import (
     WorkflowExecutionRequest, 
     WorkflowDefinition,
@@ -234,8 +242,7 @@ async def list_knowledge_bases():
 async def get_knowledge_base_structure():
     """지식 베이스 디렉토리 구조 반환 (폴더 포함)"""
     try:
-        kb_base_path = os.path.join(os.path.dirname(__file__), '..', '..', 'knowledge_bases')
-        kb_base_path = os.path.abspath(kb_base_path)
+        kb_base_path = PathResolver.get_kb_base_path()
         
         if not os.path.exists(kb_base_path):
             return {"structure": {}}
@@ -249,6 +256,11 @@ async def get_knowledge_base_structure():
                     item_path = os.path.join(current_path, item)
                     
                     if os.path.isdir(item_path):
+                        # ⚠️ .delete_marker가 있으면 삭제된 것으로 간주하고 무시
+                        delete_marker = os.path.join(item_path, '.delete_marker')
+                        if os.path.exists(delete_marker):
+                            continue  # 삭제된 폴더/KB는 구조에서 제외
+                        
                         # .folder_marker 파일로 폴더 판별
                         folder_marker = os.path.join(item_path, '.folder_marker')
                         chroma_file = os.path.join(item_path, 'chroma.sqlite3')
@@ -267,13 +279,13 @@ async def get_knowledge_base_structure():
                                     # chroma.sqlite3가 존재하고 크기가 0보다 크면 KB
                                     if file_size > 0:
                                         is_kb = True
-                                        # KB의 chunk 개수 가져오기
+                                        # KB의 chunk 개수 가져오기 (context manager로 자동 닫기)
                                         try:
                                             from ..services.vector_store import VectorStore
                                             new_relative = f"{relative_path}/{item}" if relative_path else item
-                                            vector_store = VectorStore(new_relative)
-                                            collection = vector_store.get_collection()
-                                            chunk_count = collection.count()
+                                            with VectorStore(new_relative) as vector_store:
+                                                collection = vector_store.get_collection()
+                                                chunk_count = collection.count()
                                             logger.info(f"KB '{new_relative}' has {chunk_count} chunks")
                                         except Exception as e:
                                             logger.warning(f"Failed to get chunk count for {item}: {e}")
@@ -286,6 +298,10 @@ async def get_knowledge_base_structure():
                         if not is_kb:  # KB가 아닌 경우만 여기서 계산
                             new_relative = f"{relative_path}/{item}" if relative_path else item
                         
+                        # 🔒 보호 상태 확인
+                        secure_marker = os.path.join(item_path, '.secure_marker')
+                        item_is_protected = os.path.exists(secure_marker)
+                        
                         item_id = f"{'kb' if is_kb else 'folder'}_{new_relative.replace('/', '_')}"
                         
                         if is_kb:
@@ -295,14 +311,16 @@ async def get_knowledge_base_structure():
                                 "name": item,
                                 "parent": parent_id,
                                 "actualKbName": new_relative,
-                                "chunkCount": chunk_count
+                                "chunkCount": chunk_count,
+                                "isProtected": item_is_protected
                             }
                         else:
                             # 폴더로 간주 (빈 폴더일 수 있음)
                             structure[item_id] = {
                                 "type": "folder",
                                 "name": item,
-                                "parent": parent_id
+                                "parent": parent_id,
+                                "isProtected": item_is_protected
                             }
                             # 하위 디렉토리 스캔
                             scan_directory_structure(item_path, new_relative, item_id)
@@ -334,7 +352,14 @@ async def create_folder(request: dict):
             
             # 이미 존재하는지 확인 (락 내부에서 재확인)
             if os.path.exists(full_path):
-                raise HTTPException(status_code=409, detail=f"Folder '{folder_path}' already exists")
+                # .delete_marker가 있으면 삭제된 폴더이므로 재생성 허용
+                delete_marker = os.path.join(full_path, '.delete_marker')
+                if os.path.exists(delete_marker):
+                    # 삭제 마커 제거 (폴더 복구)
+                    os.remove(delete_marker)
+                    logger.info(f"Restoring previously deleted folder: '{folder_path}'")
+                else:
+                    raise HTTPException(status_code=409, detail=f"Folder '{folder_path}' already exists")
             
             # 폴더 생성
             os.makedirs(full_path, exist_ok=False)
@@ -358,69 +383,50 @@ async def create_folder(request: dict):
             logger.error(f"Failed to create folder: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/knowledge-bases/delete-folder")
+@app.post("/knowledge-bases/delete-folder")
 async def delete_folder(request: dict):
-    """폴더 삭제 (내부의 모든 KB도 함께 삭제, 동시성 안전)"""
-    async with fs_lock:  # 락 획듍
+    """폴더 삭제 (소프트 삭제: .delete_marker 파일 생성)"""
+    try:
+        folder_path = request.get("folder_path", "")
+        
+        if not folder_path:
+            raise HTTPException(status_code=400, detail="folder_path is required")
+        
+        # 전체 경로 생성
+        full_path = PathResolver.resolve_folder_path(folder_path)
+        
+        # 존재 여부 확인
+        if not os.path.exists(full_path):
+            raise HTTPException(status_code=404, detail=f"Folder '{folder_path}' not found")
+        
+        if not os.path.isdir(full_path):
+            raise HTTPException(status_code=400, detail=f"'{folder_path}' is not a folder")
+        
+        # 🔒 보호 체크 (보호된 폴더 또는 내부에 보호된 콘텐츠가 있으면 삭제 불가)
+        check_protection_before_operation(full_path, "delete", is_folder=True)
+        
+        # 소프트 삭제: .delete_marker 파일 생성
+        delete_marker_path = os.path.join(full_path, '.delete_marker')
         try:
-            folder_path = request.get("folder_path", "")
-            
-            if not folder_path:
-                raise HTTPException(status_code=400, detail="folder_path is required")
-            
-            kb_base_path = os.path.join(os.path.dirname(__file__), '..', '..', 'knowledge_bases')
-            kb_base_path = os.path.abspath(kb_base_path)
-            
-            # 전체 경로 생성
-            full_path = os.path.join(kb_base_path, folder_path)
-            
-            # 락 내부에서 존재 여부 재확인
-            if not os.path.exists(full_path):
-                raise HTTPException(status_code=404, detail=f"Folder '{folder_path}' not found")
-            
-            if not os.path.isdir(full_path):
-                raise HTTPException(status_code=400, detail=f"'{folder_path}' is not a folder")
-            
-            # 폴더 전체 삭제 (재시도 로직 포함)
-            import time
-            import gc
-            
-            max_retries = 5
-            for attempt in range(max_retries):
-                try:
-                    # 가비지 커렉션 강제 실행 (ChromaDB 파일 핸들 해제)
-                    gc.collect()
-                    
-                    # readonly 속성 제거 (재귀적)
-                    def remove_readonly(func, path, excinfo):
-                        os.chmod(path, 0o777)
-                        func(path)
-                    
-                    shutil.rmtree(full_path, onerror=remove_readonly)
-                    logger.info(f"Folder deleted: '{folder_path}'")
-                    break
-                except (PermissionError, OSError) as e:
-                    if attempt < max_retries - 1:
-                        logger.warning(f"Error deleting folder '{folder_path}', retrying... (attempt {attempt + 1}): {e}")
-                        time.sleep(0.5 + attempt * 0.2)  # 점진적 백오프
-                    else:
-                        logger.error(f"Failed to delete folder '{folder_path}' after {max_retries} attempts: {e}")
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Cannot delete folder: files are in use. Please close any applications using them and try again. Error: {str(e)}"
-                        )
-            
-            return {
-                "success": True,
-                "message": f"Folder '{folder_path}' deleted successfully",
-                "folder_path": folder_path
-            }
-            
-        except HTTPException:
-            raise
+            with open(delete_marker_path, 'w') as f:
+                import datetime
+                f.write(f"Deleted at: {datetime.datetime.now().isoformat()}\n")
+            logger.info(f"Folder soft-deleted (marker created): '{folder_path}'")
         except Exception as e:
-            logger.error(f"Failed to delete folder: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            logger.error(f"Failed to create delete marker for folder '{folder_path}': {e}")
+            raise HTTPException(status_code=500, detail=f"Cannot mark folder as deleted: {str(e)}")
+        
+        return {
+            "success": True,
+            "message": f"Folder '{folder_path}' deleted successfully",
+            "folder_path": folder_path
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete folder: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/search-knowledge-base")
 async def search_knowledge_base(request: dict):
@@ -459,208 +465,227 @@ async def search_knowledge_base(request: dict):
 
 @app.post("/knowledge-bases/delete")
 async def delete_knowledge_base(request: dict):
-    """지식 베이스 삭제 (동시성 안전)"""
-    async with fs_lock:  # 락 획듍
+    """지식 베이스 삭제 (소프트 삭제: .delete_marker 파일 생성)"""
+    try:
+        kb_name = request.get("kb_name", "")
+        
+        if not kb_name:
+            raise HTTPException(status_code=400, detail="kb_name is required")
+        
+        from ..core.utils import get_kb_path
+        
+        kb_path = get_kb_path(kb_name)
+        
+        logger.info(f"KB Delete request - kb_name: '{kb_name}'")
+        logger.info(f"Resolved kb_path: '{kb_path}', exists: {os.path.exists(kb_path)}")
+        
+        # 존재 여부 확인
+        if not os.path.exists(kb_path):
+            raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found at '{kb_path}'")
+        
+        # 🔒 보호 체크 (보호된 KB는 삭제 불가)
+        check_protection_before_operation(kb_path, "delete", is_folder=False)
+        
+        # 소프트 삭제: .delete_marker 파일 생성
+        delete_marker_path = os.path.join(kb_path, '.delete_marker')
         try:
-            kb_name = request.get("kb_name", "")
-            
-            if not kb_name:
-                raise HTTPException(status_code=400, detail="kb_name is required")
-            
-            from ..core.utils import get_kb_path
-            import time
-            import gc
-            
-            kb_path = get_kb_path(kb_name)
-            
-            logger.info(f"KB Delete request - kb_name: '{kb_name}'")
-            logger.info(f"Resolved kb_path: '{kb_path}', exists: {os.path.exists(kb_path)}")
-            
-            # 락 내부에서 존재 여부 재확인
-            if not os.path.exists(kb_path):
-                raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found at '{kb_path}'")
-            
-            # CRITICAL: 모든 VectorStoreService에서 이 KB의 ChromaDB 연결 닫기
-            logger.info(f"🔒 KB '{kb_name}'의 모든 ChromaDB 연결 닫는 중...")
-            close_kb_in_all_services(kb_name)
-            await asyncio.sleep(0.3)  # 파일 핸들이 완전히 닫힐 시간 제공
-            
-            # ChromaDB 파일 잠금 해제를 위한 강화된 재시도 로직
-            max_retries = 5
-            for attempt in range(max_retries):
-                try:
-                    # 가비지 컬렉션 강제 실행 (ChromaDB 파일 핸들 해제)
-                    gc.collect()
-                    await asyncio.sleep(0.1)  # 비동기 대기
-                    
-                    # readonly 속성 제거 함수
-                    def remove_readonly(func, path, excinfo):
-                        try:
-                            os.chmod(path, 0o777)
-                            func(path)
-                        except Exception as e:
-                            logger.warning(f"Failed to remove readonly for {path}: {e}")
-                    
-                    # 디렉토리 전체 삭제
-                    shutil.rmtree(kb_path, onerror=remove_readonly)
-                    logger.info(f"Knowledge base '{kb_name}' deleted successfully")
-                    break
-                except (PermissionError, OSError) as pe:
-                    if attempt < max_retries - 1:
-                        logger.warning(f"Error deleting '{kb_name}', retrying... (attempt {attempt + 1}/{max_retries}): {pe}")
-                        await asyncio.sleep(0.5 + attempt * 0.2)  # 점진적 백오프
-                    else:
-                        logger.error(f"Failed to delete '{kb_name}' after {max_retries} attempts: {pe}")
-                        raise HTTPException(
-                            status_code=500, 
-                            detail=f"Cannot delete knowledge base: files are in use. Please close any applications using them and try again. Error: {str(pe)}"
-                        )
-            
-            return {
-                "success": True,
-                "message": f"Knowledge base '{kb_name}' deleted successfully"
-            }
-            
-        except HTTPException:
-            raise
+            with open(delete_marker_path, 'w') as f:
+                import datetime
+                f.write(f"Deleted at: {datetime.datetime.now().isoformat()}\n")
+            logger.info(f"Knowledge base '{kb_name}' soft-deleted (marker created)")
         except Exception as e:
-            logger.error(f"Failed to delete knowledge base '{kb_name}': {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            logger.error(f"Failed to delete '{kb_name}': {e}")
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Cannot delete knowledge base: files are in use. Please close any applications using them and try again. Error: {str(e)}"
+            )
+        
+        return {
+            "success": True,
+            "message": f"Knowledge base '{kb_name}' deleted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete knowledge base '{kb_name}': {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/knowledge-bases/rename-folder")
 async def rename_folder(request: dict):
     """폴더 이름 변경 (동시성 안전)"""
-    async with fs_lock:
+    try:
+        old_path = request.get("old_path", "")
+        new_name = request.get("new_name", "")
+        
+        if not old_path or not new_name:
+            raise HTTPException(status_code=400, detail="old_path and new_name are required")
+        
+        # 전체 경로 생성
+        full_old_path = PathResolver.resolve_folder_path(old_path)
+        
+        # 존재 확인
+        if not os.path.exists(full_old_path):
+            raise HTTPException(status_code=404, detail=f"Folder '{old_path}' not found")
+        
+        if not os.path.isdir(full_old_path):
+            raise HTTPException(status_code=400, detail=f"'{old_path}' is not a folder")
+        
+        # ⚠️ 삭제된 폴더는 이름 변경 불가
+        delete_marker = os.path.join(full_old_path, '.delete_marker')
+        if os.path.exists(delete_marker):
+            raise HTTPException(status_code=404, detail=f"Folder '{old_path}' has been deleted")
+        
+        # 🔒 보호 체크 (보호된 폴더 또는 내부에 보호된 콘텐츠가 있으면 이름 변경 불가)
+        check_protection_before_operation(full_old_path, "rename", is_folder=True)
+        
+        # 새 경로 계산 (같은 부모 디렉토리 내에서)
+        parent_dir = os.path.dirname(full_old_path)
+        full_new_path = os.path.join(parent_dir, new_name)
+        
+        # 새 이름이 이미 존재하는지 확인
+        if os.path.exists(full_new_path):
+            raise HTTPException(status_code=409, detail=f"Folder or KB '{new_name}' already exists in the same location")
+        
+        # 📋 복사 후 원본 소프트 삭제 방식으로 이름 변경 (ChromaDB 락 문제 회피)
         try:
-            old_path = request.get("old_path", "")
-            new_name = request.get("new_name", "")
+            # 1. 전체 폴더 복사
+            shutil.copytree(full_old_path, full_new_path)
+            logger.info(f"Folder copied: '{full_old_path}' -> '{full_new_path}'")
             
-            if not old_path or not new_name:
-                raise HTTPException(status_code=400, detail="old_path and new_name are required")
+            # 2. 복사본에서 .delete_marker 제거 (혹시 있을 경우)
+            copy_delete_marker = os.path.join(full_new_path, '.delete_marker')
+            if os.path.exists(copy_delete_marker):
+                os.remove(copy_delete_marker)
             
-            kb_base_path = os.path.join(os.path.dirname(__file__), '..', '..', 'knowledge_bases')
-            kb_base_path = os.path.abspath(kb_base_path)
+            # 3. 원본에 .delete_marker 생성 (소프트 삭제)
+            import datetime
+            original_delete_marker = os.path.join(full_old_path, '.delete_marker')
+            with open(original_delete_marker, 'w') as f:
+                f.write(f"Renamed to '{new_name}' at: {datetime.datetime.now().isoformat()}\n")
             
-            # 전체 경로 생성
-            full_old_path = os.path.join(kb_base_path, old_path)
+            logger.info(f"Folder renamed (copy+soft delete): '{old_path}' -> '{new_name}'")
             
-            # 존재 확인
-            if not os.path.exists(full_old_path):
-                raise HTTPException(status_code=404, detail=f"Folder '{old_path}' not found")
-            
-            if not os.path.isdir(full_old_path):
-                raise HTTPException(status_code=400, detail=f"'{old_path}' is not a folder")
-            
-            # 새 경로 계산 (같은 부모 디렉토리 내에서)
-            parent_dir = os.path.dirname(full_old_path)
-            full_new_path = os.path.join(parent_dir, new_name)
-            
-            # 새 이름이 이미 존재하는지 확인
-            if os.path.exists(full_new_path):
-                raise HTTPException(status_code=409, detail=f"Folder or KB '{new_name}' already exists in the same location")
-            
-            # 이름 변경
-            os.rename(full_old_path, full_new_path)
-            
-            # 새 상대 경로 계산
-            new_relative_path = os.path.relpath(full_new_path, kb_base_path).replace('\\', '/')
-            
-            logger.info(f"Folder renamed: '{old_path}' -> '{new_relative_path}'")
-            
-            return {
-                "success": True,
-                "message": f"Folder renamed successfully",
-                "old_path": old_path,
-                "new_path": new_relative_path
-            }
-            
-        except HTTPException:
-            raise
         except Exception as e:
-            logger.error(f"Failed to rename folder: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            # 복사 실패 시 복사본 정리
+            if os.path.exists(full_new_path):
+                try:
+                    shutil.rmtree(full_new_path, ignore_errors=True)
+                except:
+                    pass
+            logger.error(f"Failed to rename folder '{old_path}': {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Cannot rename folder: {str(e)}"
+            )
+        
+        # 새 상대 경로 계산
+        new_relative_path = PathResolver.to_relative_path(full_new_path)
+        
+        logger.info(f"Folder renamed: '{old_path}' -> '{new_relative_path}'")
+        
+        return {
+            "success": True,
+            "message": f"Folder renamed successfully",
+            "old_path": old_path,
+            "new_path": new_relative_path
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to rename folder: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/knowledge-bases/rename")
 async def rename_knowledge_base(request: dict):
     """지식 베이스 이름 변경 (같은 디렉토리 내에서만, 동시성 안전)"""
-    async with fs_lock:
+    try:
+        old_name = request.get("old_name", "")
+        new_name = request.get("new_name", "")
+        
+        if not old_name or not new_name:
+            raise HTTPException(status_code=400, detail="old_name and new_name are required")
+        
+        if old_name == new_name:
+            raise HTTPException(status_code=400, detail="New name must be different from old name")
+        
+        from ..core.utils import get_kb_path
+        
+        old_path = get_kb_path(old_name)
+        
+        logger.info(f"KB Rename request - old_name: '{old_name}', new_name: '{new_name}'")
+        logger.info(f"Resolved old_path: '{old_path}', exists: {os.path.exists(old_path)}")
+        
+        if not os.path.exists(old_path):
+            raise HTTPException(status_code=404, detail=f"Knowledge base '{old_name}' not found at '{old_path}'")
+        
+        # ⚠️ 삭제된 KB는 이름 변경 불가
+        delete_marker = os.path.join(old_path, '.delete_marker')
+        if os.path.exists(delete_marker):
+            raise HTTPException(status_code=404, detail=f"Knowledge base '{old_name}' has been deleted")
+        
+        # 🔒 보호 체크 (보호된 KB는 이름 변경 불가)
+        check_protection_before_operation(old_path, "rename", is_folder=False)
+        
+        # 같은 부모 디렉토리 내에서 이름만 변경
+        parent_dir = os.path.dirname(old_path)
+        new_path = os.path.join(parent_dir, new_name)
+        
+        logger.info(f"Target new_path: '{new_path}'")
+        
+        if os.path.exists(new_path):
+            raise HTTPException(status_code=409, detail=f"Knowledge base '{new_name}' already exists")
+        
+        # 📋 복사 후 원본 소프트 삭제 방식으로 이름 변경 (ChromaDB 락 문제 회피)
         try:
-            old_name = request.get("old_name", "")
-            new_name = request.get("new_name", "")
+            # 1. 전체 KB 디렉토리 복사
+            shutil.copytree(old_path, new_path)
+            logger.info(f"KB copied: '{old_path}' -> '{new_path}'")
             
-            if not old_name or not new_name:
-                raise HTTPException(status_code=400, detail="old_name and new_name are required")
+            # 2. 복사본에서 .delete_marker와 .secure_marker 제거 (혹시 있을 경우)
+            copy_delete_marker = os.path.join(new_path, '.delete_marker')
+            if os.path.exists(copy_delete_marker):
+                os.remove(copy_delete_marker)
             
-            if old_name == new_name:
-                raise HTTPException(status_code=400, detail="New name must be different from old name")
+            # 3. 원본에 .delete_marker 생성 (소프트 삭제)
+            import datetime
+            original_delete_marker = os.path.join(old_path, '.delete_marker')
+            with open(original_delete_marker, 'w') as f:
+                f.write(f"Renamed to '{new_name}' at: {datetime.datetime.now().isoformat()}\n")
             
-            from ..core.utils import get_kb_path
-            import gc
+            logger.info(f"Knowledge base renamed (copy+soft delete): '{old_name}' -> '{new_name}'")
             
-            old_path = get_kb_path(old_name)
-            
-            logger.info(f"KB Rename request - old_name: '{old_name}', new_name: '{new_name}'")
-            logger.info(f"Resolved old_path: '{old_path}', exists: {os.path.exists(old_path)}")
-            
-            if not os.path.exists(old_path):
-                raise HTTPException(status_code=404, detail=f"Knowledge base '{old_name}' not found at '{old_path}'")
-            
-            # 같은 부모 디렉토리 내에서 이름만 변경
-            parent_dir = os.path.dirname(old_path)
-            new_path = os.path.join(parent_dir, new_name)
-            
-            logger.info(f"Target new_path: '{new_path}'")
-            
-            if os.path.exists(new_path):
-                raise HTTPException(status_code=409, detail=f"Knowledge base '{new_name}' already exists")
-            
-            # CRITICAL: 모든 VectorStoreService에서 이 KB의 ChromaDB 연결 닫기
-            logger.info(f"🔒 KB '{old_name}'의 모든 ChromaDB 연결 닫는 중...")
-            close_kb_in_all_services(old_name)
-            await asyncio.sleep(0.3)  # 파일 핸들이 완전히 닫힐 시간 제공
-            
-            # ChromaDB 파일 잠금 해제를 위한 재시도 로직
-            max_retries = 5
-            for attempt in range(max_retries):
-                try:
-                    # 가비지 컬렉션 강제 실행 (ChromaDB 파일 핸들 해제)
-                    gc.collect()
-                    await asyncio.sleep(0.1)  # 비동기 대기
-                    
-                    # 디렉토리 이름 변경
-                    os.rename(old_path, new_path)
-                    logger.info(f"Knowledge base renamed successfully on attempt {attempt + 1}")
-                    break
-                except (PermissionError, OSError) as e:
-                    if attempt < max_retries - 1:
-                        logger.warning(f"Error renaming '{old_name}', retrying... (attempt {attempt + 1}/{max_retries}): {e}")
-                        await asyncio.sleep(0.5 + attempt * 0.2)  # 점진적 백오프
-                    else:
-                        logger.error(f"Failed to rename '{old_name}' after {max_retries} attempts: {e}")
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Cannot rename knowledge base: files are in use. Please close any applications using them and try again. Error: {str(e)}"
-                        )
-            
-            # 새 상대 경로 계산
-            kb_base_path = os.path.join(os.path.dirname(__file__), '..', '..', 'knowledge_bases')
-            kb_base_path = os.path.abspath(kb_base_path)
-            new_relative_path = os.path.relpath(new_path, kb_base_path).replace('\\', '/')
-            
-            logger.info(f"Knowledge base renamed: '{old_name}' -> '{new_relative_path}'")
-            
-            return {
-                "success": True,
-                "message": f"Knowledge base renamed successfully",
-                "old_name": old_name,
-                "new_name": new_relative_path
-            }
-            
-        except HTTPException:
-            raise
         except Exception as e:
-            logger.error(f"Failed to rename knowledge base '{old_name}': {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            # 복사 실패 시 복사본 정리
+            if os.path.exists(new_path):
+                try:
+                    shutil.rmtree(new_path, ignore_errors=True)
+                except:
+                    pass
+            logger.error(f"Failed to rename KB '{old_name}': {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Cannot rename knowledge base: {str(e)}"
+            )
+        
+        # 새 상대 경로 계산
+        new_relative_path = PathResolver.to_relative_path(new_path)
+        
+        logger.info(f"Knowledge base renamed: '{old_name}' -> '{new_relative_path}'")
+        
+        return {
+            "success": True,
+            "message": f"Knowledge base renamed successfully",
+            "old_name": old_name,
+            "new_name": new_relative_path
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to rename knowledge base '{old_name}': {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/knowledge-bases/move-folder")
 async def move_folder(request: dict):
@@ -673,11 +698,8 @@ async def move_folder(request: dict):
             if not old_path:
                 raise HTTPException(status_code=400, detail="old_path is required")
             
-            kb_base_path = os.path.join(os.path.dirname(__file__), '..', '..', 'knowledge_bases')
-            kb_base_path = os.path.abspath(kb_base_path)
-            
             # 이동할 폴더의 전체 경로
-            full_old_path = os.path.join(kb_base_path, old_path)
+            full_old_path = PathResolver.resolve_folder_path(old_path)
             
             logger.info(f"Folder Move request - old_path: '{old_path}', target_folder: '{target_folder}'")
             logger.info(f"Resolved full_old_path: '{full_old_path}', exists: {os.path.exists(full_old_path)}")
@@ -688,11 +710,16 @@ async def move_folder(request: dict):
             if not os.path.isdir(full_old_path):
                 raise HTTPException(status_code=400, detail=f"'{old_path}' is not a folder")
             
+            # ⚠️ 삭제된 폴더는 이동 불가
+            delete_marker = os.path.join(full_old_path, '.delete_marker')
+            if os.path.exists(delete_marker):
+                raise HTTPException(status_code=404, detail=f"Folder '{old_path}' has been deleted")
+            
+            # 🔒 보호 체크 (보호된 폴더 또는 내부에 보호된 콘텐츠가 있으면 이동 불가)
+            check_protection_before_operation(full_old_path, "move", is_folder=True)
+            
             # 대상 폴더 경로 계산
-            if target_folder and target_folder != 'root':
-                target_dir = os.path.join(kb_base_path, target_folder)
-            else:
-                target_dir = kb_base_path
+            target_dir = PathResolver.resolve_folder_path(target_folder) if (target_folder and target_folder != 'root') else PathResolver.get_kb_base_path()
             
             # 대상 폴더가 없으면 생성
             os.makedirs(target_dir, exist_ok=True)
@@ -710,7 +737,7 @@ async def move_folder(request: dict):
                     "success": True,
                     "message": f"Folder is already in target location",
                     "old_path": old_path,
-                    "new_path": os.path.relpath(new_path, kb_base_path).replace('\\', '/')
+                    "new_path": PathResolver.to_relative_path(new_path)
                 }
             
             # 새 경로가 이미 존재하는지 확인
@@ -721,13 +748,41 @@ async def move_folder(request: dict):
             if new_path.startswith(full_old_path + os.sep):
                 raise HTTPException(status_code=400, detail="Cannot move folder into its own subfolder")
             
-            # 이동
-            shutil.move(full_old_path, new_path)
+            # 새 상대 경로 미리 계산 (로그 및 에러 처리용)
+            new_relative_path = PathResolver.to_relative_path(new_path)
             
-            # 새 상대 경로 계산
-            new_relative_path = os.path.relpath(new_path, kb_base_path).replace('\\', '/')
-            
-            logger.info(f"Folder moved: '{old_path}' -> '{new_relative_path}'")
+            # 📋 복사 후 원본 소프트 삭제 방식으로 이동 (ChromaDB 락 문제 회피)
+            try:
+                # 1. 전체 폴더 복사
+                shutil.copytree(full_old_path, new_path)
+                logger.info(f"Folder copied: '{full_old_path}' -> '{new_path}'")
+                
+                # 2. 복사본에서 .delete_marker 제거 (혹시 있을 경우)
+                copy_delete_marker = os.path.join(new_path, '.delete_marker')
+                if os.path.exists(copy_delete_marker):
+                    os.remove(copy_delete_marker)
+                
+                # 3. 원본에 .delete_marker 생성 (소프트 삭제)
+                import datetime
+                original_delete_marker = os.path.join(full_old_path, '.delete_marker')
+                with open(original_delete_marker, 'w') as f:
+                    target_name = target_folder if target_folder else 'root'
+                    f.write(f"Moved to '{target_name}' at: {datetime.datetime.now().isoformat()}\n")
+                
+                logger.info(f"Folder moved (copy+soft delete): '{old_path}' -> '{new_relative_path}'")
+                
+            except Exception as e:
+                # 복사 실패 시 복사본 정리
+                if os.path.exists(new_path):
+                    try:
+                        shutil.rmtree(new_path, ignore_errors=True)
+                    except:
+                        pass
+                logger.error(f"Failed to move folder: {e}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Cannot move folder: {str(e)}"
+                )
             
             return {
                 "success": True,
@@ -764,14 +819,16 @@ async def move_knowledge_base(request: dict):
             if not os.path.exists(old_path):
                 raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found at '{old_path}'")
             
-            # 대상 폴더 경로 생성
-            kb_base_path = os.path.join(os.path.dirname(__file__), '..', '..', 'knowledge_bases')
-            kb_base_path = os.path.abspath(kb_base_path)
+            # ⚠️ 삭제된 KB는 이동 불가
+            delete_marker = os.path.join(old_path, '.delete_marker')
+            if os.path.exists(delete_marker):
+                raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' has been deleted")
             
-            if target_folder and target_folder != 'root':
-                target_dir = os.path.join(kb_base_path, target_folder)
-            else:
-                target_dir = kb_base_path
+            # 🔒 보호 체크 (보호된 KB는 이동 뵣8가)
+            check_protection_before_operation(old_path, "move", is_folder=False)
+            
+            # 대상 폴더 경로 생성
+            target_dir = PathResolver.resolve_folder_path(target_folder) if (target_folder and target_folder != 'root') else PathResolver.get_kb_base_path()
             
             # 대상 폴더가 없으면 생성
             os.makedirs(target_dir, exist_ok=True)
@@ -789,19 +846,47 @@ async def move_knowledge_base(request: dict):
                     "success": True,
                     "message": f"Knowledge base is already in target location",
                     "old_path": kb_name,
-                    "new_path": os.path.relpath(new_path, kb_base_path).replace('\\', '/')
+                    "new_path": PathResolver.to_relative_path(new_path)
                 }
             
             if os.path.exists(new_path):
                 raise HTTPException(status_code=409, detail=f"Knowledge base '{kb_basename}' already exists in target folder")
             
-            # 이동
-            shutil.move(old_path, new_path)
+            # 새 상대 경로 미리 계산 (로그 및 에러 처리용)
+            new_relative_path = PathResolver.to_relative_path(new_path)
             
-            # 새 상대 경로 계산
-            new_relative_path = os.path.relpath(new_path, kb_base_path).replace('\\', '/')
-            
-            logger.info(f"Knowledge base moved: '{kb_name}' -> '{new_relative_path}'")
+            # 📋 복사 후 원본 소프트 삭제 방식으로 이동 (ChromaDB 락 문제 회피)
+            try:
+                # 1. 전체 KB 디렉토리 복사
+                shutil.copytree(old_path, new_path)
+                logger.info(f"KB copied: '{old_path}' -> '{new_path}'")
+                
+                # 2. 복사본에서 .delete_marker 제거 (혹시 있을 경우)
+                copy_delete_marker = os.path.join(new_path, '.delete_marker')
+                if os.path.exists(copy_delete_marker):
+                    os.remove(copy_delete_marker)
+                
+                # 3. 원본에 .delete_marker 생성 (소프트 삭제)
+                import datetime
+                original_delete_marker = os.path.join(old_path, '.delete_marker')
+                with open(original_delete_marker, 'w') as f:
+                    target_name = target_folder if target_folder else 'root'
+                    f.write(f"Moved to '{target_name}' at: {datetime.datetime.now().isoformat()}\n")
+                
+                logger.info(f"Knowledge base moved (copy+soft delete): '{kb_name}' -> '{new_relative_path}'")
+                
+            except Exception as e:
+                # 복사 실패 시 복사본 정리
+                if os.path.exists(new_path):
+                    try:
+                        shutil.rmtree(new_path, ignore_errors=True)
+                    except:
+                        pass
+                logger.error(f"Failed to move KB '{kb_name}': {e}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Cannot move knowledge base: {str(e)}"
+                )
             
             return {
                 "success": True,
@@ -907,15 +992,12 @@ async def create_knowledge_base(request: dict):
             prefix_map = {"keyword": "keyword-", "sentence": "sentence-", "custom": "custom-"}
             kb_name = f"{prefix_map[chunk_type]}{kb_name_input}"
             
-            kb_base_path = os.path.join(os.path.dirname(__file__), '..', '..', 'knowledge_bases')
-            kb_base_path = os.path.abspath(kb_base_path)
-            
             if target_folder and target_folder != 'root':
                 kb_full_name = f"{target_folder}/{kb_name}"
-                kb_dir = os.path.join(kb_base_path, target_folder)
+                kb_dir = PathResolver.resolve_folder_path(target_folder)
             else:
                 kb_full_name = kb_name
-                kb_dir = kb_base_path
+                kb_dir = PathResolver.get_kb_base_path()
             
             os.makedirs(kb_dir, exist_ok=True)
             
@@ -938,12 +1020,11 @@ async def create_knowledge_base(request: dict):
             
             logger.info(f"Building KB with chunk_size={chunk_size}, chunk_overlap={chunk_overlap}")
             
-            # DocumentProcessor 및 VectorStore 초기화
+            # DocumentProcessor 초기화
             from ..services.document_processor import DocumentProcessor
             from ..services.vector_store import VectorStore
             
             doc_processor = DocumentProcessor(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-            vector_store = VectorStore(kb_full_name)
             
             # 입력 방식에 따라 텍스트 추출
             if file_content_base64:
@@ -978,10 +1059,15 @@ async def create_knowledge_base(request: dict):
             chunks_with_embeddings = doc_processor.generate_embeddings(chunks)
             logger.info("Embeddings generated")
             
-            # 벡터 DB 저장
+            # 벡터 DB 저장 (context manager로 자동 닫기)
             logger.info("Storing in vector database...")
-            vector_store.store_chunks(chunks_with_embeddings)
+            with VectorStore(kb_full_name) as vector_store:
+                vector_store.store_chunks(chunks_with_embeddings)
             logger.info(f"Knowledge base '{kb_full_name}' created successfully with {len(chunks)} chunks")
+            
+            # 명시적 가비지 컬렉션
+            import gc
+            gc.collect()
             
             return {
                 "success": True,
@@ -1045,3 +1131,181 @@ async def get_available_models(provider: str):
     except Exception as e:
         logger.error(f"Failed to get models for {provider}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/knowledge-bases/protect-folder")
+async def protect_folder(request: dict):
+    """폴더에 비밀번호 기반 보호 설정"""
+    async with fs_lock:
+        try:
+            folder_path = request.get("folder_path", "")
+            password = request.get("password", "")
+            reason = request.get("reason", "")
+            
+            if not folder_path:
+                raise HTTPException(status_code=400, detail="folder_path is required")
+            
+            if not password:
+                raise HTTPException(status_code=400, detail="password is required")
+            
+            # 전체 경로 생성
+            full_path = PathResolver.resolve_folder_path(folder_path)
+            
+            # 존재 여부 확인
+            if not os.path.exists(full_path):
+                raise HTTPException(status_code=404, detail=f"Folder '{folder_path}' not found")
+            
+            if not os.path.isdir(full_path):
+                raise HTTPException(status_code=400, detail=f"'{folder_path}' is not a folder")
+            
+            # 이미 보호되어 있는지 확인
+            if is_protected(full_path):
+                raise HTTPException(status_code=409, detail="Folder is already protected")
+            
+            # 보호 설정
+            create_secure_marker(full_path, password, reason)
+            
+            logger.info(f"Folder protected: '{folder_path}'")
+            
+            return {
+                "success": True,
+                "message": f"Folder '{folder_path}' is now protected",
+                "folder_path": folder_path
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to protect folder: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/knowledge-bases/unprotect-folder")
+async def unprotect_folder(request: dict):
+    """폴더 보호 해제 (비밀번호 검증 필요)"""
+    async with fs_lock:
+        try:
+            folder_path = request.get("folder_path", "")
+            password = request.get("password", "")
+            
+            if not folder_path:
+                raise HTTPException(status_code=400, detail="folder_path is required")
+            
+            if not password:
+                raise HTTPException(status_code=400, detail="password is required")
+            
+            # 전체 경로 생성
+            full_path = PathResolver.resolve_folder_path(folder_path)
+            
+            # 존재 여부 확인
+            if not os.path.exists(full_path):
+                raise HTTPException(status_code=404, detail=f"Folder '{folder_path}' not found")
+            
+            if not os.path.isdir(full_path):
+                raise HTTPException(status_code=400, detail=f"'{folder_path}' is not a folder")
+            
+            # 보호되어 있지 않으면 에러
+            if not is_protected(full_path):
+                raise HTTPException(status_code=404, detail="Folder is not protected")
+            
+            # 비밀번호 검증 및 보호 해제
+            remove_secure_marker(full_path, password)
+            
+            logger.info(f"Folder unprotected: '{folder_path}'")
+            
+            return {
+                "success": True,
+                "message": f"Folder '{folder_path}' protection removed",
+                "folder_path": folder_path
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to unprotect folder: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/knowledge-bases/protect")
+async def protect_knowledge_base(request: dict):
+    """지식 베이스에 비밀번호 기반 보호 설정"""
+    async with fs_lock:
+        try:
+            kb_name = request.get("kb_name", "")
+            password = request.get("password", "")
+            reason = request.get("reason", "")
+            
+            if not kb_name:
+                raise HTTPException(status_code=400, detail="kb_name is required")
+            
+            if not password:
+                raise HTTPException(status_code=400, detail="password is required")
+            
+            from ..core.utils import get_kb_path
+            
+            kb_path = get_kb_path(kb_name)
+            
+            # 존재 여부 확인
+            if not os.path.exists(kb_path):
+                raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+            
+            # 이미 보호되어 있는지 확인
+            if is_protected(kb_path):
+                raise HTTPException(status_code=409, detail="Knowledge base is already protected")
+            
+            # 보호 설정
+            create_secure_marker(kb_path, password, reason)
+            
+            logger.info(f"Knowledge base protected: '{kb_name}'")
+            
+            return {
+                "success": True,
+                "message": f"Knowledge base '{kb_name}' is now protected",
+                "kb_name": kb_name
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to protect knowledge base: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/knowledge-bases/unprotect")
+async def unprotect_knowledge_base(request: dict):
+    """지식 베이스 보호 해제 (비밀번호 검증 필요)"""
+    async with fs_lock:
+        try:
+            kb_name = request.get("kb_name", "")
+            password = request.get("password", "")
+            
+            if not kb_name:
+                raise HTTPException(status_code=400, detail="kb_name is required")
+            
+            if not password:
+                raise HTTPException(status_code=400, detail="password is required")
+            
+            from ..core.utils import get_kb_path
+            
+            kb_path = get_kb_path(kb_name)
+            
+            # 존재 여부 확인
+            if not os.path.exists(kb_path):
+                raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+            
+            # 보호되어 있지 않으면 에러
+            if not is_protected(kb_path):
+                raise HTTPException(status_code=404, detail="Knowledge base is not protected")
+            
+            # 비밀번호 검증 및 보호 해제
+            remove_secure_marker(kb_path, password)
+            
+            logger.info(f"Knowledge base unprotected: '{kb_name}'")
+            
+            return {
+                "success": True,
+                "message": f"Knowledge base '{kb_name}' protection removed",
+                "kb_name": kb_name
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to unprotect knowledge base: {e}")
+            raise HTTPException(status_code=500, detail=str(e))

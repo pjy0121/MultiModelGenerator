@@ -20,9 +20,9 @@ def get_kb_path(kb_name: str) -> str:
     Returns:
         절대 경로
     """
-    # 경로 구분자를 OS에 맞게 정규화
-    kb_name_normalized = kb_name.replace('/', os.sep).replace('\\', os.sep)
-    return os.path.join(VECTOR_DB_CONFIG["root_dir"], kb_name_normalized)
+    # PathResolver 사용으로 일관성 유지
+    from .path_resolver import PathResolver
+    return PathResolver.resolve_kb_path(kb_name)
 
 
 def _get_kb_list_sync() -> List[str]:

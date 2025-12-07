@@ -9,10 +9,11 @@ import {
   EditOutlined,
   DeleteOutlined,
   MoreOutlined,
-  ReloadOutlined
+  ReloadOutlined,
+  LockOutlined,
+  DragOutlined
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
-import { useDataLoadingStore } from '../store/dataLoadingStore';
 import { workflowAPI } from '../services/api';
 import CreateKnowledgeBaseModal from './CreateKnowledgeBaseModal';
 
@@ -25,6 +26,7 @@ interface FolderStructure {
     parent: string | null;
     chunkCount?: number;
     actualKbName?: string; // KB의 실제 서버 폴더 이름 (이름 변경 추적용)
+    isProtected?: boolean; // 🔒 비밀번호 보호 상태
   };
 }
 
@@ -42,9 +44,9 @@ const KnowledgeBaseManageModal: React.FC<KnowledgeBaseManageModalProps> = ({
   onClose,
   onRefresh
 }) => {
-  const { knowledgeBases } = useDataLoadingStore();
   const [currentPath, setCurrentPath] = useState<string>('root');
   const [folderStructure, setFolderStructure] = useState<FolderStructure>({});
+  const [loading, setLoading] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [newFolderModalVisible, setNewFolderModalVisible] = useState<boolean>(false);
   const [newFolderName, setNewFolderName] = useState<string>('');
@@ -52,6 +54,9 @@ const KnowledgeBaseManageModal: React.FC<KnowledgeBaseManageModalProps> = ({
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [renameName, setRenameName] = useState<string>('');
   const [createKbModalVisible, setCreateKbModalVisible] = useState<boolean>(false);
+  const [protectionModalVisible, setProtectionModalVisible] = useState<boolean>(false);
+  const [protectionPassword, setProtectionPassword] = useState<string>('');
+  const [protectionTarget, setProtectionTarget] = useState<{ id: string; type: 'folder' | 'kb'; name: string; isProtected: boolean } | null>(null);
 
   // 폴더 구조 로드
   useEffect(() => {
@@ -63,6 +68,7 @@ const KnowledgeBaseManageModal: React.FC<KnowledgeBaseManageModalProps> = ({
   // 서버에서 실제 디렉토리 구조 로드
   const loadFolderStructure = async () => {
     try {
+      setLoading(true);
       // 서버에서 실제 파일 시스템 구조 로드 (서버만 신뢰)
       const { structure: serverStructure } = await workflowAPI.getKnowledgeBaseStructure();
       
@@ -73,6 +79,8 @@ const KnowledgeBaseManageModal: React.FC<KnowledgeBaseManageModalProps> = ({
       console.error('폴더 구조 로드 실패:', error);
       message.error('폴더 구조를 불러오는데 실패했습니다.');
       setFolderStructure({});
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -102,21 +110,8 @@ const KnowledgeBaseManageModal: React.FC<KnowledgeBaseManageModalProps> = ({
       }
     });
 
-    // KB 목록에서 아직 폴더에 할당되지 않은 항목들 추가 (전체 구조 검색)
-    knowledgeBases.forEach((kb) => {
-      const existsInStructure = Object.values(folderStructure).some(
-        (item) => item.type === 'kb' && (item.actualKbName || item.name) === kb.name
-      );
-      if (!existsInStructure && currentPath === 'root') {
-        const kbId = `kb_${kb.name.replace(/\//g, '_')}`; // 경로 구분자 치환
-        items.push({
-          id: kbId,
-          type: 'kb',
-          name: kb.name,
-          chunkCount: kb.chunk_count
-        });
-      }
-    });
+    // 서버에서 이미 모든 KB를 포함한 구조를 반환하므로 추가 로직 불필요
+    // knowledgeBases는 백업용으로만 사용
 
     return items.sort((a, b) => {
       if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
@@ -391,8 +386,68 @@ const KnowledgeBaseManageModal: React.FC<KnowledgeBaseManageModalProps> = ({
     });
   };
 
+  // 보호/보호 해제 핸들러
+  const handleProtection = async () => {
+    if (!protectionTarget || !protectionPassword) {
+      message.error('비밀번호를 입력하세요.');
+      return;
+    }
+
+    try {
+      const item = folderStructure[protectionTarget.id];
+      const path = item.type === 'folder' 
+        ? getRelativePath(protectionTarget.id)
+        : item.actualKbName || item.name;
+
+      if (protectionTarget.isProtected) {
+        // 보호 해제
+        if (item.type === 'folder') {
+          await workflowAPI.unprotectFolder(path, protectionPassword);
+        } else {
+          await workflowAPI.unprotectKnowledgeBase(path, protectionPassword);
+        }
+        message.success(`"${protectionTarget.name}" 보호가 해제되었습니다.`);
+      } else {
+        // 보호 설정
+        if (item.type === 'folder') {
+          await workflowAPI.protectFolder(path, protectionPassword);
+        } else {
+          await workflowAPI.protectKnowledgeBase(path, protectionPassword);
+        }
+        message.success(`"${protectionTarget.name}"이(가) 보호되었습니다.`);
+      }
+
+      setProtectionModalVisible(false);
+      setProtectionPassword('');
+      setProtectionTarget(null);
+      await loadFolderStructure();
+      await onRefresh();
+    } catch (error: any) {
+      console.error('보호 설정/해제 실패:', error);
+      const errorMsg = error.response?.data?.detail || error.message || '작업에 실패했습니다.';
+      message.error(errorMsg);
+    }
+  };
+
+  // 상대 경로 계산 헬퍼
+  const getRelativePath = (id: string): string => {
+    const path: string[] = [];
+    let current = id;
+    
+    while (current !== 'root' && folderStructure[current]) {
+      path.unshift(folderStructure[current].name);
+      current = folderStructure[current].parent || 'root';
+    }
+    
+    return path.join('/');
+  };
+
   // 컨텍스트 메뉴
-  const getContextMenu = (id: string, type: 'folder' | 'kb', name: string): MenuProps => ({
+  const getContextMenu = (id: string, type: 'folder' | 'kb', name: string): MenuProps => {
+    const item = folderStructure[id];
+    const isProtected = item?.isProtected || false;
+
+    return {
     items: [
       {
         key: 'rename',
@@ -406,8 +461,19 @@ const KnowledgeBaseManageModal: React.FC<KnowledgeBaseManageModalProps> = ({
       },
       {
         key: 'move',
+        icon: <DragOutlined />,
         label: '이동',
         onClick: () => handleMove(id, type, name)
+      },
+      {
+        key: 'protection',
+        icon: <LockOutlined />,
+        label: isProtected ? '보호 해제' : '보호',
+        onClick: () => {
+          setProtectionTarget({ id, type, name, isProtected });
+          setProtectionPassword('');
+          setProtectionModalVisible(true);
+        }
       },
       {
         key: 'delete',
@@ -423,7 +489,8 @@ const KnowledgeBaseManageModal: React.FC<KnowledgeBaseManageModalProps> = ({
         }
       }
     ]
-  });
+  };
+  };
 
   const items = getCurrentItems();
   const breadcrumbPath = getBreadcrumbPath();
@@ -454,6 +521,13 @@ const KnowledgeBaseManageModal: React.FC<KnowledgeBaseManageModalProps> = ({
               >
                 뒤로
               </Button>
+              <Button
+                icon={<ReloadOutlined spin={refreshing || loading} />}
+                onClick={handleRefresh}
+                loading={refreshing || loading}
+              >
+                새로고침
+              </Button>
               <Breadcrumb
                 items={breadcrumbPath.map((item) => ({
                   title: item.name,
@@ -466,13 +540,6 @@ const KnowledgeBaseManageModal: React.FC<KnowledgeBaseManageModalProps> = ({
 
           {/* 액션 버튼들 */}
           <Space>
-            <Button
-              icon={<ReloadOutlined spin={refreshing} />}
-              onClick={handleRefresh}
-              loading={refreshing}
-            >
-              새로고침
-            </Button>
             <Button
               type="primary"
               icon={<PlusOutlined />}
@@ -512,7 +579,12 @@ const KnowledgeBaseManageModal: React.FC<KnowledgeBaseManageModalProps> = ({
                   <FileTextOutlined style={{ fontSize: 20, color: '#1890ff' }} />
                 )}
                 <div>
-                  <Text strong>{item.name}</Text>
+                  <Space>
+                    <Text strong>{item.name}</Text>
+                    {folderStructure[item.id]?.isProtected && (
+                      <LockOutlined style={{ color: '#52c41a', fontSize: 16 }} title="보호됨" />
+                    )}
+                  </Space>
                   {item.chunkCount !== undefined && (
                     <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
                       ({item.chunkCount}개 청크)
@@ -536,12 +608,14 @@ const KnowledgeBaseManageModal: React.FC<KnowledgeBaseManageModalProps> = ({
         }}
         okText="추가"
         cancelText="취소"
+        zIndex={2000}
       >
         <Input
           placeholder="폴더 이름을 입력하세요"
           value={newFolderName}
           onChange={(e) => setNewFolderName(e.target.value)}
           onPressEnter={handleAddFolder}
+          autoFocus
         />
       </Modal>
 
@@ -557,13 +631,57 @@ const KnowledgeBaseManageModal: React.FC<KnowledgeBaseManageModalProps> = ({
         }}
         okText="변경"
         cancelText="취소"
+        zIndex={2000}
       >
         <Input
           placeholder="새 이름을 입력하세요"
           value={renameName}
           onChange={(e) => setRenameName(e.target.value)}
           onPressEnter={handleRename}
+          autoFocus
         />
+      </Modal>
+
+      {/* 보호/보호 해제 모달 */}
+      <Modal
+        title={
+          <Space>
+            <LockOutlined />
+            {protectionTarget?.isProtected ? '보호 해제' : '보호 설정'}
+          </Space>
+        }
+        open={protectionModalVisible}
+        onOk={handleProtection}
+        onCancel={() => {
+          setProtectionModalVisible(false);
+          setProtectionPassword('');
+          setProtectionTarget(null);
+        }}
+        okText={protectionTarget?.isProtected ? '해제' : '설정'}
+        cancelText="취소"
+        zIndex={2000}
+      >
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Text>
+            {protectionTarget?.isProtected 
+              ? `"${protectionTarget.name}"의 보호를 해제하려면 비밀번호를 입력하세요.`
+              : `"${protectionTarget?.name}"을(를) 보호하려면 비밀번호를 설정하세요.`
+            }
+          </Text>
+          <Input.Password
+            placeholder="비밀번호"
+            value={protectionPassword}
+            onChange={(e) => setProtectionPassword(e.target.value)}
+            onPressEnter={handleProtection}
+            autoFocus
+            autoComplete="off"
+          />
+          {!protectionTarget?.isProtected && (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              * 보호된 항목은 이동, 이름 변경, 삭제가 불가능합니다.
+            </Text>
+          )}
+        </Space>
       </Modal>
 
       {/* 지식 베이스 생성 모달 */}
