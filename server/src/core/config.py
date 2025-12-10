@@ -60,7 +60,7 @@ NODE_EXECUTION_CONFIG = {
 # 검색 강도 설정 (Top-K + Similarity Threshold 병행)
 # 임계값: BGE-M3 실제 유사도 분포 기반 (실측값 0.2~0.4 범위)
 # - 이론적 권장값(0.8/0.65/0.5)은 실제로는 너무 높아 대부분 필터링됨
-# - 실용적 값(0.3/0.2/0.1)으로 조정하여 적절한 검색 결과 확보
+# - 실용적 값(0.3/0.25/0.2)으로 조정하여 적절한 검색 결과 확보
 SEARCH_INTENSITY_CONFIG = {
     "exact": {
         "init": 10,                # 초기 검색 개수
@@ -70,12 +70,12 @@ SEARCH_INTENSITY_CONFIG = {
     "standard": {
         "init": 20,
         "final": 12,
-        "similarity_threshold": 0.2  # 어느 정도 관련성 (balanced, 기본값)
+        "similarity_threshold": 0.25  # 어느 정도 관련성 (balanced, 기본값)
     },
     "comprehensive": {
         "init": 40,
         "final": 25,
-        "similarity_threshold": 0.1  # 약간이라도 관련 가능성 (broad coverage)
+        "similarity_threshold": 0.2  # 약간이라도 관련 가능성 (broad coverage)
     }
 }
 
