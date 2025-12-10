@@ -296,12 +296,13 @@ class NodeExecutor:
                         execution_time=time.time() - start_time
                     )
                 
-                # context-node 자체의 rerank 설정 사용
+                # context-node 자체의 rerank 설정 사용 (고정 모델: BAAI/bge-reranker-v2-m3)
                 rerank_info = None
-                if (node.rerank_provider and node.rerank_provider != "none" and node.rerank_model):
+                if (node.rerank_provider and node.rerank_provider not in ["none", None]):
+                    from ..core.config import VECTOR_DB_CONFIG
                     rerank_info = {
-                        "provider": node.rerank_provider,
-                        "model": node.rerank_model
+                        "provider": "internal",  # 고정 provider
+                        "model": VECTOR_DB_CONFIG.get("default_rerank_model", "BAAI/bge-reranker-v2-m3")
                     }
                 
                 # 벡터 DB 검색 실행
@@ -387,14 +388,16 @@ class NodeExecutor:
                 # 검색 시작 알림
                 yield {"type": "stream", "content": f"🔍 [{node.id}] 지식 베이스 '{knowledge_base}' 검색 중...\n"}
             
-            # rerank 정보 설정
+            # rerank 정보 설정 (고정 모델: BAAI/bge-reranker-v2-m3)
             rerank_info = None
-            if (node.rerank_provider and node.rerank_provider != "none" and node.rerank_model):
+            if (node.rerank_provider and node.rerank_provider not in ["none", None]):
+                from ..core.config import VECTOR_DB_CONFIG
+                rerank_model = VECTOR_DB_CONFIG.get("default_rerank_model", "BAAI/bge-reranker-v2-m3")
                 rerank_info = {
-                    "provider": node.rerank_provider,
-                    "model": node.rerank_model
+                    "provider": "internal",  # 고정 provider
+                    "model": rerank_model
                 }
-                yield {"type": "stream", "content": f"🔄 [{node.id}] 재정렬 설정됨: {node.rerank_provider}/{node.rerank_model}\n"}
+                yield {"type": "stream", "content": f"🔄 [{node.id}] 재정렬 설정됨: {rerank_model}\n"}
             
             # 지식베이스 검색 수행 (설정되어 있고 "none"이 아닐 경우)
             if kb_searched:

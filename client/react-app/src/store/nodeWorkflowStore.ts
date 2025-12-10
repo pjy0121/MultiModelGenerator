@@ -166,8 +166,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       const state = get();
       state.updateNode(newNode.id, {
         search_intensity: SearchIntensity.STANDARD,
-        rerank_provider: LLMProvider.NONE, // 기본값: 재정렬 사용 안 함
-        rerank_model: undefined
+        rerank_provider: LLMProvider.NONE // 기본값: 재정렬 사용 안 함
       });
       message.success(`${nodeType} 노드가 생성되었습니다. 지식 베이스를 선택해주세요.`);
     }
@@ -315,7 +314,6 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
             knowledge_base: node.data.knowledge_base || null,
             search_intensity: node.data.search_intensity || null,
             rerank_provider: node.data.rerank_provider || null,
-            rerank_model: node.data.rerank_model || null,
             additional_context: node.data.additional_context || null,
 
             output: null,

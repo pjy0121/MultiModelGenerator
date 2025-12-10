@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Modal, Form, Input, Upload, Button, Radio, message } from 'antd';
+import { Modal, Form, Input, Upload, Button, Radio, message, InputNumber } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import { workflowAPI } from '../services/api';
+import { BGE_M3_CONFIG } from '../config/constants';
 
 const { TextArea } = Input;
 
@@ -21,13 +22,11 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [inputMode, setInputMode] = useState<'base64' | 'plain' | 'file'>('base64');
-  const textContentRef = React.useRef<HTMLTextAreaElement>(null);
+  const [textContent, setTextContent] = useState<string>('');
   const [fileBase64, setFileBase64] = useState<string>('');
   const [fileType, setFileType] = useState<'pdf' | 'txt'>('pdf');
-  
-  // BGE-M3 최적화 고정 설정 (512 tokens, 15% overlap)
-  const CHUNK_SIZE = 2048;  // 512 tokens * 4 characters/token
-  const CHUNK_OVERLAP = 307; // 15% overlap
+  const [chunkTokens, setChunkTokens] = useState<number>(BGE_M3_CONFIG.CHUNK_TOKENS);
+  const [overlapRatio, setOverlapRatio] = useState<number>(BGE_M3_CONFIG.OVERLAP_RATIO);
 
   const handleFileChange = (info: any) => {
     const file = info.file.originFileObj || info.file;
@@ -69,7 +68,6 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
         }
         contentBase64 = fileBase64;
       } else {
-        const textContent = textContentRef.current?.value || '';
         if (!textContent.trim()) {
           message.error('텍스트 내용을 입력해주세요.');
           return;
@@ -80,23 +78,28 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
 
       setLoading(true);
 
+      // Token 기반 설정에서 character 계산 (사용자 설정값 사용)
+      const chunkSize = chunkTokens * BGE_M3_CONFIG.CHARS_PER_TOKEN;
+      const chunkOverlap = Math.floor(chunkSize * overlapRatio);
+      
       await workflowAPI.createKnowledgeBase(
         values.kb_name,
-        'bge-m3',  // BGE-M3 최적화 모드 (하위 호환성용, 백엔드에서 무시됨)
         contentBase64,
         inputMode,
         inputMode === 'file' ? fileType : undefined,
-        CHUNK_SIZE,
-        CHUNK_OVERLAP,
+        chunkSize,
+        chunkOverlap,
         currentFolder || undefined
       );
 
       message.success(`지식 베이스 '${values.kb_name}'가 성공적으로 생성되었습니다.`);
       form.resetFields();
-      if (textContentRef.current) textContentRef.current.value = '';
+      setTextContent('');
       setFileBase64('');
       setInputMode('base64');
       setFileType('pdf');
+      setChunkTokens(BGE_M3_CONFIG.CHUNK_TOKENS);
+      setOverlapRatio(BGE_M3_CONFIG.OVERLAP_RATIO);
       onSuccess();
       onClose();
     } catch (error: any) {
@@ -109,10 +112,12 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
 
   const handleCancel = () => {
     form.resetFields();
-    if (textContentRef.current) textContentRef.current.value = '';
+    setTextContent('');
     setFileBase64('');
     setInputMode('base64');
     setFileType('pdf');
+    setChunkTokens(BGE_M3_CONFIG.CHUNK_TOKENS);
+    setOverlapRatio(BGE_M3_CONFIG.OVERLAP_RATIO);
     onClose();
   };
 
@@ -136,9 +141,45 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
           label="지식 베이스 이름"
           name="kb_name"
           rules={[{ required: true, message: '지식 베이스 이름을 입력해주세요.' }]}
-          extra="BGE-M3 최적화 설정 (512 tokens, 15% overlap) 자동 적용"
         >
           <Input placeholder="예: nvme_spec_2.2" />
+        </Form.Item>
+
+        <Form.Item label="Chunk 설정 (BGE-M3 최적화)">
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: '12px', color: '#666', display: 'block', marginBottom: '4px' }}>
+                Chunk 크기 (tokens)
+              </label>
+              <Input
+                type="number"
+                min={128}
+                max={8192}
+                value={chunkTokens}
+                onChange={(e) => setChunkTokens(Number(e.target.value))}
+                placeholder="512"
+                addonAfter="tokens"
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: '12px', color: '#666', display: 'block', marginBottom: '4px' }}>
+                Overlap 비율 (%)
+              </label>
+              <Input
+                type="number"
+                min={0}
+                max={50}
+                step={5}
+                value={Math.round(overlapRatio * 100)}
+                onChange={(e) => setOverlapRatio(Number(e.target.value) / 100)}
+                placeholder="15"
+                addonAfter="%"
+              />
+            </div>
+          </div>
+          <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>
+            기본값: 512 tokens, 15% overlap (약 {chunkTokens * BGE_M3_CONFIG.CHARS_PER_TOKEN} 문자, {Math.round(chunkTokens * BGE_M3_CONFIG.CHARS_PER_TOKEN * overlapRatio)} 문자 중첩)
+          </div>
         </Form.Item>
 
         <Form.Item label="입력 방식">
@@ -154,7 +195,8 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
             label="Base64 인코딩된 텍스트"
           >
             <TextArea
-              ref={textContentRef}
+              value={textContent}
+              onChange={(e) => setTextContent(e.target.value)}
               rows={10}
               placeholder="base64 인코딩된 텍스트를 입력하세요..."
               style={{ fontFamily: 'monospace', fontSize: '12px' }}
@@ -165,7 +207,8 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
             label="텍스트 내용"
           >
             <TextArea
-              ref={textContentRef}
+              value={textContent}
+              onChange={(e) => setTextContent(e.target.value)}
               rows={10}
               placeholder="임베딩할 텍스트를 입력하세요..."
               style={{ fontFamily: 'monospace', fontSize: '12px' }}

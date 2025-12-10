@@ -23,8 +23,8 @@ class KnowledgeBaseAdmin:
         """지식 베이스 구축"""
         print("=" * 60)
         print(f"📚 지식 베이스 '{kb_name}' 구축 중...")
-        print(f"📏 청크 크기: {chunk_size:,} 문자")
-        print(f"🔄 청크 오버랩: {chunk_overlap} 문자")
+        print(f"📏 청크 크기: {chunk_size:,} 문자 (Token 기반 계산)")
+        print(f"🔄 청크 오버랩: {chunk_overlap} 문자 (Token 기반 계산)")
         print("=" * 60)
         
         if not os.path.exists(pdf_path):
@@ -312,11 +312,17 @@ def main():
             pdf_path = input("📄 Spec PDF 파일 경로를 입력하세요: ").strip()
             
             if pdf_path:
-                # BGE-M3 최적화 고정 chunk 설정 (512 tokens, 15% overlap)
-                chunk_size = 2048
-                chunk_overlap = 307
+                # BGE-M3 최적화 chunk 설정 (Token 기반)
+                from ..core.config import VECTOR_DB_CONFIG
+                chunk_tokens = VECTOR_DB_CONFIG.get('chunk_tokens', 512)
+                overlap_ratio = VECTOR_DB_CONFIG.get('overlap_ratio', 0.15)
+                chars_per_token = VECTOR_DB_CONFIG.get('chars_per_token', 4)
                 
-                print(f"\n📏 Chunk 설정 (BGE-M3 최적화): {chunk_size}자 (512 tokens), Overlap: {chunk_overlap}자 (15%)")
+                # Character 기반 계산 (fallback 표시용)
+                chunk_size = chunk_tokens * chars_per_token
+                chunk_overlap = int(chunk_size * overlap_ratio)
+                
+                print(f"\n📏 Chunk 설정 (BGE-M3): {chunk_tokens} tokens ({chunk_size}자), Overlap: {int(overlap_ratio*100)}% ({chunk_overlap}자)")
                 
                 # 기존 지식 베이스 덮어쓰기 확인
                 if kb_name in get_kb_list_sync():

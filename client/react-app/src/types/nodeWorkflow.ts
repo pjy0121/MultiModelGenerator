@@ -34,8 +34,7 @@ export interface NodeBasedConfig {
   prompt?: string;            // LLM 노드용 프롬프트
   knowledge_base?: string;    // context-node용 지식베이스
   search_intensity?: SearchIntensity; // context-node용 검색 강도
-  rerank_provider?: LLMProvider; // context-node용 rerank LLM Provider
-  rerank_model?: string;      // context-node용 rerank 모델
+  rerank_provider?: LLMProvider | 'enabled'; // context-node용 rerank 사용 여부 (NONE 또는 enabled)
   additional_context?: string; // context-node용 사용자 정의 컨텍스트
   position: { x: number; y: number };
 }
@@ -105,8 +104,7 @@ export interface NodeData extends Record<string, unknown> {
   output_format?: string;     // LLM 노드용 출력 형식
   knowledge_base?: string;    // context-node용 지식베이스
   search_intensity?: SearchIntensity; // context-node용 검색 강도
-  rerank_provider?: LLMProvider; // context-node용 rerank LLM Provider
-  rerank_model?: string;      // context-node용 rerank 모델
+  rerank_provider?: LLMProvider | 'enabled'; // context-node용 rerank 사용 여부 (NONE 또는 enabled)
   additional_context?: string; // context-node용 사용자 정의 컨텍스트
   isExecuting?: boolean;      // 실행 상태 표시용
   isCompleted?: boolean;      // 완료 상태 표시용

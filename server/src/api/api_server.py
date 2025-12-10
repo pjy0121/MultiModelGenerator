@@ -907,17 +907,66 @@ def _process_plain_text(text_content: str) -> str:
     logger.info("Using plain text directly")
     return text_content
 
-def _process_base64_text(text_content_base64: str) -> str:
-    """Base64 인코딩된 텍스트 처리"""
+def _process_base64_text(text_content_base64: str, doc_processor=None) -> str:
+    """Base64 인코딩된 텍스트 처리 (바이너리 파일 자동 감지)"""
     import base64
-    logger.info("Processing base64 text content...")
+    logger.info(f"Processing base64 text content (length: {len(text_content_base64)})...")
     try:
         text_bytes = base64.b64decode(text_content_base64, validate=True)
-        text = text_bytes.decode('utf-8')
-        logger.info("Successfully decoded base64 text")
-        return text
+        
+        # UTF-8 텍스트 디코딩 시도
+        try:
+            text = text_bytes.decode('utf-8')
+            logger.info(f"Successfully decoded base64 text (decoded length: {len(text)} chars)")
+            return text
+        except UnicodeDecodeError:
+            # UTF-8 실패 시 PDF 매직 넘버 확인
+            if text_bytes[:4] == b'%PDF':
+                logger.info("Detected PDF file in base64 content, processing as PDF...")
+                if doc_processor is None:
+                    raise HTTPException(status_code=400, detail="PDF content detected but no document processor available")
+                
+                # PDF로 처리
+                import tempfile
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+                    temp_file.write(text_bytes)
+                    temp_pdf_path = temp_file.name
+                
+                try:
+                    text = doc_processor.extract_text_from_pdf(temp_pdf_path)
+                    logger.info(f"Extracted text from PDF: {len(text)} characters")
+                    return text
+                finally:
+                    try:
+                        os.unlink(temp_pdf_path)
+                    except:
+                        pass
+            else:
+                # PDF가 아닌 경우 다른 인코딩 시도
+                logger.warning("UTF-8 decode failed, trying alternative encodings...")
+                try:
+                    text = text_bytes.decode('cp949')  # 한글 Windows
+                    logger.info(f"Successfully decoded as CP949 (length: {len(text)} chars)")
+                    return text
+                except UnicodeDecodeError:
+                    try:
+                        text = text_bytes.decode('latin-1')  # 최후의 수단
+                        logger.info(f"Successfully decoded as Latin-1 (length: {len(text)} chars)")
+                        return text
+                    except Exception as e:
+                        logger.error(f"All encoding attempts failed: {e}")
+                        raise HTTPException(
+                            status_code=400, 
+                            detail="Invalid text encoding. Content must be UTF-8, CP949, or Latin-1 text, or PDF file."
+                        )
+    except base64.binascii.Error as e:
+        logger.error(f"Base64 decode error: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid base64 encoding: {str(e)}")
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid base64 content: {str(e)}")
+        logger.error(f"Unexpected error processing base64 text: {e}")
+        raise HTTPException(status_code=400, detail=f"Error processing base64 content: {str(e)}")
 
 def _process_file_upload(file_content_base64: str, file_type: str, doc_processor) -> str:
     """파일 업로드 처리 (PDF 또는 TXT)"""
@@ -966,10 +1015,9 @@ def _process_file_upload(file_content_base64: str, file_type: str, doc_processor
 
 @app.post("/knowledge-bases/create")
 async def create_knowledge_base(request: dict):
-    """지식 베이스 생성 (plain text, base64 text, 또는 파일 업로드) - 최소 락 범위"""
-    # 요청 파라미터 추출 (락 밖에서 수행)
+    """지식 베이스 생성 (plain text, base64 text, 또는 파일 업로드) - BGE-M3 최적화"""
+    # 요청 파라미터 추출
     kb_name_input = request.get("kb_name", "")
-    chunk_type = request.get("chunk_type", "sentence")
     text_content = request.get("text_content", "")
     file_content_base64 = request.get("file_content", "")
     chunk_size = request.get("chunk_size", 8000)
@@ -983,12 +1031,8 @@ async def create_knowledge_base(request: dict):
     if not text_content and not file_content_base64:
         raise HTTPException(status_code=400, detail="Either text_content or file_content is required")
     
-    if chunk_type not in ["keyword", "sentence", "custom"]:
-        raise HTTPException(status_code=400, detail="chunk_type must be one of: keyword, sentence, custom")
-    
-    # KB 이름 및 경로 설정 (락 밖에서 수행)
-    prefix_map = {"keyword": "keyword-", "sentence": "sentence-", "custom": "custom-"}
-    kb_name = f"{prefix_map[chunk_type]}{kb_name_input}"
+    # KB 이름은 입력값 그대로 사용
+    kb_name = kb_name_input
     
     # 파일 시스템 작업만 락으로 보호
     async with fs_lock:
@@ -1005,7 +1049,7 @@ async def create_knowledge_base(request: dict):
             from ..core.utils import get_kb_path
             kb_path = get_kb_path(kb_full_name)
             
-            logger.info(f"KB Create request - kb_name: '{kb_name}', chunk_type: '{chunk_type}', target_folder: '{target_folder}'")
+            logger.info(f"KB Create request - kb_name: '{kb_name}', target_folder: '{target_folder}'")
             logger.info(f"Full KB name: '{kb_full_name}', path: '{kb_path}'")
             
             if os.path.exists(kb_path):
@@ -1019,12 +1063,16 @@ async def create_knowledge_base(request: dict):
     
     # 락 해제 후 무거운 작업 수행
     try:
-        # BGE-M3 최적화 고정 chunk 설정 (512 tokens, 15% overlap)
-        # chunk_type 파라미터는 하위 호환성을 위해 유지하지만 무시됨
-        chunk_size = 2048
-        chunk_overlap = 307
+        # BGE-M3 최적화 chunk 설정 (Token 기반)
+        from ..core.config import VECTOR_DB_CONFIG
+        chunk_tokens = VECTOR_DB_CONFIG.get('chunk_tokens', 512)
+        chars_per_token = VECTOR_DB_CONFIG.get('chars_per_token', 4)
+        overlap_ratio = VECTOR_DB_CONFIG.get('overlap_ratio', 0.15)
         
-        logger.info(f"Building KB with BGE-M3 optimized settings: chunk_size={chunk_size}, chunk_overlap={chunk_overlap}")
+        chunk_size = chunk_tokens * chars_per_token
+        chunk_overlap = int(chunk_size * overlap_ratio)
+        
+        logger.info(f"Building KB with BGE-M3 settings: {chunk_tokens} tokens ({chunk_size} chars), {int(overlap_ratio*100)}% overlap ({chunk_overlap} chars)")
         
         # DocumentProcessor 초기화
         from ..services.document_processor import DocumentProcessor
@@ -1036,16 +1084,20 @@ async def create_knowledge_base(request: dict):
         if file_content_base64:
             # 파일 업로드 처리
             file_type = request.get("file_type", "pdf")
+            logger.info(f"Processing file upload (type: {file_type})")
             text = _process_file_upload(file_content_base64, file_type, doc_processor)
         
         elif text_content:
             # 텍스트 입력 처리
             text_type = request.get("text_type", "plain")
+            logger.info(f"Processing text content (type: {text_type}, length: {len(text_content)})")
             
             if text_type == "base64":
-                text = _process_base64_text(text_content)
+                text = _process_base64_text(text_content, doc_processor)
             else:  # plain
                 text = _process_plain_text(text_content)
+        else:
+            raise HTTPException(status_code=400, detail="No content provided (neither file_content nor text_content)")
         
         # 텍스트 검증
         if not text.strip():
@@ -1083,7 +1135,6 @@ async def create_knowledge_base(request: dict):
             "success": True,
             "message": f"Knowledge base '{kb_name}' created successfully",
             "kb_name": kb_full_name,
-            "chunk_type": chunk_type,
             "chunk_size": chunk_size,
             "chunk_overlap": chunk_overlap,
             "chunk_count": len(chunks)
@@ -1095,7 +1146,9 @@ async def create_knowledge_base(request: dict):
         logger.error(f"Failed to create knowledge base: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))@app.get("/available-models/{provider}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/available-models/{provider}")
 async def get_available_models(provider: str):
     """Provider별 사용 가능한 모델 목록 반환"""
     try:

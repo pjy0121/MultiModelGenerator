@@ -2,6 +2,7 @@ import PyPDF2
 import re
 from typing import List, Dict
 from ..core.config import VECTOR_DB_CONFIG
+from transformers import AutoTokenizer
 
 # TEI 또는 로컬 모델 조건부 import
 config = VECTOR_DB_CONFIG
@@ -14,6 +15,16 @@ class DocumentProcessor:
     def __init__(self, chunk_size: int = None, chunk_overlap: int = None):
         self.chunk_size = chunk_size or VECTOR_DB_CONFIG["chunk_size"]
         self.chunk_overlap = chunk_overlap or VECTOR_DB_CONFIG["chunk_overlap"]
+        
+        # BGE-M3 tokenizer 초기화 (token 기반 청킹용)
+        tokenizer_model = VECTOR_DB_CONFIG.get('tokenizer_model', 'BAAI/bge-m3')
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_model)
+            print(f"✅ {tokenizer_model} tokenizer 로드 성공")
+        except Exception as e:
+            print(f"⚠️ {tokenizer_model} tokenizer 로드 실패: {e}")
+            print("💡 transformers 라이브러리를 설치하고 인터넷 연결을 확인하세요.")
+            self.tokenizer = None
         
         # TEI 또는 로컬 모델 선택
         config = VECTOR_DB_CONFIG
@@ -75,9 +86,84 @@ class DocumentProcessor:
         words = [word for word in words if len(word) > 1]
         return ' '.join(words)
     
+    def chunk_by_tokens(self, text: str, chunk_size: int = None, overlap_ratio: float = None) -> List[str]:
+        """BGE-M3 tokenizer 기반 정확한 token 청킹
+        
+        Args:
+            text: 청킹할 텍스트
+            chunk_size: 청크당 토큰 수 (None이면 config 사용)
+            overlap_ratio: 오버랩 비율 0~1 (None이면 config 사용)
+        
+        Returns:
+            List[str]: 청크 리스트
+        """
+        if not self.tokenizer:
+            # tokenizer가 없으면 character 기반 방식으로 fallback
+            print("⚠️ Tokenizer 비활성화, character 기반 청킹 사용")
+            return None
+        
+        # config에서 기본값 가져오기
+        if chunk_size is None:
+            chunk_size = VECTOR_DB_CONFIG.get('chunk_tokens', 512)
+        if overlap_ratio is None:
+            overlap_ratio = VECTOR_DB_CONFIG.get('overlap_ratio', 0.15)
+        
+        # overlap을 토큰 수로 계산
+        overlap_tokens = int(chunk_size * overlap_ratio)
+        
+        try:
+            # 텍스트를 토큰으로 변환
+            tokens = self.tokenizer.encode(text, add_special_tokens=False)
+            chunks = []
+            
+            # 오버랩을 고려하여 슬라이딩
+            stride = chunk_size - overlap_tokens
+            for i in range(0, len(tokens), stride):
+                chunk_tokens = tokens[i:i + chunk_size]
+                chunk_text = self.tokenizer.decode(chunk_tokens, skip_special_tokens=True)
+                chunks.append(chunk_text)
+            
+            return chunks
+        except Exception as e:
+            print(f"⚠️ Token 기반 청킹 실패: {e}")
+            return None
+    
     def semantic_chunking(self, text: str) -> List[Dict[str, any]]:
-        """의미론적 청킹"""
-        # 단락 기준으로 1차 분할
+        """의미론적 청킹 (BGE-M3 tokenizer 기반)"""
+        # BGE-M3 tokenizer 기반 청킹 시도
+        if self.tokenizer:
+            try:
+                # Token 기반 청킹 (config에서 가져오기)
+                chunk_texts = self.chunk_by_tokens(text)
+                
+                if chunk_texts:
+                    chunks = []
+                    for chunk_id, chunk_text in enumerate(chunk_texts):
+                        # 텍스트 정제 및 메타데이터 추가
+                        cleaned_text = self.clean_text(chunk_text)
+                        if cleaned_text.strip():  # 빈 청크 제외
+                            chunks.append({
+                                'id': chunk_id,
+                                'content': cleaned_text,
+                                'length': len(cleaned_text)
+                            })
+                    
+                    chunk_tokens = VECTOR_DB_CONFIG.get('chunk_tokens', 512)
+                    overlap_ratio = VECTOR_DB_CONFIG.get('overlap_ratio', 0.15)
+                    print(f"✅ Token 기반 청킹 성공: {len(chunks)}개 청크 ({chunk_tokens} tokens, {int(overlap_ratio*100)}% overlap)")
+                    return chunks
+            except Exception as e:
+                print(f"⚠️ Token 기반 청킹 실패, character 기반 청킹으로 대체: {e}")
+        
+        # Fallback: Character 기반 청킹 (token config에서 계산)
+        chunk_tokens = VECTOR_DB_CONFIG.get('chunk_tokens', 512)
+        chars_per_token = VECTOR_DB_CONFIG.get('chars_per_token', 4)
+        overlap_ratio = VECTOR_DB_CONFIG.get('overlap_ratio', 0.15)
+        
+        self.chunk_size = chunk_tokens * chars_per_token  # 512 * 4 = 2048
+        self.chunk_overlap = int(self.chunk_size * overlap_ratio)  # 2048 * 0.15 = 307
+        
+        print(f"💡 Character 기반 fallback: {self.chunk_size}자 ({self.chunk_overlap}자 overlap, {int(overlap_ratio*100)}%)")
         paragraphs = text.split('\n\n')
         chunks = []
         current_chunk = ""

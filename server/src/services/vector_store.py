@@ -218,15 +218,15 @@ class VectorStore:
                 else:
                     raise Exception(f"지식 베이스 저장 실패 ({attempt + 1}회 시도): {e}")
 
-    async def _search_initial_chunks(self, query: str, top_k: int, threshold: float) -> List[str]:
+    async def _search_initial_chunks(self, query: str, top_k: int, similarity_threshold: float = 0.0) -> List[str]:
         """초기 벡터 검색을 수행하는 내부 헬퍼 함수 (비동기 개선된 버전)
         
         Args:
             query: 검색 쿼리
-            top_k: 초기 검색 개수
-            threshold: cosine distance 임계값
+            top_k: 검색 개수
+            similarity_threshold: 최소 유사도 (0.0~1.0, cosine similarity)
         """
-        print(f"🔍 지식 베이스 '{self.kb_name}'에서 키워드 '{query}' 초기 검색 중... (top_k={top_k}, threshold={threshold:.2f})")
+        print(f"🔍 지식 베이스 '{self.kb_name}'에서 키워드 '{query}' 검색 중... (top_k={top_k}, threshold={similarity_threshold:.2f})")
         
         try:
             # 비동기로 컴렉션 접근
@@ -260,27 +260,35 @@ class VectorStore:
                 print("❌ 관련 문서를 찾지 못했습니다.")
                 return []
 
-            initial_chunks = results['documents'][0]
+            chunks = results['documents'][0]
             distances = results['distances'][0] if results['distances'] else []
             
-            # 거리(distance)와 유사도(similarity) 정보 출력
-            print(f"🔍 검색된 {len(initial_chunks)}개 청크의 거리 범위: {min(distances):.3f} ~ {max(distances):.3f}")
-            print(f"   임계값: {threshold:.2f} (이하만 통과) - Cosine similarity: {1-threshold:.2f} 이상")
+            # 거리(distance) 정보 출력 (ChromaDB cosine distance: 0=identical, 2=opposite)
+            if distances:
+                print(f"🔍 검색된 {len(chunks)}개 청크의 유사도 범위: {1-max(distances):.3f} ~ {1-min(distances):.3f} (cosine similarity)")
+            else:
+                print(f"📚 {len(chunks)}개 청크 발견")
             
-            # 거리 기반 필터링 (cosine distance: 0=identical, 2=opposite)
-            filtered_chunks = [
-                chunk for chunk, distance in zip(initial_chunks, distances)
-                if distance <= threshold
-            ]
-            
-            print(f"📚 임계값 필터링 후 {len(filtered_chunks)}개 관련 청크 발견 (전체 {len(initial_chunks)}개 중)")
-            
-            # 필터링된 청크가 없으면 상위 결과라도 반환 (최소 1개)
-            if not filtered_chunks and initial_chunks:
-                print(f"⚠️ 임계값을 통과한 청크가 없어 가장 유사한 1개 청크 반환 (distance: {distances[0]:.3f})")
-                filtered_chunks = [initial_chunks[0]]
-            
-            return filtered_chunks
+            # Similarity threshold 필터링 (cosine similarity 기반)
+            if similarity_threshold > 0.0 and distances:
+                # cosine distance를 similarity로 변환: similarity = 1 - distance
+                filtered_chunks = [
+                    chunk for chunk, distance in zip(chunks, distances)
+                    if (1 - distance) >= similarity_threshold
+                ]
+                
+                print(f"📚 Threshold {similarity_threshold:.2f} 필터링 후 {len(filtered_chunks)}개 관련 청크 발견 (전체 {len(chunks)}개 중)")
+                
+                # 필터링된 청크가 없으면 가장 유사한 1개라도 반환 (빈 결과 방지)
+                if not filtered_chunks and chunks:
+                    best_similarity = 1 - distances[0]
+                    print(f"⚠️ Threshold를 통과한 청크가 없어 가장 유사한 1개 반환 (similarity: {best_similarity:.3f})")
+                    filtered_chunks = [chunks[0]]
+                
+                return filtered_chunks
+            else:
+                # Threshold 사용 안 할 때는 전체 반환
+                return chunks
 
         except Exception as e:
             print(f"⚠️ 초기 검색 중 오류 발생: {e}")
@@ -312,17 +320,17 @@ class VectorStore:
             None, collection.count
         )
         
-        # 공통: 검색 파라미터 설정 (top_k, threshold 모두 포함)
+        # 공통: 검색 파라미터 설정 (Top-K + Similarity Threshold)
         search_params = SearchIntensity.get_search_params(search_intensity)
 
         top_k_init = search_params["init"]
-        threshold = search_params["threshold"]
+        similarity_threshold = search_params.get("similarity_threshold", 0.0)
         
-        print(f"🎯 검색 강도: {search_intensity} (초기 {top_k_init}개, threshold {threshold:.2f}, similarity {1-threshold:.2f}+)")
+        print(f"🎯 검색 강도: {search_intensity} (초기 {top_k_init}개, 유사도 {similarity_threshold:.2f}+)")
         
-        # rerank 사용 시에는 더 많은 초기 검색, 아니면 final과 동일
+        # rerank 사용 시에는 더 많은 초기 검색, 아니면 init 개수만 반환
         if rerank_info:
-            initial_chunks = await self._search_initial_chunks(query, top_k_init, threshold)
+            initial_chunks = await self._search_initial_chunks(query, top_k_init, similarity_threshold)
             
             if not initial_chunks:
                 return {"chunks": [], "total_chunks": total_chunks, "found_chunks": 0}
@@ -337,7 +345,8 @@ class VectorStore:
                 result_chunks = initial_chunks[:top_k_final]
                 return {"chunks": result_chunks, "total_chunks": total_chunks, "found_chunks": len(result_chunks)}
         else:
-            initial_chunks = await self._search_initial_chunks(query, top_k_init, threshold)
+            # Rerank 미사용 시 init 개수 + threshold 필터링
+            initial_chunks = await self._search_initial_chunks(query, top_k_init, similarity_threshold)
             return {"chunks": initial_chunks, "total_chunks": total_chunks, "found_chunks": len(initial_chunks)}
     
     async def get_status(self) -> dict:
