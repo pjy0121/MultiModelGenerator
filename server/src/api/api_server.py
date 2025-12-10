@@ -966,32 +966,33 @@ def _process_file_upload(file_content_base64: str, file_type: str, doc_processor
 
 @app.post("/knowledge-bases/create")
 async def create_knowledge_base(request: dict):
-    """지식 베이스 생성 (plain text, base64 text, 또는 파일 업로드)"""
+    """지식 베이스 생성 (plain text, base64 text, 또는 파일 업로드) - 최소 락 범위"""
+    # 요청 파라미터 추출 (락 밖에서 수행)
+    kb_name_input = request.get("kb_name", "")
+    chunk_type = request.get("chunk_type", "sentence")
+    text_content = request.get("text_content", "")
+    file_content_base64 = request.get("file_content", "")
+    chunk_size = request.get("chunk_size", 8000)
+    chunk_overlap = request.get("chunk_overlap", 200)
+    target_folder = request.get("target_folder", "")
+    
+    # 입력 검증 (락 밖에서 수행)
+    if not kb_name_input:
+        raise HTTPException(status_code=400, detail="kb_name is required")
+    
+    if not text_content and not file_content_base64:
+        raise HTTPException(status_code=400, detail="Either text_content or file_content is required")
+    
+    if chunk_type not in ["keyword", "sentence", "custom"]:
+        raise HTTPException(status_code=400, detail="chunk_type must be one of: keyword, sentence, custom")
+    
+    # KB 이름 및 경로 설정 (락 밖에서 수행)
+    prefix_map = {"keyword": "keyword-", "sentence": "sentence-", "custom": "custom-"}
+    kb_name = f"{prefix_map[chunk_type]}{kb_name_input}"
+    
+    # 파일 시스템 작업만 락으로 보호
     async with fs_lock:
         try:
-            # 요청 파라미터 추출
-            kb_name_input = request.get("kb_name", "")
-            chunk_type = request.get("chunk_type", "sentence")
-            text_content = request.get("text_content", "")
-            file_content_base64 = request.get("file_content", "")
-            chunk_size = request.get("chunk_size", 8000)
-            chunk_overlap = request.get("chunk_overlap", 200)
-            target_folder = request.get("target_folder", "")
-            
-            # 입력 검증
-            if not kb_name_input:
-                raise HTTPException(status_code=400, detail="kb_name is required")
-            
-            if not text_content and not file_content_base64:
-                raise HTTPException(status_code=400, detail="Either text_content or file_content is required")
-            
-            if chunk_type not in ["keyword", "sentence", "custom"]:
-                raise HTTPException(status_code=400, detail="chunk_type must be one of: keyword, sentence, custom")
-            
-            # KB 이름 및 경로 설정
-            prefix_map = {"keyword": "keyword-", "sentence": "sentence-", "custom": "custom-"}
-            kb_name = f"{prefix_map[chunk_type]}{kb_name_input}"
-            
             if target_folder and target_folder != 'root':
                 kb_full_name = f"{target_folder}/{kb_name}"
                 kb_dir = PathResolver.resolve_folder_path(target_folder)
@@ -1010,84 +1011,94 @@ async def create_knowledge_base(request: dict):
             if os.path.exists(kb_path):
                 raise HTTPException(status_code=409, detail=f"Knowledge base '{kb_name}' already exists in this location")
             
-            # chunk_type에 따라 chunk_size 자동 설정
-            if chunk_type == "keyword":
-                chunk_size = 1000
-                chunk_overlap = 100
-            elif chunk_type == "sentence":
-                chunk_size = 8000
-                chunk_overlap = 200
-            
-            logger.info(f"Building KB with chunk_size={chunk_size}, chunk_overlap={chunk_overlap}")
-            
-            # DocumentProcessor 초기화
-            from ..services.document_processor import DocumentProcessor
-            from ..services.vector_store import VectorStore
-            
-            doc_processor = DocumentProcessor(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-            
-            # 입력 방식에 따라 텍스트 추출
-            if file_content_base64:
-                # 파일 업로드 처리
-                file_type = request.get("file_type", "pdf")
-                text = _process_file_upload(file_content_base64, file_type, doc_processor)
-            
-            elif text_content:
-                # 텍스트 입력 처리
-                text_type = request.get("text_type", "plain")
-                
-                if text_type == "base64":
-                    text = _process_base64_text(text_content)
-                else:  # plain
-                    text = _process_plain_text(text_content)
-            
-            # 텍스트 검증
-            if not text.strip():
-                raise HTTPException(status_code=400, detail="Text content is empty")
-            
-            logger.info(f"Text length: {len(text)} characters")
-            
-            # 청킹 및 임베딩 생성
-            logger.info("Starting chunking...")
-            chunks = doc_processor.semantic_chunking(text)
-            logger.info(f"Created {len(chunks)} chunks")
-            
-            if not chunks:
-                raise HTTPException(status_code=400, detail="Failed to create chunks from text")
-            
-            logger.info("Generating embeddings...")
-            chunks_with_embeddings = doc_processor.generate_embeddings(chunks)
-            logger.info("Embeddings generated")
-            
-            # 벡터 DB 저장 (context manager로 자동 닫기)
-            logger.info("Storing in vector database...")
-            with VectorStore(kb_full_name) as vector_store:
-                vector_store.store_chunks(chunks_with_embeddings)
-            logger.info(f"Knowledge base '{kb_full_name}' created successfully with {len(chunks)} chunks")
-            
-            # 명시적 가비지 컬렉션
-            import gc
-            gc.collect()
-            
-            return {
-                "success": True,
-                "message": f"Knowledge base '{kb_name}' created successfully",
-                "kb_name": kb_full_name,
-                "chunk_type": chunk_type,
-                "chunk_size": chunk_size,
-                "chunk_overlap": chunk_overlap,
-                "chunk_count": len(chunks)
-            }
-            
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Failed to create knowledge base: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Failed to setup KB path: {e}")
             raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/available-models/{provider}")
+    
+    # 락 해제 후 무거운 작업 수행
+    try:
+        # chunk_type에 따라 chunk_size 자동 설정
+        if chunk_type == "keyword":
+            chunk_size = 1000
+            chunk_overlap = 100
+        elif chunk_type == "sentence":
+            chunk_size = 8000
+            chunk_overlap = 200
+        
+        logger.info(f"Building KB with chunk_size={chunk_size}, chunk_overlap={chunk_overlap}")
+        
+        # DocumentProcessor 초기화
+        from ..services.document_processor import DocumentProcessor
+        from ..services.vector_store import VectorStore
+        
+        doc_processor = DocumentProcessor(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        
+        # 입력 방식에 따라 텍스트 추출
+        if file_content_base64:
+            # 파일 업로드 처리
+            file_type = request.get("file_type", "pdf")
+            text = _process_file_upload(file_content_base64, file_type, doc_processor)
+        
+        elif text_content:
+            # 텍스트 입력 처리
+            text_type = request.get("text_type", "plain")
+            
+            if text_type == "base64":
+                text = _process_base64_text(text_content)
+            else:  # plain
+                text = _process_plain_text(text_content)
+        
+        # 텍스트 검증
+        if not text.strip():
+            raise HTTPException(status_code=400, detail="Text content is empty")
+        
+        logger.info(f"Text length: {len(text)} characters")
+        
+        # 청킹 및 임베딩 생성
+        logger.info("Starting chunking...")
+        chunks = doc_processor.semantic_chunking(text)
+        logger.info(f"Created {len(chunks)} chunks")
+        
+        if not chunks:
+            raise HTTPException(status_code=400, detail="Failed to create chunks from text")
+        
+        logger.info("Generating embeddings...")
+        chunks_with_embeddings = doc_processor.generate_embeddings(chunks)
+        logger.info("Embeddings generated")
+        
+        # 벡터 DB 저장 (context manager로 자동 닫기, 자체 재시도 로직 포함)
+        logger.info("Storing in vector database...")
+        with VectorStore(kb_full_name) as vector_store:
+            vector_store.store_chunks(chunks_with_embeddings)
+        logger.info(f"Knowledge base '{kb_full_name}' created successfully with {len(chunks)} chunks")
+        
+        # 명시적 가비지 컬렉션 및 리소스 해제
+        import gc
+        gc.collect()
+        
+        # 짧은 대기로 파일 핸들 완전 해제 보장
+        import asyncio
+        await asyncio.sleep(0.1)
+        
+        return {
+            "success": True,
+            "message": f"Knowledge base '{kb_name}' created successfully",
+            "kb_name": kb_full_name,
+            "chunk_type": chunk_type,
+            "chunk_size": chunk_size,
+            "chunk_overlap": chunk_overlap,
+            "chunk_count": len(chunks)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create knowledge base: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))@app.get("/available-models/{provider}")
 async def get_available_models(provider: str):
     """Provider별 사용 가능한 모델 목록 반환"""
     try:
