@@ -407,15 +407,23 @@ const EditForm: React.FC<Omit<NodeEditModalProps, 'open'>> = ({ node, onClose, o
               name="knowledge_base"
               tooltip="검색에 사용할 지식 베이스를 선택합니다. '없음'을 선택하면 추가 내용만 사용합니다."
             >
-              <Select placeholder="지식 베이스 선택">
+              <Select 
+                placeholder="지식 베이스 선택"
+                showSearch
+                optionFilterProp="children"
+                filterOption={(input, option) => {
+                  const label = option?.children?.[0]?.props?.children || '';
+                  return label.toLowerCase().includes(input.toLowerCase());
+                }}
+              >
                 <Option value="none">
                   <Text type="secondary">없음</Text>
                 </Option>
                 {knowledgeBases.map((kb: KnowledgeBase) => (
-                  <Option key={kb.name} value={kb.name}>
-                    <Text strong>{kb.name}</Text>
-                    <Text type="secondary" style={{ fontSize: '12px', marginLeft: '8px' }}>
-                      ({kb.chunk_count}개 청크)
+                  <Option key={kb.name} value={kb.name} title={kb.name}>
+                    <Text>{kb.name}</Text>
+                    <Text type="secondary" style={{ fontSize: '11px', marginLeft: '8px' }}>
+                      ({kb.chunk_count} 청크)
                     </Text>
                   </Option>
                 ))}
