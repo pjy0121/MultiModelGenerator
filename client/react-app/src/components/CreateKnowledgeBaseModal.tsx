@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, Form, Input, Select, InputNumber, Upload, Button, Radio, message } from 'antd';
+import { Modal, Form, Input, Upload, Button, Radio, message } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import { workflowAPI } from '../services/api';
 
@@ -24,9 +24,10 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
   const textContentRef = React.useRef<HTMLTextAreaElement>(null);
   const [fileBase64, setFileBase64] = useState<string>('');
   const [fileType, setFileType] = useState<'pdf' | 'txt'>('pdf');
-  const [chunkType, setChunkType] = useState<'keyword' | 'sentence' | 'custom'>('sentence');
-  const [chunkSize, setChunkSize] = useState<number>(8000);
-  const [chunkOverlap, setChunkOverlap] = useState<number>(200);
+  
+  // BGE-M3 최적화 고정 설정 (512 tokens, 15% overlap)
+  const CHUNK_SIZE = 2048;  // 512 tokens * 4 characters/token
+  const CHUNK_OVERLAP = 307; // 15% overlap
 
   const handleFileChange = (info: any) => {
     const file = info.file.originFileObj || info.file;
@@ -55,17 +56,6 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
     reader.readAsDataURL(file);
   };
 
-  const handleChunkTypeChange = (value: 'keyword' | 'sentence' | 'custom') => {
-    setChunkType(value);
-    if (value === 'keyword') {
-      setChunkSize(1000);
-      setChunkOverlap(100);
-    } else if (value === 'sentence') {
-      setChunkSize(8000);
-      setChunkOverlap(200);
-    }
-  };
-
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
@@ -92,24 +82,21 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
 
       await workflowAPI.createKnowledgeBase(
         values.kb_name,
-        chunkType,
+        'bge-m3',  // BGE-M3 최적화 모드 (하위 호환성용, 백엔드에서 무시됨)
         contentBase64,
         inputMode,
         inputMode === 'file' ? fileType : undefined,
-        chunkType === 'custom' ? chunkSize : undefined,
-        chunkType === 'custom' ? chunkOverlap : undefined,
+        CHUNK_SIZE,
+        CHUNK_OVERLAP,
         currentFolder || undefined
       );
 
-      message.success('지식 베이스가 성공적으로 생성되었습니다.');
+      message.success(`지식 베이스 '${values.kb_name}'가 성공적으로 생성되었습니다.`);
       form.resetFields();
       if (textContentRef.current) textContentRef.current.value = '';
       setFileBase64('');
       setInputMode('base64');
       setFileType('pdf');
-      setChunkType('sentence');
-      setChunkSize(8000);
-      setChunkOverlap(200);
       onSuccess();
       onClose();
     } catch (error: any) {
@@ -126,9 +113,6 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
     setFileBase64('');
     setInputMode('base64');
     setFileType('pdf');
-    setChunkType('sentence');
-    setChunkSize(8000);
-    setChunkOverlap(200);
     onClose();
   };
 
@@ -147,53 +131,15 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
       <Form
         form={form}
         layout="vertical"
-        initialValues={{
-          chunk_type: 'keyword',
-          chunk_size: 1000,
-          chunk_overlap: 100
-        }}
       >
         <Form.Item
           label="지식 베이스 이름"
           name="kb_name"
           rules={[{ required: true, message: '지식 베이스 이름을 입력해주세요.' }]}
-          extra={`생성될 이름: ${chunkType}-[입력한 이름]`}
+          extra="BGE-M3 최적화 설정 (512 tokens, 15% overlap) 자동 적용"
         >
           <Input placeholder="예: nvme_spec_2.2" />
         </Form.Item>
-
-        <Form.Item
-          label="청킹 타입"
-        >
-          <Select value={chunkType} onChange={handleChunkTypeChange}>
-            <Select.Option value="keyword">Keyword (Chunk Size: 1000, Overlap: 100)</Select.Option>
-            <Select.Option value="sentence">Sentence (Chunk Size: 8000, Overlap: 200)</Select.Option>
-            <Select.Option value="custom">Custom (사용자 지정)</Select.Option>
-          </Select>
-        </Form.Item>
-
-        {chunkType === 'custom' && (
-          <>
-            <Form.Item label="Chunk Size">
-              <InputNumber
-                min={100}
-                max={20000}
-                value={chunkSize}
-                onChange={(value) => setChunkSize(value || 8000)}
-                style={{ width: '100%' }}
-              />
-            </Form.Item>
-            <Form.Item label="Chunk Overlap">
-              <InputNumber
-                min={0}
-                max={1000}
-                value={chunkOverlap}
-                onChange={(value) => setChunkOverlap(value || 200)}
-                style={{ width: '100%' }}
-              />
-            </Form.Item>
-          </>
-        )}
 
         <Form.Item label="입력 방식">
           <Radio.Group value={inputMode} onChange={(e) => setInputMode(e.target.value)}>
