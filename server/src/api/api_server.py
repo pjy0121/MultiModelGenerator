@@ -1019,15 +1019,12 @@ async def create_knowledge_base(request: dict):
     
     # 락 해제 후 무거운 작업 수행
     try:
-        # chunk_type에 따라 chunk_size 자동 설정
-        if chunk_type == "keyword":
-            chunk_size = 1000
-            chunk_overlap = 100
-        elif chunk_type == "sentence":
-            chunk_size = 8000
-            chunk_overlap = 200
+        # BGE-M3 최적화 고정 chunk 설정 (512 tokens, 15% overlap)
+        # chunk_type 파라미터는 하위 호환성을 위해 유지하지만 무시됨
+        chunk_size = 2048
+        chunk_overlap = 307
         
-        logger.info(f"Building KB with chunk_size={chunk_size}, chunk_overlap={chunk_overlap}")
+        logger.info(f"Building KB with BGE-M3 optimized settings: chunk_size={chunk_size}, chunk_overlap={chunk_overlap}")
         
         # DocumentProcessor 초기화
         from ..services.document_processor import DocumentProcessor

@@ -146,10 +146,10 @@ export const workflowAPI = {
     return response.data;
   },
 
-  // 지식 베이스 생성
+  // 지식 베이스 생성 (BGE-M3 최적화)
   createKnowledgeBase: async (
     kbName: string, 
-    chunkType: 'keyword' | 'sentence' | 'custom', 
+    chunkType: 'keyword' | 'sentence' | 'custom' | 'bge-m3',  // bge-m3: BGE-M3 최적화 모드 (백엔드에서 고정값 사용)
     contentBase64: string,
     contentType: 'base64' | 'plain' | 'file',
     fileType?: 'pdf' | 'txt',

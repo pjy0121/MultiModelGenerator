@@ -244,56 +244,6 @@ class KnowledgeBaseAdmin:
             
             return safe_name
     
-    def get_chunk_mode(self) -> tuple[int, int]:
-        """청크 모드 선택"""
-        print("\n� Vector DB 청크 모드 선택")
-        print("=" * 60)
-        print("1. 🔍 키워드 검색용")
-        print("   - 작은 청크 (512 tokens = 2048자)")
-        print("   - 높은 overlap (50% = 1024자)")
-        print("   - 💡 사용법: 검색 시 큰 top_k를 사용하세요 (20-50)")
-        print("   - 💡 특징: 정확한 키워드 매칭, 세부 정보 검색에 적합")
-        
-        print("\n2. 📝 문장 검색용")
-        print("   - 큰 청크 (768 tokens = 3072자)")
-        print("   - 낮은 overlap (25% = 768자)")
-        print("   - 💡 사용법: 검색 시 작은 top_k를 사용하세요 (5-15)")
-        print("   - 💡 특징: 문맥 유지, 연관성 높은 긴 문단 검색에 적합")
-        
-        print("\n3. 🛠️ 사용자 정의")
-        print("   - 직접 청크 크기와 overlap 설정")
-        print("=" * 60)
-        
-        while True:
-            choice = input("\n모드를 선택하세요 (1-3): ").strip()
-            
-            if choice == '1':
-                # 키워드 검색용
-                chunk_size = 2048  # 512 tokens * 4
-                chunk_overlap = 1024  # 50%
-                print(f"\n✅ 키워드 검색용 모드 선택됨")
-                print(f"   - 청크 크기: {chunk_size:,}자 (512 tokens)")
-                print(f"   - 오버랩: {chunk_overlap}자 (50%)")
-                print(f"   - 💡 검색 시 top_k 20-50 권장")
-                return chunk_size, chunk_overlap
-                
-            elif choice == '2':
-                # 문장 검색용
-                chunk_size = 3072  # 768 tokens * 4
-                chunk_overlap = 768   # 25%
-                print(f"\n✅ 문장 검색용 모드 선택됨")
-                print(f"   - 청크 크기: {chunk_size:,}자 (768 tokens)")
-                print(f"   - 오버랩: {chunk_overlap}자 (25%)")
-                print(f"   - 💡 검색 시 top_k 5-15 권장")
-                return chunk_size, chunk_overlap
-                
-            elif choice == '3':
-                # 사용자 정의 모드
-                return self.get_custom_chunk_settings()
-                
-            else:
-                print("❌ 올바른 모드를 선택해주세요 (1-3).")
-
     def get_custom_chunk_settings(self) -> tuple[int, int]:
         """사용자 정의 청크 크기 설정 입력받기"""
         print("\n🛠️ 사용자 정의 청크 설정")
@@ -349,7 +299,7 @@ def main():
     
     while True:
         print("\n📋 메뉴:")
-        print("1. 새 지식 베이스 구축 (키워드/문장 검색용 모드 선택)")
+        print("1. 새 지식 베이스 구축 (BGE-M3 최적화)")
         print("2. 지식 베이스 목록 보기")
         print("3. 지식 베이스 상태 확인")
         print("4. 지식 베이스 삭제")
@@ -362,8 +312,11 @@ def main():
             pdf_path = input("📄 Spec PDF 파일 경로를 입력하세요: ").strip()
             
             if pdf_path:
-                # 청크 모드 선택
-                chunk_size, chunk_overlap = admin.get_chunk_mode()
+                # BGE-M3 최적화 고정 chunk 설정 (512 tokens, 15% overlap)
+                chunk_size = 2048
+                chunk_overlap = 307
+                
+                print(f"\n📏 Chunk 설정 (BGE-M3 최적화): {chunk_size}자 (512 tokens), Overlap: {chunk_overlap}자 (15%)")
                 
                 # 기존 지식 베이스 덮어쓰기 확인
                 if kb_name in get_kb_list_sync():

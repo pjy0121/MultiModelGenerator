@@ -28,7 +28,7 @@ LLM_CONFIG = {
     "simulation_sleep_interval": 0.1
 }
 
-# 벡터 DB 설정
+# 벡터 DB 설정 (BGE-M3 최적화)
 VECTOR_DB_CONFIG = {
     "root_dir": "./knowledge_bases",
     # TEI (Text Embeddings Inference) 설정
@@ -39,11 +39,12 @@ VECTOR_DB_CONFIG = {
     "embedding_dimension": 1024,  # BAAI/bge-m3 임베딩 차원
     # 로컬 embedding 설정 (TEI 사용 안 할 때 fallback)
     "local_embedding_model": "all-MiniLM-L6-v2",  # name or path
-    # 문서 처리 설정
-    "chunk_size": 6000,
-    "chunk_overlap": 100
+    # 문서 처리 설정 (BGE-M3 최적화: 512 tokens, 15% overlap)
+    "chunk_size": 2048,              # 512 tokens * 4 characters/token
+    "chunk_overlap": 307,            # 15% overlap (2048 * 0.15 ≈ 307)
+    # Reranker 설정
+    "default_rerank_model": "BAAI/bge-reranker-v2-m3"  # BGE-M3 최적화 reranker
     # similarity_threshold는 SearchIntensity에서 동적으로 결정됨
-    # EXACT: 0.35, STANDARD: 0.55, COMPREHENSIVE: 0.75
 }
 
 # 노드 실행 엔진 설정

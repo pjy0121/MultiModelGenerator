@@ -32,44 +32,37 @@ class SearchIntensity(str, Enum):
     
     @classmethod
     def get_search_params(cls, intensity: str) -> Dict[str, int]:
-        """검색 모드에 따른 파라미터 반환 (최신 RAG 연구 기반 2024-2025)
-        
-        Pinecone, LlamaIndex, Weaviate, LangChain 산업 표준 기반:
+        """검색 모드에 따른 파라미터 반환 (BGE-M3 최적화 기준)
         
         - EXACT (고정밀 검색): 매우 높은 관련성만 필터링
-          init: 20개, final: 10개, threshold: 0.25 (cosine similarity 0.75+ = 고품질 매칭)
+          init: 10개, final: 5개, threshold: 0.25 (cosine similarity 0.75+ = 고품질 매칭)
           사용 예: "NVMe command set ID 0x1C", "PCIe Gen4 x4 specific feature"
-          산업 표준: LlamaIndex 0.7+ 권장, 정밀 쿼리에 적합
           
-        - STANDARD (표준 검색): 균형잡힌 품질-수량 [기본값, 가장 많이 사용]
-          init: 30개, final: 15개, threshold: 0.40 (cosine similarity 0.60+ = 명확한 관련성)
+        - STANDARD (표준 검색): 균형잡힌 품질-수량 [기본값]
+          init: 20개, final: 12개, threshold: 0.40 (cosine similarity 0.60+ = 명확한 관련성)
           사용 예: "SMART 속성", "전력 관리 모드", "오류 처리 절차"
-          산업 표준: 대부분의 RAG 시스템이 0.6-0.7 사용, Pinecone/Weaviate 권장
           
         - COMPREHENSIVE (포괄 검색): 넓은 컨텍스트 수집, 탐색적 쿼리
-          init: 50개, final: 25개, threshold: 0.55 (cosine similarity 0.45+ = 잠재적 관련성)
+          init: 40개, final: 25개, threshold: 0.55 (cosine similarity 0.45+ = 잠재적 관련성)
           사용 예: "전체 열 관리 메커니즘", "프로토콜 전반적 개요"
-          산업 표준: 복잡한 멀티홉 추론, 광범위한 문맥 필요 시
           
         * ChromaDB cosine distance: 0=identical, 2=opposite (낮을수록 유사)
-        * 산업 표준 similarity: 정밀 0.75+, 표준 0.60+, 포괄 0.45+
-        * reranking 없을 시 final 값 높게 설정 (10-25개)
-        * 문서 크기의 2-7% 검색이 최적 (600-700 청크 기준 10-50개)
-        * LlamaIndex, Pinecone, Weaviate 2024-2025 best practices 반영
+        * BGE-M3 최적화: 512 tokens chunk, 15% overlap, BAAI/bge-reranker-v2-m3
+        * reranker 사용 시: init에서 광범위하게 검색 후 final로 정제
         """
         intensity_map = {
-            cls.EXACT: {"init": 20, "final": 10, "threshold": 0.25},        # 0.75+ similarity
-            cls.STANDARD: {"init": 30, "final": 15, "threshold": 0.40},     # 0.60+ similarity
-            cls.COMPREHENSIVE: {"init": 50, "final": 25, "threshold": 0.55} # 0.45+ similarity
+            cls.EXACT: {"init": 10, "final": 5, "threshold": 0.25},         # 0.75+ similarity
+            cls.STANDARD: {"init": 20, "final": 12, "threshold": 0.40},     # 0.60+ similarity
+            cls.COMPREHENSIVE: {"init": 40, "final": 25, "threshold": 0.55} # 0.45+ similarity
         }
         return intensity_map.get(intensity, intensity_map[cls.STANDARD])
     
     @classmethod
     def from_top_k(cls, top_k: int) -> str:
         """top_k 값을 기반으로 적절한 검색 모드 반환"""
-        if top_k <= 25:
+        if top_k <= 12:
             return cls.EXACT
-        elif top_k <= 55:
+        elif top_k <= 30:
             return cls.STANDARD
         else:
             return cls.COMPREHENSIVE
