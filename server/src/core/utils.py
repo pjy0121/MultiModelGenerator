@@ -26,17 +26,51 @@ def get_kb_path(kb_name: str) -> str:
 
 
 def _get_kb_list_sync() -> List[str]:
-    """동기 방식으로 지식 베이스 목록 반환 (내부 사용)"""
+    """동기 방식으로 지식 베이스 목록 반환 (내부 사용)
+    
+    재귀적으로 모든 하위 폴더를 탐색하여 실제 KB만 반환합니다.
+    폴더(.folder_marker 존재)는 제외하고, chroma.sqlite3가 있는 KB만 반환합니다.
+    반환되는 이름은 상대 경로 형태입니다 (예: "folder1/kb_name").
+    """
     root_dir = VECTOR_DB_CONFIG["root_dir"]
     if not os.path.exists(root_dir):
         return []
     
     kb_list = []
-    for item in os.listdir(root_dir):
-        kb_path = os.path.join(root_dir, item)
-        if os.path.isdir(kb_path):
-            kb_list.append(item)
     
+    def scan_directory(current_path: str, relative_path: str = ""):
+        """재귀적으로 디렉토리 탐색하여 KB 찾기"""
+        try:
+            for item in os.listdir(current_path):
+                item_path = os.path.join(current_path, item)
+                
+                if not os.path.isdir(item_path):
+                    continue
+                
+                # 삭제 마커가 있으면 무시
+                delete_marker = os.path.join(item_path, '.delete_marker')
+                if os.path.exists(delete_marker):
+                    continue
+                
+                # 폴더 마커 확인
+                folder_marker = os.path.join(item_path, '.folder_marker')
+                chroma_file = os.path.join(item_path, 'chroma.sqlite3')
+                
+                is_folder = os.path.exists(folder_marker)
+                
+                # 현재 항목의 상대 경로
+                current_relative = os.path.join(relative_path, item) if relative_path else item
+                
+                if is_folder:
+                    # 폴더인 경우 하위 탐색
+                    scan_directory(item_path, current_relative)
+                elif os.path.exists(chroma_file) and os.path.getsize(chroma_file) > 0:
+                    # KB인 경우 (chroma.sqlite3가 있고 크기가 0보다 큼)
+                    kb_list.append(current_relative)
+        except Exception as e:
+            print(f"⚠️ 디렉토리 스캔 중 오류 ({current_path}): {e}")
+    
+    scan_directory(root_dir)
     return sorted(kb_list)
 
 
