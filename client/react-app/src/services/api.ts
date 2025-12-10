@@ -148,8 +148,7 @@ export const workflowAPI = {
 
   // 지식 베이스 생성 (BGE-M3 최적화)
   createKnowledgeBase: async (
-    kbName: string, 
-    chunkType: 'keyword' | 'sentence' | 'custom' | 'bge-m3',  // bge-m3: BGE-M3 최적화 모드 (백엔드에서 고정값 사용)
+    kbName: string,
     contentBase64: string,
     contentType: 'base64' | 'plain' | 'file',
     fileType?: 'pdf' | 'txt',
@@ -159,7 +158,6 @@ export const workflowAPI = {
   ): Promise<{ success: boolean; message: string; kb_name: string }> => {
     const payload: any = {
       kb_name: kbName,
-      chunk_type: chunkType,
       chunk_size: chunkSize,
       chunk_overlap: chunkOverlap,
       target_folder: targetFolder
@@ -172,6 +170,15 @@ export const workflowAPI = {
       payload.text_content = contentBase64;
       payload.text_type = contentType;  // 'base64' or 'plain'
     }
+    
+    console.log('[KB Create] Payload:', {
+      kb_name: kbName,
+      content_type: contentType,
+      text_type: payload.text_type,
+      content_length: contentBase64.length,
+      chunk_size: chunkSize,
+      chunk_overlap: chunkOverlap
+    });
     
     const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/create`, payload);
     return response.data;

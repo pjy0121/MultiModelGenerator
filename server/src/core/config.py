@@ -32,19 +32,21 @@ LLM_CONFIG = {
 VECTOR_DB_CONFIG = {
     "root_dir": "./knowledge_bases",
     # TEI (Text Embeddings Inference) 설정
-    "tei_enabled": os.getenv("TEI_ENABLED", "true").lower() == "true",  # TEI 사용 여부
-    "tei_base_url": os.getenv("TEI_BASE_URL", "http://localhost:8080"),  # TEI 서버 주소
-    "tei_timeout": int(os.getenv("TEI_TIMEOUT", "30")),  # TEI 요청 타임아웃 (초)
-    "tei_model_name": "BAAI/bge-m3",  # TEI 서버에서 사용하는 모델
-    "embedding_dimension": 1024,  # BAAI/bge-m3 임베딩 차원
-    # 로컬 embedding 설정 (TEI 사용 안 할 때 fallback)
-    "local_embedding_model": "all-MiniLM-L6-v2",  # name or path
-    # 문서 처리 설정 (BGE-M3 최적화: 512 tokens, 15% overlap)
-    "chunk_size": 2048,              # 512 tokens * 4 characters/token
-    "chunk_overlap": 307,            # 15% overlap (2048 * 0.15 ≈ 307)
+    "tei_enabled": os.getenv("TEI_ENABLED", "true").lower() == "true",
+    "tei_base_url": os.getenv("TEI_BASE_URL", "http://localhost:8080"),
+    "tei_timeout": int(os.getenv("TEI_TIMEOUT", "30")),
+    "tei_model_name": "BAAI/bge-m3",
+    "embedding_dimension": 1024,
+    # 로컬 embedding 설정
+    "local_embedding_model": "all-MiniLM-L6-v2",
+    # BGE-M3 Tokenizer 설정
+    "tokenizer_model": "BAAI/bge-m3",
+    # 문서 처리 설정 (Token 기반 - 단일 진실 공급원)
+    "chunk_tokens": 512,             # 청크 크기 (tokens)
+    "overlap_ratio": 0.15,           # 오버랩 비율 (15%)
+    "chars_per_token": 4,            # 토큰당 평균 문자 수 (계산용)
     # Reranker 설정
-    "default_rerank_model": "BAAI/bge-reranker-v2-m3"  # BGE-M3 최적화 reranker
-    # similarity_threshold는 SearchIntensity에서 동적으로 결정됨
+    "default_rerank_model": "BAAI/bge-reranker-v2-m3"
 }
 
 # 노드 실행 엔진 설정
@@ -55,10 +57,32 @@ NODE_EXECUTION_CONFIG = {
     "score_decay_factor": 0.1         # VectorStore mock 점수 감소율
 }
 
+# 검색 강도 설정 (Top-K + Similarity Threshold 병행)
+# 임계값: BGE-M3 실제 유사도 분포 기반 (실측값 0.2~0.4 범위)
+# - 이론적 권장값(0.8/0.65/0.5)은 실제로는 너무 높아 대부분 필터링됨
+# - 실용적 값(0.3/0.2/0.1)으로 조정하여 적절한 검색 결과 확보
+SEARCH_INTENSITY_CONFIG = {
+    "exact": {
+        "init": 10,                # 초기 검색 개수
+        "final": 5,               # Rerank 후 최종 개수
+        "similarity_threshold": 0.3  # 최소 유사도 (명확히 관련된 문서)
+    },
+    "standard": {
+        "init": 20,
+        "final": 12,
+        "similarity_threshold": 0.2  # 어느 정도 관련성 (balanced, 기본값)
+    },
+    "comprehensive": {
+        "init": 40,
+        "final": 25,
+        "similarity_threshold": 0.1  # 약간이라도 관련 가능성 (broad coverage)
+    }
+}
+
 # Admin 설정 
 ADMIN_CONFIG = {
-    "chunk_size_min": 512,           # 최소 청크 크기
-    "chunk_size_max": 8192,          # 최대 청크 크기  
-    "chunk_size_default": 2048,      # 기본 청크 크기
-    "chunk_overlap_ratio": 0.25      # 기본 오버랩 비율 (25%)
+    "chunk_size_min": 512,
+    "chunk_size_max": 8192,
+    "chunk_size_default": 2048,
+    "chunk_overlap_ratio": 0.25
 }

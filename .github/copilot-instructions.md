@@ -107,13 +107,26 @@ Context search results inject via `{context}` template variable in downstream LL
 - Context manager (`with VectorStore(...)`) guarantees proper cleanup
 - API server lock minimized: only file system operations protected, heavy processing outside lock
 
-**Search Intensity Algorithm** (from `SearchIntensity` enum in `models.py`):
+**Search Intensity Algorithm** (Top-K + Similarity Threshold from `SearchIntensity` enum in `models.py`):
 ```python
-EXACT:        init=20, final=10, threshold=0.25  # 0.75+ cosine similarity
-STANDARD:     init=30, final=15, threshold=0.40  # 0.60+ similarity (default)
-COMPREHENSIVE: init=50, final=25, threshold=0.55 # 0.45+ similarity
+# BGE-M3 실제 유사도 분포 기반 (실측값 0.2~0.4 범위)
+EXACT:        init=10, final=5, threshold=0.3   # 명확히 관련된 문서 (30%+ similarity)
+STANDARD:     init=20, final=12, threshold=0.2  # 어느 정도 관련성 (20%+ similarity, default)
+COMPREHENSIVE: init=40, final=25, threshold=0.1 # 약간이라도 관련 (10%+ similarity)
 ```
-Thresholds based on ChromaDB cosine distance (0=identical, 2=opposite). Industry standard from Pinecone/LlamaIndex 2024-2025 best practices.
+**Threshold Rationale**: BGE-M3 실제 유사도는 관련 문서도 0.2~0.4 수준. 이론적 권장값(0.8/0.65/0.5)은 너무 높아 대부분 필터링됨. 실용적 값(0.3/0.2/0.1)으로 적절한 검색 결과 확보. Reranking 사용 시 LLM이 재평가하므로 낮은 임계값도 안전.
+
+**Pipeline**: ChromaDB retrieves `init` results → similarity threshold filtering → optional LLM reranker → return `final` results. Threshold prevents irrelevant results (minimum 1 result guaranteed). Reranker uses LLM to re-score and sort filtered results by relevance.
+
+**Chunk Configuration** (Token-based from `config.py`):
+```python
+VECTOR_DB_CONFIG = {
+    "chunk_tokens": 512,        # Chunk size (tokens)
+    "overlap_ratio": 0.15,      # Overlap ratio (15%)
+    "chars_per_token": 4        # For character fallback calculation
+}
+```
+Character-based values (`chunk_size`, `chunk_overlap`) calculated dynamically: `chunk_tokens * chars_per_token`. Single source of truth: token count + ratio.
 
 ## Essential Development Workflows
 
