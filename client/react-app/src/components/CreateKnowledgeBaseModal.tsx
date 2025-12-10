@@ -21,7 +21,7 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [inputMode, setInputMode] = useState<'base64' | 'plain' | 'file'>('base64');
-  const [textContent, setTextContent] = useState<string>('');
+  const textContentRef = React.useRef<HTMLTextAreaElement>(null);
   const [fileBase64, setFileBase64] = useState<string>('');
   const [fileType, setFileType] = useState<'pdf' | 'txt'>('pdf');
   const [chunkType, setChunkType] = useState<'keyword' | 'sentence' | 'custom'>('sentence');
@@ -79,18 +79,13 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
         }
         contentBase64 = fileBase64;
       } else {
+        const textContent = textContentRef.current?.value || '';
         if (!textContent.trim()) {
           message.error('텍스트 내용을 입력해주세요.');
           return;
         }
         
-        if (inputMode === 'base64') {
-          // base64 텍스트는 그대로 전송
-          contentBase64 = textContent;
-        } else {
-          // plain text도 그대로 전송
-          contentBase64 = textContent;
-        }
+        contentBase64 = textContent;
       }
 
       setLoading(true);
@@ -108,7 +103,7 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
 
       message.success('지식 베이스가 성공적으로 생성되었습니다.');
       form.resetFields();
-      setTextContent('');
+      if (textContentRef.current) textContentRef.current.value = '';
       setFileBase64('');
       setInputMode('base64');
       setFileType('pdf');
@@ -127,7 +122,7 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
 
   const handleCancel = () => {
     form.resetFields();
-    setTextContent('');
+    if (textContentRef.current) textContentRef.current.value = '';
     setFileBase64('');
     setInputMode('base64');
     setFileType('pdf');
@@ -213,10 +208,9 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
             label="Base64 인코딩된 텍스트"
           >
             <TextArea
+              ref={textContentRef}
               rows={10}
               placeholder="base64 인코딩된 텍스트를 입력하세요..."
-              value={textContent}
-              onChange={(e) => setTextContent(e.target.value)}
               style={{ fontFamily: 'monospace', fontSize: '12px' }}
             />
           </Form.Item>
@@ -225,10 +219,9 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
             label="텍스트 내용"
           >
             <TextArea
+              ref={textContentRef}
               rows={10}
               placeholder="임베딩할 텍스트를 입력하세요..."
-              value={textContent}
-              onChange={(e) => setTextContent(e.target.value)}
               style={{ fontFamily: 'monospace', fontSize: '12px' }}
             />
           </Form.Item>
@@ -248,7 +241,6 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
         )}
 
         <div style={{ fontSize: '12px', color: '#888', marginTop: '8px' }}>
-          {(inputMode === 'plain' || inputMode === 'base64') && <p style={{ margin: '4px 0' }}>※ 텍스트 길이: {textContent.length} 문자</p>}
           {inputMode === 'file' && fileBase64 && <p style={{ margin: '4px 0' }}>※ {fileType.toUpperCase()} 파일이 선택되었습니다.</p>}
           {currentFolder && <p style={{ margin: '4px 0' }}>※ 생성 위치: /{currentFolder}</p>}
         </div>

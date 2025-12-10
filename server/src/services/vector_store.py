@@ -43,23 +43,38 @@ class VectorStore:
         return False
     
     def close(self):
-        """ChromaDB 연결 명시적으로 닫기"""
+        """ChromaDB 연결 명시적으로 닫기 (SQLite WAL 체크포인트 포함)"""
         if self._closed:
             return
         
         try:
+            # SQLite WAL 체크포인트 강제 실행 (쓰기 완료 보장)
+            import sqlite3
+            db_file = os.path.join(self.db_path, 'chroma.sqlite3')
+            if os.path.exists(db_file):
+                try:
+                    conn = sqlite3.connect(db_file, timeout=10.0)
+                    conn.execute('PRAGMA wal_checkpoint(FULL);')  # WAL 파일 병합
+                    conn.commit()
+                    conn.close()
+                except Exception as checkpoint_err:
+                    print(f"⚠️ WAL checkpoint 실패 (무시): {checkpoint_err}")
+            
             # 컬렉션과 클라이언트 참조 제거
             self.collection = None
             if self.client is not None:
                 # ChromaDB client는 명시적 close가 없으므로 참조만 제거
                 self.client = None
             
-            # 가비지 컬렉션 강제 실행
+            # 가비지 컬렉션 강제 실행 (2회)
             import gc
+            gc.collect()
+            import time
+            time.sleep(0.05)  # 파일 핸들 해제 대기
             gc.collect()
             
             self._closed = True
-            print(f"✅ VectorStore '{self.kb_name}' 연결 닫힘")
+            print(f"✅ VectorStore '{self.kb_name}' 연결 닫힘 (WAL checkpoint 완료)")
         except Exception as e:
             print(f"⚠️ VectorStore '{self.kb_name}' 닫기 중 오류: {e}")
         
@@ -70,21 +85,41 @@ class VectorStore:
             if self.client is None:
                 os.makedirs(self.db_path, exist_ok=True)
                 # 동시 접근 시 충돌 방지를 위해 데이터베이스 오픈 시도
-                max_retries = 3
+                max_retries = 5
                 for attempt in range(max_retries):
                     try:
-                        self.client = chromadb.PersistentClient(path=self.db_path)
+                        # ChromaDB 설정: SQLite 동시성 개선
+                        settings = chromadb.Settings(
+                            allow_reset=True,
+                            anonymized_telemetry=False,
+                            # SQLite WAL 모드는 자동 설정됨 (ChromaDB 내부)
+                        )
+                        self.client = chromadb.PersistentClient(
+                            path=self.db_path,
+                            settings=settings
+                        )
+                        
+                        # SQLite busy_timeout 설정 (readonly 에러 완화)
+                        # ChromaDB의 내부 SQLite 연결에 직접 접근
+                        import sqlite3
+                        db_file = os.path.join(self.db_path, 'chroma.sqlite3')
+                        if os.path.exists(db_file):
+                            conn = sqlite3.connect(db_file, timeout=30.0)
+                            conn.execute('PRAGMA journal_mode=WAL;')  # WAL 모드 강제
+                            conn.execute('PRAGMA busy_timeout=30000;')  # 30초 대기
+                            conn.close()
+                        
                         break
                     except Exception as e:
                         if attempt < max_retries - 1:
-                            print(f"⚠️ ChromaDB 클라이언트 생성 시도 {attempt + 1} 실패 (KB: {self.kb_name}): {e}")
+                            print(f"⚠️ ChromaDB 클라이언트 생성 시도 {attempt + 1}/{max_retries} 실패 (KB: {self.kb_name}): {e}")
                             import time
-                            time.sleep(0.1 + attempt * 0.1)  # 점진적 백오프
+                            time.sleep(0.2 * (2 ** attempt))  # 지수 백오프: 0.2s, 0.4s, 0.8s, 1.6s
                         else:
                             raise e
             
             # 컬렉션 접근도 재시도 로직 적용
-            max_retries = 3
+            max_retries = 5
             for attempt in range(max_retries):
                 try:
                     self.collection = self.client.get_or_create_collection(
@@ -94,50 +129,94 @@ class VectorStore:
                     )
                     break
                 except Exception as e:
-                    if attempt < max_retries - 1:
-                        print(f"⚠️ 컬렉션 접근 시도 {attempt + 1} 실패 (KB: {self.kb_name}): {e}")
+                    error_msg = str(e).lower()
+                    is_readonly = 'readonly' in error_msg or 'locked' in error_msg
+                    
+                    if is_readonly and attempt < max_retries - 1:
+                        print(f"⚠️ DB 잠금/읽기전용 에러 - 재시도 {attempt + 1}/{max_retries} (KB: {self.kb_name})")
                         import time
-                        time.sleep(0.2 + attempt * 0.1)  # 점진적 백오프
-                        # 클라이언트 재생성
-                        self.client = chromadb.PersistentClient(path=self.db_path)
+                        time.sleep(0.5 * (2 ** attempt))  # 지수 백오프: 0.5s, 1s, 2s, 4s
+                        
+                        # 클라이언트 완전 재생성
+                        self.client = None
+                        import gc
+                        gc.collect()  # 강제 가비지 컬렉션
+                        time.sleep(0.1)  # 파일 핸들 해제 대기
+                        
+                        # 재생성
+                        settings = chromadb.Settings(
+                            allow_reset=True,
+                            anonymized_telemetry=False,
+                        )
+                        self.client = chromadb.PersistentClient(
+                            path=self.db_path,
+                            settings=settings
+                        )
+                    elif attempt < max_retries - 1:
+                        print(f"⚠️ 컬렉션 접근 시도 {attempt + 1}/{max_retries} 실패 (KB: {self.kb_name}): {e}")
+                        import time
+                        time.sleep(0.2 * (2 ** attempt))
                     else:
                         raise e
         
         return self.collection
 
-    def store_chunks(self, chunks: List[Dict]) -> None:
-        """청크들을 벡터 DB에 저장"""
+    def store_chunks(self, chunks: List[Dict], max_retries: int = 3) -> None:
+        """청크들을 벡터 DB에 저장 (재시도 로직 포함)"""
         print(f"💾 지식 베이스 '{self.kb_name}'에 {len(chunks)}개 청크 저장 중...")
         
-        collection = self.get_collection()
+        import time
+        import sqlite3
         
-        # 기존 데이터 삭제 (안전한 방법: 기존 ID 조회 후 삭제)
-        try:
-            existing_data = collection.get()
-            if existing_data and existing_data['ids']:
-                collection.delete(ids=existing_data['ids'])
-                print(f"🗑️  기존 {len(existing_data['ids'])}개 청크 삭제됨")
-        except Exception as e:
-            print(f"⚠️ 기존 데이터 삭제 중 오류 (무시하고 계속): {e}")
-        
-        ids = [f"chunk_{chunk['id']}" for chunk in chunks]
-        documents = [chunk['content'] for chunk in chunks]
-        embeddings = [chunk['embedding'] for chunk in chunks]
-        metadatas = [{'length': chunk['length'], 'chunk_id': chunk['id']} for chunk in chunks]
-        
-        # 배치 크기로 나누어 저장 (ChromaDB 제한)
-        batch_size = 100
-        for i in range(0, len(chunks), batch_size):
-            end_idx = min(i + batch_size, len(chunks))
-            
-            collection.add(
-                ids=ids[i:end_idx],
-                documents=documents[i:end_idx],
-                embeddings=embeddings[i:end_idx],
-                metadatas=metadatas[i:end_idx]
-            )
-        
-        print(f"✅ 지식 베이스 '{self.kb_name}' 저장 완료!")
+        for attempt in range(max_retries):
+            try:
+                collection = self.get_collection()
+                
+                # 기존 데이터 삭제 (안전한 방법: 기존 ID 조회 후 삭제)
+                try:
+                    existing_data = collection.get()
+                    if existing_data and existing_data['ids']:
+                        collection.delete(ids=existing_data['ids'])
+                        print(f"🗑️  기존 {len(existing_data['ids'])}개 청크 삭제됨")
+                except Exception as e:
+                    print(f"⚠️ 기존 데이터 삭제 중 오류 (무시하고 계속): {e}")
+                
+                ids = [f"chunk_{chunk['id']}" for chunk in chunks]
+                documents = [chunk['content'] for chunk in chunks]
+                embeddings = [chunk['embedding'] for chunk in chunks]
+                metadatas = [{'length': chunk['length'], 'chunk_id': chunk['id']} for chunk in chunks]
+                
+                # 배치 크기로 나누어 저장 (ChromaDB 제한)
+                batch_size = 100
+                for i in range(0, len(chunks), batch_size):
+                    end_idx = min(i + batch_size, len(chunks))
+                    
+                    collection.add(
+                        ids=ids[i:end_idx],
+                        documents=documents[i:end_idx],
+                        embeddings=embeddings[i:end_idx],
+                        metadatas=metadatas[i:end_idx]
+                    )
+                
+                print(f"✅ 지식 베이스 '{self.kb_name}' 저장 완료!")
+                return  # 성공 시 종료
+                
+            except (sqlite3.OperationalError, Exception) as e:
+                error_msg = str(e).lower()
+                is_db_error = 'readonly' in error_msg or 'locked' in error_msg or 'database' in error_msg
+                
+                if is_db_error and attempt < max_retries - 1:
+                    print(f"⚠️ DB 쓰기 에러 발생 - 재시도 {attempt + 1}/{max_retries}: {e}")
+                    time.sleep(1.0 * (2 ** attempt))  # 1s, 2s 대기
+                    
+                    # 컬렉션 재초기화
+                    self.collection = None
+                    self.client = None
+                    import gc
+                    gc.collect()
+                    time.sleep(0.2)
+                else:
+                    raise Exception(f"지식 베이스 저장 실패 ({attempt + 1}회 시도): {e}")
 
     async def _search_initial_chunks(self, query: str, top_k: int, threshold: float) -> List[str]:
         """초기 벡터 검색을 수행하는 내부 헬퍼 함수 (비동기 개선된 버전)
