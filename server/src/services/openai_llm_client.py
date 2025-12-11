@@ -2,7 +2,7 @@ import asyncio
 from typing import List, Dict, Any
 from openai import OpenAI
 from .llm_client_interface import LLMClientInterface
-from ..core.config import API_KEYS, NODE_EXECUTION_CONFIG
+from ..config import API_KEYS, NODE_EXECUTION_CONFIG
 
 class OpenAIClient(LLMClientInterface):
     """OpenAI API 클라이언트"""

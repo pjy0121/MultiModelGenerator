@@ -8,12 +8,12 @@ import logging
 from typing import Dict, List, Set, Optional, AsyncGenerator
 from collections import defaultdict, deque
 
-from ..core.models import (
+from ..models import (
     WorkflowDefinition, WorkflowNode, WorkflowEdge, NodeType,
     NodeExecutionResult, WorkflowExecutionResponse
 )
 from ..api.node_executors import NodeExecutor
-from .config import NODE_EXECUTION_CONFIG
+from ..config import NODE_EXECUTION_CONFIG
 
 
 # 로거 설정

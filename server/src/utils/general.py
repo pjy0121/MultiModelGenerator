@@ -8,7 +8,7 @@ import json
 from typing import List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor
 
-from .config import VECTOR_DB_CONFIG
+from ..config import VECTOR_DB_CONFIG
 
 
 def get_kb_path(kb_name: str) -> str:

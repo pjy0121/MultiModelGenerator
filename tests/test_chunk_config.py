@@ -7,7 +7,7 @@ import os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'server'))
 
-from src.core.config import VECTOR_DB_CONFIG
+from src.config import VECTOR_DB_CONFIG
 
 
 class TestChunkConfiguration:

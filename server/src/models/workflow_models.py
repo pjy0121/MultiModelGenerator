@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional, Union
 from enum import Enum
-from .config import SEARCH_INTENSITY_CONFIG
+from ..config import SEARCH_INTENSITY_CONFIG
 
 class NodeType(str, Enum):
     INPUT = "input-node"
