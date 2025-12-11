@@ -5,7 +5,7 @@ import os
 # 서버 모듈을 import 가능하도록 경로 추가
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'server'))
 
-from src.core.utils import get_kb_list_sync
+from src.utils import get_kb_list_sync
 import json
 
 print("=" * 60)

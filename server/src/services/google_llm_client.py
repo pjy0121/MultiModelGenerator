@@ -4,7 +4,8 @@ import traceback
 import google.generativeai as genai
 from typing import List, Dict, Any
 from .llm_client_interface import LLMClientInterface
-from ..core.config import API_KEYS, NODE_EXECUTION_CONFIG
+from ..config import API_KEYS, NODE_EXECUTION_CONFIG
+from ..utils import handle_llm_error
 
 class GoogleLLMClient(LLMClientInterface):
     """Google AI Studio API 클라이언트"""
@@ -75,7 +76,8 @@ class GoogleLLMClient(LLMClientInterface):
     ):
         """스트리밍으로 응답 생성 (통합된 단일 인터페이스)"""
         if not self.is_available():
-            raise Exception("Google AI API 키가 설정되지 않았습니다.")
+            error_msg = handle_llm_error("google", model, Exception("키가 설정되지 않음"), log_error=False)
+            raise Exception(error_msg)
         
         try:
             # 모델 이름에 'models/' 접두사가 없으면 추가

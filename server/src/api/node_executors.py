@@ -7,9 +7,9 @@ import asyncio
 import time
 from typing import List, Any, AsyncGenerator
 
-from ..core.models import WorkflowNode, NodeExecutionResult, SearchIntensity
-from ..core.output_parser import ResultParser
-from ..core.config import LLM_CONFIG
+from ..models import WorkflowNode, NodeExecutionResult, SearchIntensity
+from ..utils import ResultParser
+from ..config import LLM_CONFIG
 from ..services.llm_factory import LLMFactory
 from ..services.vector_store_service import VectorStoreService
 
@@ -296,13 +296,13 @@ class NodeExecutor:
                         execution_time=time.time() - start_time
                     )
                 
-                # context-node 자체의 rerank 설정 사용 (고정 모델: BAAI/bge-reranker-v2-m3)
+                # context-node 자체의 rerank 설정 사용
                 rerank_info = None
                 if (node.rerank_provider and node.rerank_provider not in ["none", None]):
                     from ..core.config import VECTOR_DB_CONFIG
                     rerank_info = {
-                        "provider": "internal",  # 고정 provider
-                        "model": VECTOR_DB_CONFIG.get("default_rerank_model", "BAAI/bge-reranker-v2-m3")
+                        "provider": "internal",
+                        "model": VECTOR_DB_CONFIG.get("default_rerank_model")
                     }
                 
                 # 벡터 DB 검색 실행
@@ -388,13 +388,13 @@ class NodeExecutor:
                 # 검색 시작 알림
                 yield {"type": "stream", "content": f"🔍 [{node.id}] 지식 베이스 '{knowledge_base}' 검색 중...\n"}
             
-            # rerank 정보 설정 (고정 모델: BAAI/bge-reranker-v2-m3)
+            # rerank 정보 설정
             rerank_info = None
             if (node.rerank_provider and node.rerank_provider not in ["none", None]):
                 from ..core.config import VECTOR_DB_CONFIG
-                rerank_model = VECTOR_DB_CONFIG.get("default_rerank_model", "BAAI/bge-reranker-v2-m3")
+                rerank_model = VECTOR_DB_CONFIG.get("default_rerank_model")
                 rerank_info = {
-                    "provider": "internal",  # 고정 provider
+                    "provider": "internal",
                     "model": rerank_model
                 }
                 yield {"type": "stream", "content": f"🔄 [{node.id}] 재정렬 설정됨: {rerank_model}\n"}

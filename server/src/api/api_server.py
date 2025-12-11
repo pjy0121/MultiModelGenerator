@@ -9,19 +9,17 @@ import asyncio
 from typing import Dict
 
 # Node-based workflow imports
-from ..core.node_execution_engine import NodeExecutionEngine
-from ..core.workflow_validator import WorkflowValidator
-from ..core.config import LLM_CONFIG
-from ..core.utils import format_sse_data
-from ..core.path_resolver import PathResolver
-from ..core.filesystem_utils import safe_delete_with_retry, safe_rename_with_retry
-from ..core.protection_utils import (
-    create_secure_marker,
-    remove_secure_marker,
-    is_protected,
-    check_protection_before_operation
+from ..workflow import NodeExecutionEngine, WorkflowValidator
+from ..utils import (
+    ErrorResponse, handle_api_errors,
+    format_sse_data,
+    PathResolver,
+    safe_delete_with_retry, safe_rename_with_retry,
+    create_secure_marker, remove_secure_marker,
+    is_protected, check_protection_before_operation
 )
-from ..core.models import (
+from ..config import LLM_CONFIG
+from ..models import (
     WorkflowExecutionRequest, 
     WorkflowDefinition,
     KnowledgeBase,
@@ -85,14 +83,11 @@ async def health():
     return {"status": "Node-based workflow API is running", "version": "2.0.0"}
 
 @app.post("/validate-workflow")
+@handle_api_errors(default_status=500)
 async def validate_workflow(workflow: WorkflowDefinition):
     """워크플로우 유효성 검증 (project_reference.md 연결 조건 기준)"""
-    try:
-        result = validator.validate_workflow(workflow)
-        return result
-    except Exception as e:
-        logger.error(f"Validation failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    result = validator.validate_workflow(workflow)
+    return result
 
 @app.post("/execute-workflow-stream")
 async def execute_workflow_stream(request: WorkflowExecutionRequest):
@@ -236,7 +231,7 @@ async def list_knowledge_bases():
         
     except Exception as e:
         logger.error(f"Failed to list knowledge bases: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise ErrorResponse.internal_error(f"Failed to list knowledge bases: {str(e)}")
 
 @app.get("/knowledge-bases/structure")
 async def get_knowledge_base_structure():
@@ -381,7 +376,7 @@ async def create_folder(request: dict):
             raise
         except Exception as e:
             logger.error(f"Failed to create folder: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            raise ErrorResponse.internal_error(f"Failed to create folder: {str(e)}")
 
 @app.post("/knowledge-bases/delete-folder")
 async def delete_folder(request: dict):

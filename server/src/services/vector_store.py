@@ -2,9 +2,9 @@ import chromadb
 import os
 import threading
 from typing import List, Dict, Optional
-from ..core.config import VECTOR_DB_CONFIG
-from ..core.utils import get_kb_path
-from ..core.models import SearchIntensity
+from ..config import VECTOR_DB_CONFIG
+from ..utils import get_kb_path
+from ..models import SearchIntensity
 from .rerank import ReRanker
 
 # ChromaDBManager 클래스 제거됨 - 각 VectorStore 인스턴스가 독립적인 클라이언트 사용

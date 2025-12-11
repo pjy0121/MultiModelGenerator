@@ -8,8 +8,8 @@ import os
 # Add server path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'server'))
 
-from src.core.workflow_validator import WorkflowValidator
-from src.core.models import WorkflowDefinition, WorkflowNode, WorkflowEdge, NodeType
+from src.workflow import WorkflowValidator
+from src.models import WorkflowDefinition, WorkflowNode, WorkflowEdge, NodeType
 
 
 class TestValidationNodeChain:

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, AsyncGenerator
-from ..core.config import NODE_EXECUTION_CONFIG
+from ..config import NODE_EXECUTION_CONFIG
 
 
 class LLMClientInterface(ABC):

@@ -3,7 +3,7 @@ Workflow validation logic based on project_reference.md connection rules
 """
 
 from typing import Dict, List, Set
-from ..core.models import WorkflowDefinition, WorkflowNode, WorkflowEdge, NodeType
+from ..models import WorkflowDefinition, WorkflowNode, WorkflowEdge, NodeType
 
 class WorkflowValidator:
     """

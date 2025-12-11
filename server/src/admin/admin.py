@@ -2,8 +2,8 @@ import os
 import shutil
 import time
 from typing import Dict, Any
-from ..core.config import VECTOR_DB_CONFIG, ADMIN_CONFIG
-from ..core.utils import get_kb_path, format_file_size, truncate_text, get_kb_list_sync
+from ..config import VECTOR_DB_CONFIG, ADMIN_CONFIG
+from ..utils import get_kb_path, format_file_size, truncate_text, get_kb_list_sync
 from ..services.document_processor import DocumentProcessor
 from ..services.vector_store import VectorStore
 

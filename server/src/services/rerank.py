@@ -2,17 +2,18 @@ from typing import List
 from sentence_transformers import CrossEncoder
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from ..config import MODEL_REGISTRY
 
 class ReRanker:
-    """BAAI/bge-reranker-v2-m3를 사용한 문서 재정렬"""
+    """BGE Reranker를 사용한 문서 재정렬"""
     
-    def __init__(self, provider: str, model: str):
+    def __init__(self, provider: str, model: str = None):
         """
         Args:
             provider: 'internal' (고정)
-            model: 'BAAI/bge-reranker-v2-m3' (고정)
+            model: Reranker model name (defaults to MODEL_REGISTRY)
         """
-        self.model_name = model
+        self.model_name = model or MODEL_REGISTRY["reranker"]["default"]
         self.reranker = None
         self._executor = ThreadPoolExecutor(max_workers=1)
         print(f"🔧 ReRanker 초기화: {model}")
@@ -26,7 +27,7 @@ class ReRanker:
 
     async def rerank_documents(self, query: str, documents: List[str], top_k_final: int) -> List[str]:
         """
-        BAAI/bge-reranker-v2-m3를 사용하여 문서 목록을 쿼리와의 관련성 순으로 재정렬합니다.
+        BGE Reranker를 사용하여 문서 목록을 쿼리와의 관련성 순으로 재정렬합니다.
         
         Args:
             query: 검색 쿼리

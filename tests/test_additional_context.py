@@ -7,7 +7,7 @@ import os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'server'))
 
-from src.core.models import WorkflowNode, NodeExecutionResult
+from src.models import WorkflowNode, NodeExecutionResult
 from src.api.node_executors import NodeExecutor
 
 

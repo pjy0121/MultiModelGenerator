@@ -3,7 +3,7 @@ import asyncio
 from typing import List, Dict, Any
 from openai import OpenAI
 from .llm_client_interface import LLMClientInterface
-from ..core.config import INTERNAL_LLM_CONFIG, NODE_EXECUTION_CONFIG
+from ..config import INTERNAL_LLM_CONFIG, NODE_EXECUTION_CONFIG
 
 class InternalLLMClient(LLMClientInterface):
     """내부 LLM API 클라이언트 (OpenAI 패키지 사용)"""

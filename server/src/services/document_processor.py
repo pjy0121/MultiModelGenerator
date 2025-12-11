@@ -1,7 +1,7 @@
 import PyPDF2
 import re
 from typing import List, Dict
-from ..core.config import VECTOR_DB_CONFIG
+from ..config import VECTOR_DB_CONFIG
 from transformers import AutoTokenizer
 
 # TEI 또는 로컬 모델 조건부 import
@@ -17,7 +17,7 @@ class DocumentProcessor:
         self.chunk_overlap = chunk_overlap or VECTOR_DB_CONFIG["chunk_overlap"]
         
         # BGE-M3 tokenizer 초기화 (token 기반 청킹용)
-        tokenizer_model = VECTOR_DB_CONFIG.get('tokenizer_model', 'BAAI/bge-m3')
+        tokenizer_model = VECTOR_DB_CONFIG.get('tokenizer_model')
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_model)
             print(f"✅ {tokenizer_model} tokenizer 로드 성공")
@@ -42,7 +42,7 @@ class DocumentProcessor:
             if success:
                 print(f"✅ {message}")
                 print(f"📊 TEI 서버: {config.get('tei_base_url')}")
-                print(f"🤖 모델: {config.get('tei_model_name', 'BAAI/bge-m3')}")
+                print(f"🤖 모델: {config.get('tei_model_name')}")
                 print(f"📐 임베딩 차원: {config.get('embedding_dimension', 1024)}")
             else:
                 print(f"❌ {message}")

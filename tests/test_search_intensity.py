@@ -7,7 +7,7 @@ import os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'server'))
 
-from src.core.models import SearchIntensity
+from src.models import SearchIntensity
 
 
 class TestSearchIntensity:

@@ -4,8 +4,8 @@ VectorStoreService - VectorStore 인스턴스들을 관리하는 단순한 wrapp
 
 from typing import List, Dict, Optional
 from .vector_store import VectorStore
-from ..core.config import NODE_EXECUTION_CONFIG
-from ..core.utils import get_kb_list
+from ..config import NODE_EXECUTION_CONFIG
+from ..utils import get_kb_list
 
 
 class VectorStoreService:

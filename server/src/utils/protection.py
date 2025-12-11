@@ -198,7 +198,7 @@ def has_protected_content(folder_path: str) -> Tuple[bool, List[str]]:
     Returns:
         Tuple of (is_protected, list_of_protected_items)
     """
-    from .path_resolver import PathResolver
+    from ..utils.path_resolver import PathResolver
     
     protected_items = []
     
