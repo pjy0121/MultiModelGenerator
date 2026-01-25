@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MultiModelGenerator - AI 워크플로우 빌더</title>
+    <meta name="description" content="노드 기반 시각적 AI 워크플로우 빌더. 여러 LLM 모델을 조합하고 RAG를 활용하여 문서에서 요구사항을 추출합니다.">
+    <meta name="keywords" content="AI, LLM, workflow, RAG, requirements extraction, GPT, Gemini, 워크플로우">
+    <meta property="og:title" content="MultiModelGenerator - AI 워크플로우 빌더">
+    <meta property="og:description" content="드래그 앤 드롭으로 복잡한 AI 파이프라인을 설계하세요.">
+    <meta property="og:type" content="website">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="#" class="nav-logo">
+                <span class="logo-icon">🔗</span>
+                <span class="logo-text">MultiModelGenerator</span>
+            </a>
+            <ul class="nav-menu">
+                <li><a href="#features">기능</a></li>
+                <li><a href="#demo">데모</a></li>
+                <li><a href="#tutorial">사용법</a></li>
+            </ul>
+            <div class="nav-actions">
+                <a href="https://github.com/your-repo/MultiModelGenerator" class="btn btn-outline" target="_blank">
+                    <svg class="github-icon" viewBox="0 0 24 24" width="20" height="20">
+                        <path fill="currentColor" d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                    </svg>
+                    GitHub
+                </a>
+                <a href="index_en.html" class="btn btn-ghost" style="padding: 8px 12px; font-size: 0.85rem;">English</a>
+            </div>
+            <button class="nav-toggle" aria-label="Toggle menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-bg"></div>
+        <div class="container">
+            <div class="hero-content">
+                <div class="hero-badge">
+                    <span>🚀</span>
+                    <span>노드 기반 AI 파이프라인</span>
+                </div>
+                <h1 class="hero-title">
+                    시각적<br>
+                    <span class="gradient-text">AI 워크플로우</span><br>
+                    빌더
+                </h1>
+                <p class="hero-description">
+                    드래그 앤 드롭으로 복잡한 AI 파이프라인을 설계하세요.
+                    여러 LLM 모델을 조합하고 RAG를 활용하여 문서에서 요구사항을 추출합니다.
+                </p>
+                <div class="hero-actions">
+                    <a href="https://github.com/your-repo/MultiModelGenerator" class="btn btn-primary btn-lg" target="_blank">
+                        <svg viewBox="0 0 24 24" width="20" height="20">
+                            <path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                        </svg>
+                        소스코드 보기
+                    </a>
+                    <a href="#demo" class="btn btn-ghost btn-lg">
+                        <svg viewBox="0 0 24 24" width="20" height="20">
+                            <path fill="currentColor" d="M8 5v14l11-7z"/>
+                        </svg>
+                        데모 보기
+                    </a>
+                </div>
+                <div class="hero-stats">
+                    <div class="stat">
+                        <span class="stat-value">6가지</span>
+                        <span class="stat-label">노드 타입</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value">3개</span>
+                        <span class="stat-label">LLM 프로바이더</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value">RAG</span>
+                        <span class="stat-label">지식 베이스</span>
+                    </div>
+                </div>
+            </div>
+            <div class="hero-image">
+                <div class="hero-image-wrapper">
+                    <!-- TODO: 메인 스크린샷 삽입 -->
+                    <!-- <img src="assets/screenshot-main.png" alt="MultiModelGenerator Screenshot"> -->
+                    <div class="media-placeholder">
+                        <div class="play-icon">
+                            <svg viewBox="0 0 24 24" width="32" height="32">
+                                <path fill="currentColor" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
+                            </svg>
+                        </div>
+                        <p>워크플로우 캔버스 스크린샷</p>
+                    </div>
+                    <div class="image-glow"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Who Is This For Section -->
+    <section class="audience-section">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-badge">누구를 위한 도구인가요?</span>
+                <h2>이런 분들께 추천합니다</h2>
+                <p>복잡한 AI 작업을 효율적으로 처리하고 싶은 모든 분들을 위한 도구입니다.</p>
+            </div>
+            <div class="audience-grid">
+                <div class="audience-card">
+                    <div class="audience-icon">📋</div>
+                    <h4>시스템 분석가 & PM</h4>
+                    <p class="audience-benefit">기술 문서에서 요구사항 자동 추출</p>
+                    <ul class="audience-list">
+                        <li>수백 페이지 문서를 몇 분 만에 분석</li>
+                        <li>누락 없는 체계적 요구사항 도출</li>
+                        <li>다중 모델 교차 검증으로 정확도 향상</li>
+                    </ul>
+                </div>
+                <div class="audience-card">
+                    <div class="audience-icon">🔬</div>
+                    <h4>AI/ML 연구자</h4>
+                    <p class="audience-benefit">LLM 모델 비교 및 프롬프트 실험</p>
+                    <ul class="audience-list">
+                        <li>GPT-4, Gemini 등 다양한 모델 동시 비교</li>
+                        <li>프롬프트 변형에 따른 결과 차이 분석</li>
+                        <li>앙상블 기법으로 최적 결과 도출</li>
+                    </ul>
+                </div>
+                <div class="audience-card">
+                    <div class="audience-icon">📚</div>
+                    <h4>기술 문서 담당자</h4>
+                    <p class="audience-benefit">문서 요약 및 지식 추출 자동화</p>
+                    <ul class="audience-list">
+                        <li>대용량 문서 자동 요약 및 정리</li>
+                        <li>RAG 기반 맥락 인식 질의응답</li>
+                        <li>일관된 형식의 산출물 생성</li>
+                    </ul>
+                </div>
+                <div class="audience-card">
+                    <div class="audience-icon">⚙️</div>
+                    <h4>개발자 & 엔지니어</h4>
+                    <p class="audience-benefit">복잡한 AI 파이프라인 시각적 구축</p>
+                    <ul class="audience-list">
+                        <li>코드 없이 워크플로우 설계 및 테스트</li>
+                        <li>JSON 내보내기로 자동화 통합</li>
+                        <li>API 연동으로 기존 시스템과 결합</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Concept Section -->
+    <section class="concept-section">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-badge">핵심 컨셉</span>
+                <h2>노드로 연결하는 AI 파이프라인</h2>
+                <p>입력 데이터가 노드를 따라 흐르며, 각 노드에서 LLM 처리, RAG 검색, 검증 등의 작업이 수행됩니다.</p>
+            </div>
+
+            <!-- Concept Diagram -->
+            <div class="feature-image" style="margin-bottom: 48px;">
+                <!-- TODO: 워크플로우 컨셉 다이어그램 삽입 -->
+                <!-- <img src="assets/concept-diagram.png" alt="워크플로우 컨셉"> -->
+                <div class="media-placeholder">
+                    <p>워크플로우 컨셉 다이어그램</p>
+                    <p class="sub">Input → Context → Generation → Ensemble → Validation → Output</p>
+                </div>
+            </div>
+
+            <div class="concept-grid">
+                <div class="concept-card">
+                    <div class="concept-icon">📥</div>
+                    <h4>입력/출력 노드</h4>
+                    <p>텍스트 데이터의 시작점과 최종 결과를 표시합니다.</p>
+                </div>
+                <div class="concept-card">
+                    <div class="concept-icon">🤖</div>
+                    <h4>LLM 노드</h4>
+                    <p>생성, 앙상블, 검증 노드에서 GPT-4, Gemini 등 LLM을 활용합니다.</p>
+                </div>
+                <div class="concept-card">
+                    <div class="concept-icon">🔍</div>
+                    <h4>컨텍스트 노드</h4>
+                    <p>지식 베이스에서 RAG 기반으로 관련 문맥을 검색합니다.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Node Types Section -->
+    <section class="nodes-section">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-badge">노드 타입</span>
+                <h2>6가지 강력한 노드</h2>
+                <p>각 노드는 고유한 역할을 수행하며, 연결하여 복잡한 워크플로우를 구성합니다.</p>
+            </div>
+            <div class="nodes-grid">
+                <div class="node-card">
+                    <div class="node-icon input">📥</div>
+                    <div>
+                        <h4>입력 노드</h4>
+                        <p>워크플로우의 시작점. 분석할 텍스트를 입력합니다.</p>
+                    </div>
+                </div>
+                <div class="node-card">
+                    <div class="node-icon generation">🤖</div>
+                    <div>
+                        <h4>생성 노드</h4>
+                        <p>LLM을 사용해 요구사항, 분석 결과 등을 생성합니다.</p>
+                    </div>
+                </div>
+                <div class="node-card">
+                    <div class="node-icon ensemble">🔀</div>
+                    <div>
+                        <h4>앙상블 노드</h4>
+                        <p>여러 노드의 출력을 하나로 통합하고 정리합니다.</p>
+                    </div>
+                </div>
+                <div class="node-card">
+                    <div class="node-icon validation">✅</div>
+                    <div>
+                        <h4>검증 노드</h4>
+                        <p>생성된 결과를 지식 베이스와 대조하여 검증합니다.</p>
+                    </div>
+                </div>
+                <div class="node-card">
+                    <div class="node-icon context">🔍</div>
+                    <div>
+                        <h4>컨텍스트 노드</h4>
+                        <p>RAG 기반으로 지식 베이스에서 관련 문맥을 검색합니다.</p>
+                    </div>
+                </div>
+                <div class="node-card">
+                    <div class="node-icon output">📤</div>
+                    <div>
+                        <h4>출력 노드</h4>
+                        <p>워크플로우의 최종 결과를 표시합니다.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="features-section">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-badge">주요 기능</span>
+                <h2>강력한 워크플로우 빌더</h2>
+                <p>시각적 캔버스, 다중 모델 지원, 지식 베이스 관리 등 핵심 기능을 제공합니다.</p>
+            </div>
+
+            <div class="feature-showcase">
+                <!-- Feature 1: Workflow Canvas -->
+                <div class="feature-item">
+                    <div class="feature-content">
+                        <span class="feature-number">1</span>
+                        <h3>시각적 워크플로우 캔버스</h3>
+                        <p>React Flow 기반의 직관적인 캔버스에서 노드를 배치하고 연결합니다.</p>
+                        <ul class="feature-list">
+                            <li>
+                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                드래그 앤 드롭으로 노드 배치
+                            </li>
+                            <li>
+                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                노드 간 연결로 데이터 흐름 정의
+                            </li>
+                            <li>
+                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                실행 상태 실시간 시각화
+                            </li>
+                            <li>
+                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                JSON 내보내기/가져오기
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="feature-image">
+                        <!-- TODO: 워크플로우 캔버스 스크린샷 -->
+                        <!-- <img src="assets/feature-canvas.png" alt="워크플로우 캔버스"> -->
+                        <div class="media-placeholder">
+                            <p>워크플로우 캔버스</p>
+                            <p class="sub">노드 배치 및 연결 화면</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Feature 2: Node Configuration -->
+                <div class="feature-item reverse">
+                    <div class="feature-content">
+                        <span class="feature-number">2</span>
+                        <h3>노드별 상세 설정</h3>
+                        <p>각 노드를 클릭하면 세부 설정 패널이 열립니다.</p>
+                        <ul class="feature-list">
+                            <li>
+                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                LLM 프로바이더 및 모델 선택
+                            </li>
+                            <li>
+                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                프롬프트 템플릿 커스터마이징
+                            </li>
+                            <li>
+                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                지식 베이스 선택 및 검색 강도
+                            </li>
+                            <li>
+                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                Rerank 옵션 설정
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="feature-image">
+                        <!-- TODO: 노드 설정 패널 스크린샷 -->
+                        <!-- <img src="assets/feature-node-config.png" alt="노드 설정"> -->
+                        <div class="media-placeholder">
+                            <p>노드 설정 패널</p>
+                            <p class="sub">LLM 모델, 프롬프트 설정</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Feature 3: Knowledge Base -->
+                <div class="feature-item">
+                    <div class="feature-content">
+                        <span class="feature-number">3</span>
+                        <h3>지식 베이스 관리</h3>
+                        <p>PDF, TXT 문서를 업로드하여 벡터 DB를 생성하고 RAG에 활용합니다.</p>
+                        <ul class="feature-list">
+                            <li>
+                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                PDF, TXT 파일 업로드
+                            </li>
+                            <li>
+                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                폴더 구조로 체계적 관리
+                            </li>
+                            <li>
+                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                BGE-M3 다국어 임베딩
+                            </li>
+                            <li>
+                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                비밀번호 기반 보호
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="feature-image">
+                        <!-- TODO: 지식 베이스 관리 화면 스크린샷 -->
+                        <!-- <img src="assets/feature-kb.png" alt="지식 베이스 관리"> -->
+                        <div class="media-placeholder">
+                            <p>지식 베이스 관리</p>
+                            <p class="sub">폴더 구조, 업로드, 검색</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Feature 4: Streaming Execution -->
+                <div class="feature-item reverse">
+                    <div class="feature-content">
+                        <span class="feature-number">4</span>
+                        <h3>실시간 스트리밍 실행</h3>
+                        <p>워크플로우 실행 시 LLM 응답이 실시간으로 스트리밍됩니다.</p>
+                        <ul class="feature-list">
+                            <li>
+                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                LLM 응답 실시간 스트리밍
+                            </li>
+                            <li>
+                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                노드별 실행 상태 표시
+                            </li>
+                            <li>
+                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                병렬 노드 동시 실행
+                            </li>
+                            <li>
+                                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                실행 중단 기능
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="feature-image">
+                        <!-- TODO: 실행 및 스트리밍 동영상 -->
+                        <!-- <video src="assets/demo-execution.mp4" autoplay muted loop></video> -->
+                        <div class="media-placeholder">
+                            <div class="play-icon">
+                                <svg viewBox="0 0 24 24" width="32" height="32">
+                                    <path fill="currentColor" d="M8 5v14l11-7z"/>
+                                </svg>
+                            </div>
+                            <p>실행 및 스트리밍 데모</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Demo Section -->
+    <section id="demo" class="demo-section">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-badge">데모</span>
+                <h2>실제 동작 모습</h2>
+                <p>워크플로우 구성부터 실행까지 전체 과정을 확인하세요.</p>
+            </div>
+            <div class="demo-container">
+                <div class="demo-video">
+                    <!-- TODO: 메인 데모 동영상 삽입 -->
+                    <!-- <video src="assets/demo-main.mp4" controls></video> -->
+                    <!-- 또는 YouTube: <iframe src="https://www.youtube.com/embed/VIDEO_ID" allowfullscreen></iframe> -->
+                    <div class="media-placeholder" style="aspect-ratio: 16/9;">
+                        <div class="play-icon">
+                            <svg viewBox="0 0 24 24" width="48" height="48">
+                                <path fill="currentColor" d="M8 5v14l11-7z"/>
+                            </svg>
+                        </div>
+                        <p>메인 데모 동영상</p>
+                        <p class="sub">워크플로우 구성부터 실행까지</p>
+                    </div>
+                </div>
+                <div class="demo-highlights">
+                    <div class="highlight-item">
+                        <span class="highlight-icon">🔗</span>
+                        <div>
+                            <h4>노드 연결</h4>
+                            <p>드래그로 노드를 연결하여 데이터 흐름을 정의합니다.</p>
+                        </div>
+                    </div>
+                    <div class="highlight-item">
+                        <span class="highlight-icon">🔍</span>
+                        <div>
+                            <h4>RAG 검색</h4>
+                            <p>컨텍스트 노드가 지식 베이스에서 관련 문맥을 검색합니다.</p>
+                        </div>
+                    </div>
+                    <div class="highlight-item">
+                        <span class="highlight-icon">⚡</span>
+                        <div>
+                            <h4>실시간 결과</h4>
+                            <p>LLM 응답이 실시간으로 스트리밍되어 표시됩니다.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Tutorial Section -->
+    <section id="tutorial" class="tutorial-section">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-badge">사용법</span>
+                <h2>시작하기</h2>
+                <p>단계별로 따라하며 첫 워크플로우를 만들어보세요.</p>
+            </div>
+            <div class="tutorial-steps">
+                <!-- Step 1 -->
+                <div class="tutorial-step">
+                    <div class="step-content">
+                        <span class="step-number">1</span>
+                        <h3>지식 베이스 생성</h3>
+                        <p>분석할 문서(PDF, TXT)를 업로드하여 지식 베이스를 생성합니다. 폴더를 만들어 체계적으로 관리할 수 있습니다.</p>
+                    </div>
+                    <div class="step-media">
+                        <!-- TODO: KB 생성 과정 스크린샷/GIF -->
+                        <!-- <img src="assets/tutorial-step1.png" alt="지식 베이스 생성"> -->
+                        <div class="media-placeholder">
+                            <p>KB 생성 화면</p>
+                            <p class="sub">파일 업로드, 폴더 생성</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="tutorial-step reverse">
+                    <div class="step-content">
+                        <span class="step-number">2</span>
+                        <h3>노드 추가 및 연결</h3>
+                        <p>상단 버튼으로 노드를 추가하고, 핸들을 드래그하여 노드를 연결합니다. 데이터 흐름에 맞게 구성하세요.</p>
+                    </div>
+                    <div class="step-media">
+                        <!-- TODO: 노드 추가 및 연결 GIF/동영상 -->
+                        <!-- <video src="assets/tutorial-step2.mp4" autoplay muted loop></video> -->
+                        <div class="media-placeholder">
+                            <div class="play-icon">
+                                <svg viewBox="0 0 24 24" width="32" height="32">
+                                    <path fill="currentColor" d="M8 5v14l11-7z"/>
+                                </svg>
+                            </div>
+                            <p>노드 추가 및 연결 데모</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="tutorial-step">
+                    <div class="step-content">
+                        <span class="step-number">3</span>
+                        <h3>노드 설정</h3>
+                        <p>각 노드를 클릭하여 LLM 모델, 프롬프트, 지식 베이스 등을 설정합니다. 프롬프트에 {input_data}, {context} 변수를 사용하세요.</p>
+                    </div>
+                    <div class="step-media">
+                        <!-- TODO: 노드 설정 스크린샷 -->
+                        <!-- <img src="assets/tutorial-step3.png" alt="노드 설정"> -->
+                        <div class="media-placeholder">
+                            <p>노드 설정 패널</p>
+                            <p class="sub">모델 선택, 프롬프트 작성</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 4 -->
+                <div class="tutorial-step reverse">
+                    <div class="step-content">
+                        <span class="step-number">4</span>
+                        <h3>워크플로우 실행</h3>
+                        <p>"워크플로우 실행" 버튼을 클릭하면 노드가 순차적/병렬로 실행되며, 결과가 실시간으로 스트리밍됩니다.</p>
+                    </div>
+                    <div class="step-media">
+                        <!-- TODO: 실행 과정 동영상 -->
+                        <!-- <video src="assets/tutorial-step4.mp4" autoplay muted loop></video> -->
+                        <div class="media-placeholder">
+                            <div class="play-icon">
+                                <svg viewBox="0 0 24 24" width="32" height="32">
+                                    <path fill="currentColor" d="M8 5v14l11-7z"/>
+                                </svg>
+                            </div>
+                            <p>워크플로우 실행 데모</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 5 -->
+                <div class="tutorial-step">
+                    <div class="step-content">
+                        <span class="step-number">5</span>
+                        <h3>결과 확인 및 저장</h3>
+                        <p>출력 노드와 결과 패널에서 최종 결과를 확인합니다. 워크플로우를 저장하거나 JSON으로 내보내 재사용하세요.</p>
+                    </div>
+                    <div class="step-media">
+                        <!-- TODO: 결과 확인 스크린샷 -->
+                        <!-- <img src="assets/tutorial-step5.png" alt="결과 확인"> -->
+                        <div class="media-placeholder">
+                            <p>결과 패널</p>
+                            <p class="sub">최종 결과 및 저장</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Tech Section -->
+    <section class="tech-section">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-badge">기술 스택</span>
+                <h2>현대적인 기술 기반</h2>
+                <p>검증된 프레임워크와 라이브러리로 구축되었습니다.</p>
+            </div>
+            <div class="tech-grid">
+                <div class="tech-column">
+                    <h4><span>💻</span> Frontend</h4>
+                    <div class="tech-list">
+                        <div class="tech-item">
+                            <strong>React 18</strong>
+                            <span>with TypeScript</span>
+                        </div>
+                        <div class="tech-item">
+                            <strong>React Flow</strong>
+                            <span>그래프 에디터</span>
+                        </div>
+                        <div class="tech-item">
+                            <strong>Ant Design</strong>
+                            <span>UI 컴포넌트</span>
+                        </div>
+                        <div class="tech-item">
+                            <strong>Zustand</strong>
+                            <span>상태 관리</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="tech-column">
+                    <h4><span>⚙️</span> Backend</h4>
+                    <div class="tech-list">
+                        <div class="tech-item">
+                            <strong>FastAPI</strong>
+                            <span>비동기 REST API</span>
+                        </div>
+                        <div class="tech-item">
+                            <strong>ChromaDB</strong>
+                            <span>벡터 스토어</span>
+                        </div>
+                        <div class="tech-item">
+                            <strong>BGE-M3</strong>
+                            <span>다국어 임베딩</span>
+                        </div>
+                        <div class="tech-item">
+                            <strong>Reranker</strong>
+                            <span>검색 품질 향상</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Download / CTA Section -->
+    <section class="download-section">
+        <div class="container">
+            <div class="download-card">
+                <div class="download-content">
+                    <h2>AI 워크플로우를 시작하세요</h2>
+                    <p>MultiModelGenerator로 복잡한 AI 파이프라인을 쉽게 구축하세요.</p>
+                    <div class="download-actions">
+                        <a href="https://github.com/your-repo/MultiModelGenerator" class="btn btn-primary btn-lg" target="_blank">
+                            <svg class="github-icon" viewBox="0 0 24 24" width="24" height="24">
+                                <path fill="currentColor" d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                            </svg>
+                            GitHub에서 시작하기
+                        </a>
+                        <a href="https://github.com/your-repo/MultiModelGenerator/blob/main/README.md" class="btn btn-outline btn-lg" target="_blank">
+                            문서 보기
+                        </a>
+                    </div>
+                </div>
+                <div class="download-decoration">
+                    <div class="decoration-circle"></div>
+                    <div class="decoration-circle"></div>
+                    <div class="decoration-circle"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <span class="logo-icon">🔗</span>
+                    <span class="logo-text">MultiModelGenerator</span>
+                    <p>노드 기반 시각적 AI 워크플로우 빌더</p>
+                </div>
+                <div class="footer-links">
+                    <div class="footer-column">
+                        <h4>제품</h4>
+                        <a href="#features">기능</a>
+                        <a href="#demo">데모</a>
+                        <a href="#tutorial">사용법</a>
+                    </div>
+                    <div class="footer-column">
+                        <h4>리소스</h4>
+                        <a href="https://github.com/your-repo/MultiModelGenerator" target="_blank">GitHub</a>
+                        <a href="https://github.com/your-repo/MultiModelGenerator/issues" target="_blank">이슈 리포트</a>
+                    </div>
+                    <div class="footer-column">
+                        <h4>라이선스</h4>
+                        <a href="https://github.com/your-repo/MultiModelGenerator/blob/main/LICENSE" target="_blank">Apache 2.0</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2024 MultiModelGenerator. Released under Apache 2.0 License.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Mobile navigation toggle
+        document.querySelector('.nav-toggle').addEventListener('click', function() {
+            document.querySelector('.navbar').classList.toggle('open');
+        });
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth' });
+                    document.querySelector('.navbar').classList.remove('open');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
