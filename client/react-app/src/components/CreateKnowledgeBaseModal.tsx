@@ -10,7 +10,7 @@ interface CreateKnowledgeBaseModalProps {
   visible: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  currentFolder?: string; // 현재 폴더 경로
+  currentFolder?: string; // Current folder path
 }
 
 const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
@@ -30,27 +30,27 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
 
   const handleFileChange = (info: any) => {
     const file = info.file.originFileObj || info.file;
-    
-    // 파일 타입 확인
+
+    // Check file type
     const isPDF = file.type === 'application/pdf' || file.name.endsWith('.pdf');
     const isTXT = file.type === 'text/plain' || file.name.endsWith('.txt');
-    
+
     if (!isPDF && !isTXT) {
-      message.error('PDF 또는 TXT 파일만 업로드 가능합니다.');
+      message.error('Only PDF or TXT files can be uploaded.');
       return;
     }
-    
-    // 파일 타입 설정
+
+    // Set file type
     setFileType(isPDF ? 'pdf' : 'txt');
 
     const reader = new FileReader();
     reader.onload = (e) => {
       const base64 = (e.target?.result as string).split(',')[1];
       setFileBase64(base64);
-      message.success(`파일이 업로드되었습니다: ${file.name}`);
+      message.success(`File uploaded: ${file.name}`);
     };
     reader.onerror = () => {
-      message.error('파일 읽기에 실패했습니다.');
+      message.error('Failed to read file.');
     };
     reader.readAsDataURL(file);
   };
@@ -58,30 +58,30 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
-      
+
       let contentBase64 = '';
-      
+
       if (inputMode === 'file') {
         if (!fileBase64) {
-          message.error('파일을 선택해주세요.');
+          message.error('Please select a file.');
           return;
         }
         contentBase64 = fileBase64;
       } else {
         if (!textContent.trim()) {
-          message.error('텍스트 내용을 입력해주세요.');
+          message.error('Please enter text content.');
           return;
         }
-        
+
         contentBase64 = textContent;
       }
 
       setLoading(true);
 
-      // Token 기반 설정에서 character 계산 (사용자 설정값 사용)
+      // Calculate characters from token-based settings (using user settings)
       const chunkSize = chunkTokens * BGE_M3_CONFIG.CHARS_PER_TOKEN;
       const chunkOverlap = Math.floor(chunkSize * overlapRatio);
-      
+
       await workflowAPI.createKnowledgeBase(
         values.kb_name,
         contentBase64,
@@ -92,7 +92,7 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
         currentFolder || undefined
       );
 
-      message.success(`지식 베이스 '${values.kb_name}'가 성공적으로 생성되었습니다.`);
+      message.success(`Knowledge base '${values.kb_name}' created successfully.`);
       form.resetFields();
       setTextContent('');
       setFileBase64('');
@@ -104,7 +104,7 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
       onClose();
     } catch (error: any) {
       console.error('KB creation error:', error);
-      message.error(error.response?.data?.detail || '지식 베이스 생성에 실패했습니다.');
+      message.error(error.response?.data?.detail || 'Failed to create knowledge base.');
     } finally {
       setLoading(false);
     }
@@ -123,14 +123,14 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
 
   return (
     <Modal
-      title="지식 베이스 추가"
+      title="Add Knowledge Base"
       open={visible}
       onOk={handleSubmit}
       onCancel={handleCancel}
       confirmLoading={loading}
       width={600}
-      okText="생성"
-      cancelText="취소"
+      okText="Create"
+      cancelText="Cancel"
       zIndex={2000}
     >
       <Form
@@ -138,18 +138,18 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
         layout="vertical"
       >
         <Form.Item
-          label="지식 베이스 이름"
+          label="Knowledge Base Name"
           name="kb_name"
-          rules={[{ required: true, message: '지식 베이스 이름을 입력해주세요.' }]}
+          rules={[{ required: true, message: 'Please enter knowledge base name.' }]}
         >
-          <Input placeholder="예: nvme_spec_2.2" />
+          <Input placeholder="e.g., nvme_spec_2.2" />
         </Form.Item>
 
-        <Form.Item label="Chunk 설정 (BGE-M3 최적화)">
+        <Form.Item label="Chunk Settings (BGE-M3 Optimized)">
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
             <div style={{ flex: 1 }}>
               <label style={{ fontSize: '12px', color: '#666', display: 'block', marginBottom: '4px' }}>
-                Chunk 크기 (tokens)
+                Chunk Size (tokens)
               </label>
               <Input
                 type="number"
@@ -163,7 +163,7 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
             </div>
             <div style={{ flex: 1 }}>
               <label style={{ fontSize: '12px', color: '#666', display: 'block', marginBottom: '4px' }}>
-                Overlap 비율 (%)
+                Overlap Ratio (%)
               </label>
               <Input
                 type="number"
@@ -178,45 +178,45 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
             </div>
           </div>
           <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>
-            기본값: 512 tokens, 15% overlap (약 {chunkTokens * BGE_M3_CONFIG.CHARS_PER_TOKEN} 문자, {Math.round(chunkTokens * BGE_M3_CONFIG.CHARS_PER_TOKEN * overlapRatio)} 문자 중첩)
+            Default: 512 tokens, 15% overlap (approx. {chunkTokens * BGE_M3_CONFIG.CHARS_PER_TOKEN} chars, {Math.round(chunkTokens * BGE_M3_CONFIG.CHARS_PER_TOKEN * overlapRatio)} chars overlap)
           </div>
         </Form.Item>
 
-        <Form.Item label="입력 방식">
+        <Form.Item label="Input Method">
           <Radio.Group value={inputMode} onChange={(e) => setInputMode(e.target.value)}>
             <Radio.Button value="base64">Base64 Text</Radio.Button>
             <Radio.Button value="plain">Plain Text</Radio.Button>
-            <Radio.Button value="file">파일 업로드 (PDF/TXT)</Radio.Button>
+            <Radio.Button value="file">File Upload (PDF/TXT)</Radio.Button>
           </Radio.Group>
         </Form.Item>
 
         {inputMode === 'base64' ? (
           <Form.Item
-            label="Base64 인코딩된 텍스트"
+            label="Base64 Encoded Text"
           >
             <TextArea
               value={textContent}
               onChange={(e) => setTextContent(e.target.value)}
               rows={10}
-              placeholder="base64 인코딩된 텍스트를 입력하세요..."
+              placeholder="Enter base64 encoded text..."
               style={{ fontFamily: 'monospace', fontSize: '12px' }}
             />
           </Form.Item>
         ) : inputMode === 'plain' ? (
           <Form.Item
-            label="텍스트 내용"
+            label="Text Content"
           >
             <TextArea
               value={textContent}
               onChange={(e) => setTextContent(e.target.value)}
               rows={10}
-              placeholder="임베딩할 텍스트를 입력하세요..."
+              placeholder="Enter text to embed..."
               style={{ fontFamily: 'monospace', fontSize: '12px' }}
             />
           </Form.Item>
         ) : (
           <Form.Item
-            label="파일 업로드"
+            label="File Upload"
           >
             <Upload
               accept=".pdf,.txt"
@@ -224,14 +224,14 @@ const CreateKnowledgeBaseModal: React.FC<CreateKnowledgeBaseModalProps> = ({
               beforeUpload={() => false}
               onChange={handleFileChange}
             >
-              <Button icon={<UploadOutlined />}>파일 선택 (PDF/TXT)</Button>
+              <Button icon={<UploadOutlined />}>Select File (PDF/TXT)</Button>
             </Upload>
           </Form.Item>
         )}
 
         <div style={{ fontSize: '12px', color: '#888', marginTop: '8px' }}>
-          {inputMode === 'file' && fileBase64 && <p style={{ margin: '4px 0' }}>※ {fileType.toUpperCase()} 파일이 선택되었습니다.</p>}
-          {currentFolder && <p style={{ margin: '4px 0' }}>※ 생성 위치: /{currentFolder}</p>}
+          {inputMode === 'file' && fileBase64 && <p style={{ margin: '4px 0' }}>* {fileType.toUpperCase()} file selected.</p>}
+          {currentFolder && <p style={{ margin: '4px 0' }}>* Creation location: /{currentFolder}</p>}
         </div>
       </Form>
     </Modal>

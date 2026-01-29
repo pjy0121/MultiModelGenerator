@@ -1,7 +1,7 @@
 """
-FileSystem Utilities - 파일 시스템 작업 유틸리티
+FileSystem Utilities - File system operation utilities
 
-ChromaDB 파일 잠금 문제를 해결하기 위한 안전한 파일 시스템 작업 함수들
+Safe file system operation functions to resolve ChromaDB file locking issues
 """
 import os
 import shutil
@@ -20,33 +20,33 @@ async def safe_delete_with_retry(
     operation_name: str = "delete"
 ) -> None:
     """
-    ChromaDB 안전 삭제 (재시도 로직 포함)
-    
+    Safe ChromaDB deletion (with retry logic)
+
     Args:
-        path: 삭제할 경로
-        max_retries: 최대 재시도 횟수
-        lock: 사용할 asyncio Lock (None이면 락 없이 실행)
-        operation_name: 작업 이름 (로깅용)
-    
+        path: Path to delete
+        max_retries: Maximum retry count
+        lock: asyncio Lock to use (None runs without lock)
+        operation_name: Operation name (for logging)
+
     Raises:
-        PermissionError: 최대 재시도 후에도 삭제 실패 시
+        PermissionError: When deletion fails after max retries
     """
     async def _perform_delete():
         for attempt in range(max_retries):
             try:
-                # 가비지 컬렉션 강제 실행 (ChromaDB 파일 핸들 해제)
+                # Force garbage collection (release ChromaDB file handles)
                 gc.collect()
-                await asyncio.sleep(0.2 + attempt * 0.1)  # 첫 시도도 대기
-                
-                # readonly 속성 제거 함수
+                await asyncio.sleep(0.2 + attempt * 0.1)  # Wait even on first attempt
+
+                # Function to remove readonly attribute
                 def remove_readonly(func, file_path, excinfo):
                     try:
                         os.chmod(file_path, 0o777)
                         func(file_path)
                     except Exception as e:
                         logger.warning(f"Failed to remove readonly for {file_path}: {e}")
-                
-                # 디렉토리 전체 삭제
+
+                # Delete entire directory
                 shutil.rmtree(path, onerror=remove_readonly)
                 logger.info(f"Successfully deleted '{path}' on attempt {attempt + 1}")
                 return
@@ -57,9 +57,9 @@ async def safe_delete_with_retry(
                         f"Error during {operation_name} '{path}', retrying... "
                         f"(attempt {attempt + 1}/{max_retries}): {e}"
                     )
-                    # 추가 가비지 컬렉션
+                    # Additional garbage collection
                     gc.collect()
-                    await asyncio.sleep(0.5 + attempt * 0.3)  # 더 긴 점진적 백오프
+                    await asyncio.sleep(0.5 + attempt * 0.3)  # Longer progressive backoff
                 else:
                     logger.error(
                         f"Failed to {operation_name} '{path}' after {max_retries} attempts: {e}"
@@ -84,25 +84,25 @@ async def safe_rename_with_retry(
     lock: Optional[asyncio.Lock] = None
 ) -> None:
     """
-    ChromaDB 안전 이름 변경 (재시도 로직 포함)
-    
+    Safe ChromaDB rename (with retry logic)
+
     Args:
-        old_path: 기존 경로
-        new_path: 새 경로
-        max_retries: 최대 재시도 횟수
-        lock: 사용할 asyncio Lock (None이면 락 없이 실행)
-    
+        old_path: Old path
+        new_path: New path
+        max_retries: Maximum retry count
+        lock: asyncio Lock to use (None runs without lock)
+
     Raises:
-        PermissionError: 최대 재시도 후에도 이름 변경 실패 시
+        PermissionError: When rename fails after max retries
     """
     async def _perform_rename():
         for attempt in range(max_retries):
             try:
-                # 가비지 컬렉션 강제 실행 (ChromaDB 파일 핸들 해제)
+                # Force garbage collection (release ChromaDB file handles)
                 gc.collect()
-                await asyncio.sleep(0.2 + attempt * 0.1)  # 첫 시도도 대기
-                
-                # 이름 변경
+                await asyncio.sleep(0.2 + attempt * 0.1)  # Wait even on first attempt
+
+                # Rename
                 os.rename(old_path, new_path)
                 logger.info(f"Successfully renamed '{old_path}' to '{new_path}' on attempt {attempt + 1}")
                 return
@@ -113,9 +113,9 @@ async def safe_rename_with_retry(
                         f"Error renaming '{old_path}', retrying... "
                         f"(attempt {attempt + 1}/{max_retries}): {e}"
                     )
-                    # 추가 가비지 컬렉션
+                    # Additional garbage collection
                     gc.collect()
-                    await asyncio.sleep(0.5 + attempt * 0.3)  # 더 긴 점진적 백오프
+                    await asyncio.sleep(0.5 + attempt * 0.3)  # Longer progressive backoff
                 else:
                     logger.error(
                         f"Failed to rename '{old_path}' after {max_retries} attempts: {e}"

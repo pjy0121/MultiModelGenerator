@@ -109,12 +109,12 @@ Context search results inject via `{context}` template variable in downstream LL
 
 **Search Intensity Algorithm** (Top-K + Similarity Threshold from `SearchIntensity` enum in `models.py`):
 ```python
-# BGE-M3 실제 유사도 분포 기반 (실측값 0.2~0.4 범위)
-EXACT:        init=10, final=5, threshold=0.3   # 명확히 관련된 문서 (30%+ similarity)
-STANDARD:     init=20, final=12, threshold=0.2  # 어느 정도 관련성 (20%+ similarity, default)
-COMPREHENSIVE: init=40, final=25, threshold=0.1 # 약간이라도 관련 (10%+ similarity)
+# Based on BGE-M3 actual similarity distribution (measured values in 0.2~0.4 range)
+EXACT:        init=10, final=5, threshold=0.3   # Clearly related documents (30%+ similarity)
+STANDARD:     init=20, final=12, threshold=0.2  # Moderately related (20%+ similarity, default)
+COMPREHENSIVE: init=40, final=25, threshold=0.1 # Any relevance (10%+ similarity)
 ```
-**Threshold Rationale**: BGE-M3 실제 유사도는 관련 문서도 0.2~0.4 수준. 이론적 권장값(0.8/0.65/0.5)은 너무 높아 대부분 필터링됨. 실용적 값(0.3/0.2/0.1)으로 적절한 검색 결과 확보. Reranking 사용 시 LLM이 재평가하므로 낮은 임계값도 안전.
+**Threshold Rationale**: BGE-M3 actual similarity for related documents is typically 0.2~0.4. Theoretical recommended values (0.8/0.65/0.5) are too high and filter out most results. Practical values (0.3/0.2/0.1) ensure adequate search results. When using reranking, LLM re-evaluates results, so lower thresholds are safe.
 
 **Pipeline**: ChromaDB retrieves `init` results → similarity threshold filtering → optional LLM reranker → return `final` results. Threshold prevents irrelevant results (minimum 1 result guaranteed). Reranker uses LLM to re-score and sort filtered results by relevance.
 
@@ -188,7 +188,7 @@ Key React patterns:
 - Viewport persistence via localStorage for UX continuity
 
 **Output Parsing Pattern** (from `output_parser.py`):
-LLM responses parsed via `<output>...</output>` or `<출력>...</출력>` tags:
+LLM responses parsed via `<output>...</output>` tags (Korean `<출력>...</출력>` also supported):
 - If tags present: content inside tags becomes final output
 - If tags missing: entire response becomes output (fallback behavior)
 - Used by generation/ensemble/validation nodes to extract structured results

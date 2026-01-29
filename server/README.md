@@ -1,162 +1,162 @@
 # MultiModelGenerator Server
 
-Vector DB 기반 Multi-Model Validation을 통한 요구사항 추출 서버
+Requirements extraction server using Vector DB-based Multi-Model Validation
 
-## 프로젝트 구조
+## Project Structure
 
 ```text
 server/
-├── main.py                 # 서버 실행 진입점
-├── admin_tool.py          # 관리자 도구 CLI
-├── requirements.txt       # Python 의존성
-├── .env                   # 환경 변수 (API 키 등)
-├── .gitignore            # Git 무시 파일
-├── admin_reference.md    # 관리자 도구 참조 문서
-├── server_reference.md   # 서버 참조 문서
-├── knowledge_bases/      # Vector DB 저장소 (Git에서 제외)
-└── src/                  # 소스 코드
-    ├── api/              # FastAPI 엔드포인트
+├── main.py                 # Server entry point
+├── admin_tool.py          # Admin tool CLI
+├── requirements.txt       # Python dependencies
+├── .env                   # Environment variables (API keys, etc.)
+├── .gitignore            # Git ignore file
+├── admin_reference.md    # Admin tool reference document
+├── server_reference.md   # Server reference document
+├── knowledge_bases/      # Vector DB storage (excluded from Git)
+└── src/                  # Source code
+    ├── api/              # FastAPI endpoints
     │   └── api_server.py
-    ├── core/             # 핵심 모듈
-    │   ├── config.py     # 설정 관리
-    │   ├── models.py     # 데이터 모델
-    │   └── layer_engine.py  # 레이어 실행 엔진
-    ├── services/         # 외부 서비스 연동
-    │   ├── document_processor.py  # 문서 처리
-    │   └── vector_store.py        # Vector DB 관리
-    └── admin/            # 관리자 도구
-        └── admin.py      # 지식 베이스 관리
+    ├── core/             # Core modules
+    │   ├── config.py     # Configuration management
+    │   ├── models.py     # Data models
+    │   └── layer_engine.py  # Layer execution engine
+    ├── services/         # External service integration
+    │   ├── document_processor.py  # Document processing
+    │   └── vector_store.py        # Vector DB management
+    └── admin/            # Admin tools
+        └── admin.py      # Knowledge base management
 ```
 
-## 주요 기능
+## Key Features
 
 ### 1. Multi-Layer Architecture
 
-- **Generation Layer**: 여러 LLM 모델에서 답변 생성
-- **Ensemble Layer**: 모델 답변들을 통합
-- **Validation Layer**: 통합된 답변을 검증
+- **Generation Layer**: Generate responses from multiple LLM models
+- **Ensemble Layer**: Integrate model responses
+- **Validation Layer**: Validate integrated responses
 
-### 2. 지식 베이스 관리
+### 2. Knowledge Base Management
 
-- PDF 문서에서 Vector DB 구축
-- 지식 베이스 목록 조회, 상태 확인
-- 지식 베이스 추가/삭제
+- Build Vector DB from PDF documents
+- View knowledge base list, check status
+- Add/delete knowledge bases
 
 ### 3. REST API
 
-- 요구사항 추출 API
-- 지식 베이스 관리 API
-- LLM 모델 쿼리 API
+- Requirements extraction API
+- Knowledge base management API
+- LLM model query API
 
-## 설치 및 실행
+## Installation and Running
 
-### 1. 의존성 설치
+### 1. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. 환경 변수 설정
+### 2. Environment Variables
 
-`.env` 파일에 API 키 설정:
+Set API keys in `.env` file:
 
 ```env
 PERPLEXITY_API_KEY=your_api_key_here
 ```
 
-### 3. 서버 실행
+### 3. Run Server
 
 ```bash
 python main.py
 ```
 
-### 4. 관리자 도구 사용
+### 4. Admin Tool Usage
 
 ```bash
-# 지식 베이스 목록 조회
+# List knowledge bases
 python admin_tool.py list
 
-# 지식 베이스 구축
+# Build knowledge base
 python admin_tool.py build <kb_name> <pdf_path>
 
-# 지식 베이스 삭제
+# Delete knowledge base
 python admin_tool.py delete <kb_name>
 
-# 지식 베이스 상태 확인
+# Check knowledge base status
 python admin_tool.py status <kb_name>
 ```
 
-## API 엔드포인트
+## API Endpoints
 
-### 1. **새로운 단계별 워크플로우 API** (권장)
+### 1. **New Step-by-Step Workflow API** (Recommended)
 
-#### 컨텍스트 검색
+#### Context Search
 ```http
 POST /search-context
 ```
-- 지식 베이스에서 관련 청크 검색
-- 프론트엔드에서 워크플로우 시작 시 사용
+- Search related chunks from knowledge base
+- Used at workflow start from frontend
 
-#### 단일 노드 실행
+#### Execute Single Node
 ```http
 POST /execute-node
 ```
-- Generation Layer 노드 개별 실행
-- 각 모델별로 별도 호출 가능
+- Execute individual Generation Layer nodes
+- Can call separately for each model
 
-#### 앙상블 실행
+#### Execute Ensemble
 ```http
 POST /execute-ensemble
 ```
-- 여러 Generation 결과를 통합
-- 모든 Generation 완료 후 호출
+- Integrate multiple Generation results
+- Call after all Generation nodes complete
 
-#### 검증 실행
+#### Execute Validation
 ```http
 POST /execute-validation
 ```
-- Validation Layer 노드 개별 실행
-- 변경사항 추적 기능 포함
+- Execute individual Validation Layer nodes
+- Includes change tracking feature
 
-### 2. **지식 베이스 관리 API**
+### 2. **Knowledge Base Management API**
 
-#### 지식 베이스 목록
+#### Knowledge Base List
 ```http
 GET /knowledge-bases
 ```
 
-#### 지식 베이스 상태
+#### Knowledge Base Status
 ```http
 GET /knowledge-bases/{kb_name}/status
 ```
 
-### 4. **모델 및 설정 API**
+### 4. **Model and Configuration API**
 
-#### 사용 가능한 모델 목록
+#### Available Models List
 ```http
 GET /available-models
 ```
 
-## 레이어 기반 실행 방식
+## Layer-Based Execution Flow
 
-### 프론트엔드에서의 실행 흐름:
+### Frontend Execution Flow:
 
-1. **컨텍스트 검색**: `/search-context`로 관련 청크 획득
-2. **Generation Layer**: 각 노드별로 `/execute-node` 호출
-3. **실시간 피드백**: 각 Generation 결과를 사용자에게 표시
-4. **Ensemble**: 모든 Generation 완료 후 `/execute-ensemble` 호출
-5. **Validation**: 각 Validation 노드별로 `/execute-validation` 호출
-6. **변경사항 표시**: 각 Validation 단계에서 어떤 요구사항이 변경되었는지 표시
+1. **Context Search**: Get related chunks via `/search-context`
+2. **Generation Layer**: Call `/execute-node` for each node
+3. **Real-time Feedback**: Display each Generation result to user
+4. **Ensemble**: Call `/execute-ensemble` after all Generations complete
+5. **Validation**: Call `/execute-validation` for each Validation node
+6. **Display Changes**: Show which requirements changed at each Validation step
 
-### 장점:
-- ✅ 실시간 진행 상황 표시
-- ✅ 각 단계별 결과 확인 가능
-- ✅ 사용자 경험 향상
-- ✅ 중간 단계에서 중단/수정 가능
-- ✅ 변경사항 추적 및 표시
+### Benefits:
+- ✅ Real-time progress display
+- ✅ View results at each step
+- ✅ Improved user experience
+- ✅ Stop/modify at intermediate steps
+- ✅ Change tracking and display
 
-## 개발 노트
+## Development Notes
 
-- 모든 소스 코드는 `src/` 디렉토리 하위에 기능별로 분류
-- 상대 import를 사용하여 모듈 간 의존성 관리
-- `__pycache__`와 `knowledge_bases/`는 Git에서 제외
+- All source code is organized by function under `src/` directory
+- Relative imports used for module dependency management
+- `__pycache__` and `knowledge_bases/` are excluded from Git

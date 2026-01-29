@@ -93,16 +93,7 @@
             </div>
             <div class="hero-image">
                 <div class="hero-image-wrapper">
-                    <!-- TODO: Insert main screenshot -->
-                    <!-- <img src="assets/screenshot-main.png" alt="MultiModelGenerator Screenshot"> -->
-                    <div class="media-placeholder">
-                        <div class="play-icon">
-                            <svg viewBox="0 0 24 24" width="32" height="32">
-                                <path fill="currentColor" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
-                            </svg>
-                        </div>
-                        <p>Workflow Canvas Screenshot</p>
-                    </div>
+                    <img src="assets/example_workflow.png" alt="MultiModelGenerator workflow example - AI pipeline with input, context, generation, ensemble, and validation nodes connected">
                     <div class="image-glow"></div>
                 </div>
             </div>
@@ -135,7 +126,7 @@
                     <ul class="audience-list">
                         <li>Compare GPT-4, Gemini, and more side by side</li>
                         <li>Analyze result differences from prompt variations</li>
-                        <li>Derive optimal results using ensemble techniques</li>
+                        <li>Reduce hallucinations with ensemble & validation</li>
                     </ul>
                 </div>
                 <div class="audience-card">
@@ -173,12 +164,7 @@
 
             <!-- Concept Diagram -->
             <div class="feature-image" style="margin-bottom: 48px;">
-                <!-- TODO: Insert workflow concept diagram -->
-                <!-- <img src="assets/concept-diagram.png" alt="Workflow Concept"> -->
-                <div class="media-placeholder">
-                    <p>Workflow Concept Diagram</p>
-                    <p class="sub">Input → Context → Generation → Ensemble → Validation → Output</p>
-                </div>
+                <img src="assets/example_workflow.png" alt="Workflow concept - AI pipeline where input data flows through context, generation, ensemble, and validation nodes to output" style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
             </div>
 
             <div class="concept-grid">
@@ -292,12 +278,7 @@
                         </ul>
                     </div>
                     <div class="feature-image">
-                        <!-- TODO: Workflow canvas screenshot -->
-                        <!-- <img src="assets/feature-canvas.png" alt="Workflow Canvas"> -->
-                        <div class="media-placeholder">
-                            <p>Workflow Canvas</p>
-                            <p class="sub">Node placement and connection</p>
-                        </div>
+                        <img src="assets/example_workflow.png" alt="Workflow canvas - Node placement and connection interface">
                     </div>
                 </div>
 
@@ -327,12 +308,7 @@
                         </ul>
                     </div>
                     <div class="feature-image">
-                        <!-- TODO: Node settings panel screenshot -->
-                        <!-- <img src="assets/feature-node-config.png" alt="Node Settings"> -->
-                        <div class="media-placeholder">
-                            <p>Node Settings Panel</p>
-                            <p class="sub">LLM model, prompt configuration</p>
-                        </div>
+                        <img src="assets/edit_generation_node.png" alt="Generation node settings - LLM provider (Google AI Studio), model (gemini-2.0-flash-lite) selection and prompt template configuration">
                     </div>
                 </div>
 
@@ -362,12 +338,7 @@
                         </ul>
                     </div>
                     <div class="feature-image">
-                        <!-- TODO: Knowledge base management screenshot -->
-                        <!-- <img src="assets/feature-kb.png" alt="Knowledge Base Management"> -->
-                        <div class="media-placeholder">
-                            <p>Knowledge Base Management</p>
-                            <p class="sub">Folder structure, upload, search</p>
-                        </div>
+                        <img src="assets/add_knowledge_base.png" alt="Add knowledge base - Chunk settings (BGE-M3 optimized, 512 tokens, 15% overlap), PDF/TXT file upload">
                     </div>
                 </div>
 
@@ -397,16 +368,7 @@
                         </ul>
                     </div>
                     <div class="feature-image">
-                        <!-- TODO: Execution and streaming video -->
-                        <!-- <video src="assets/demo-execution.mp4" autoplay muted loop></video> -->
-                        <div class="media-placeholder">
-                            <div class="play-icon">
-                                <svg viewBox="0 0 24 24" width="32" height="32">
-                                    <path fill="currentColor" d="M8 5v14l11-7z"/>
-                                </svg>
-                            </div>
-                            <p>Execution & Streaming Demo</p>
-                        </div>
+                        <img src="assets/workflow_running.png" alt="Workflow running - Left canvas shows node execution status, right panel displays real-time streaming results">
                     </div>
                 </div>
             </div>
@@ -423,18 +385,10 @@
             </div>
             <div class="demo-container">
                 <div class="demo-video">
-                    <!-- TODO: Insert main demo video -->
-                    <!-- <video src="assets/demo-main.mp4" controls></video> -->
-                    <!-- Or YouTube: <iframe src="https://www.youtube.com/embed/VIDEO_ID" allowfullscreen></iframe> -->
-                    <div class="media-placeholder" style="aspect-ratio: 16/9;">
-                        <div class="play-icon">
-                            <svg viewBox="0 0 24 24" width="48" height="48">
-                                <path fill="currentColor" d="M8 5v14l11-7z"/>
-                            </svg>
-                        </div>
-                        <p>Main Demo Video</p>
-                        <p class="sub">From workflow configuration to execution</p>
-                    </div>
+                    <video src="assets/make_and_run_workflow.mp4" controls style="width: 100%; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
+                        Your browser does not support the video tag.
+                    </video>
+                    <p style="text-align: center; margin-top: 12px; color: #666; font-size: 0.9rem;">A workflow demo that searches keywords from documents, generates requirements with LLM, and validates them with another LLM</p>
                 </div>
                 <div class="demo-highlights">
                     <div class="highlight-item">
@@ -480,12 +434,7 @@
                         <p>Upload documents (PDF, TXT) to create a knowledge base. You can organize them systematically with folders.</p>
                     </div>
                     <div class="step-media">
-                        <!-- TODO: KB creation screenshot/GIF -->
-                        <!-- <img src="assets/tutorial-step1.png" alt="Create Knowledge Base"> -->
-                        <div class="media-placeholder">
-                            <p>KB Creation Screen</p>
-                            <p class="sub">File upload, folder creation</p>
-                        </div>
+                        <img src="assets/add_knowledge_base.png" alt="Create knowledge base - Set name, chunk size (512 tokens), overlap ratio (15%), upload PDF/TXT files">
                     </div>
                 </div>
 
@@ -494,19 +443,10 @@
                     <div class="step-content">
                         <span class="step-number">2</span>
                         <h3>Add & Connect Nodes</h3>
-                        <p>Add nodes using the top buttons and drag handles to connect them. Configure according to your data flow.</p>
+                        <p>Add nodes using the top buttons and drag handles to connect them. Combine outputs from multiple generation nodes using an ensemble node, and verify LLM outputs against the knowledge base using validation nodes to reduce hallucinations.</p>
                     </div>
                     <div class="step-media">
-                        <!-- TODO: Node add and connect GIF/video -->
-                        <!-- <video src="assets/tutorial-step2.mp4" autoplay muted loop></video> -->
-                        <div class="media-placeholder">
-                            <div class="play-icon">
-                                <svg viewBox="0 0 24 24" width="32" height="32">
-                                    <path fill="currentColor" d="M8 5v14l11-7z"/>
-                                </svg>
-                            </div>
-                            <p>Node Add & Connect Demo</p>
-                        </div>
+                        <img src="assets/example_workflow.png" alt="Add and connect nodes - Workflow with input, context, generation, ensemble, validation, and output nodes connected">
                     </div>
                 </div>
 
@@ -515,15 +455,10 @@
                     <div class="step-content">
                         <span class="step-number">3</span>
                         <h3>Configure Nodes</h3>
-                        <p>Click each node to configure LLM model, prompt, knowledge base, etc. Use {input_data} and {context} variables in prompts.</p>
+                        <p>Click each node to select LLM Provider and model, configure output format, and write prompts. In prompts, use {input_data} to receive outputs from connected previous nodes, and {context} to access search results from connected context nodes.</p>
                     </div>
                     <div class="step-media">
-                        <!-- TODO: Node configuration screenshot -->
-                        <!-- <img src="assets/tutorial-step3.png" alt="Node Configuration"> -->
-                        <div class="media-placeholder">
-                            <p>Node Settings Panel</p>
-                            <p class="sub">Model selection, prompt writing</p>
-                        </div>
+                        <img src="assets/edit_generation_node.png" alt="Generation node settings - LLM provider and model selection, output format specification, prompt template writing">
                     </div>
                 </div>
 
@@ -535,16 +470,7 @@
                         <p>Click "Execute Workflow" button to run nodes sequentially/in parallel, with results streaming in real-time.</p>
                     </div>
                     <div class="step-media">
-                        <!-- TODO: Execution process video -->
-                        <!-- <video src="assets/tutorial-step4.mp4" autoplay muted loop></video> -->
-                        <div class="media-placeholder">
-                            <div class="play-icon">
-                                <svg viewBox="0 0 24 24" width="32" height="32">
-                                    <path fill="currentColor" d="M8 5v14l11-7z"/>
-                                </svg>
-                            </div>
-                            <p>Workflow Execution Demo</p>
-                        </div>
+                        <img src="assets/workflow_running.png" alt="Workflow execution - Per-node execution status (running, completed) and real-time result streaming">
                     </div>
                 </div>
 
@@ -556,12 +482,7 @@
                         <p>Check final results in the output node and results panel. Save workflows or export to JSON for reuse.</p>
                     </div>
                     <div class="step-media">
-                        <!-- TODO: Results screenshot -->
-                        <!-- <img src="assets/tutorial-step5.png" alt="Review Results"> -->
-                        <div class="media-placeholder">
-                            <p>Results Panel</p>
-                            <p class="sub">Final results and save</p>
-                        </div>
+                        <img src="assets/context_node_output.png" alt="Review results - Related documents retrieved from knowledge base by context node and final output results">
                     </div>
                 </div>
             </div>

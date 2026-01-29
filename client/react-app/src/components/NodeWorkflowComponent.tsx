@@ -9,7 +9,7 @@ import { NODE_CONFIG } from '../config/constants';
 
 const { Text } = Typography;
 
-// 검색 강도 표시 매핑
+// Search intensity label mapping
 const getSearchIntensityLabel = (intensity: string): string => {
   return NODE_CONFIG.SEARCH_INTENSITY_LABELS[intensity as keyof typeof NODE_CONFIG.SEARCH_INTENSITY_LABELS] || intensity;
 };
@@ -20,20 +20,20 @@ interface NodeWorkflowComponentProps {
   selected?: boolean;
 }
 
-// 노드 타입별 색상 설정
+// Node type color settings
 const getNodeColor = (nodeType: NodeType): { background: string; border: string; tag: string } => {
   return NODE_CONFIG.COLORS[nodeType] || NODE_CONFIG.COLORS.default;
 };
 
-// Handle 위치 결정
+// Handle position configuration
 const getHandleConfig = (nodeType: NodeType) => {
   switch (nodeType) {
     case NodeType.INPUT:
-      return { source: true, target: false }; // output만
+      return { source: true, target: false }; // output only
     case NodeType.OUTPUT:
-      return { source: false, target: true }; // input만
+      return { source: false, target: true }; // input only
     default:
-      return { source: true, target: true }; // 양방향
+      return { source: true, target: true }; // bidirectional
   }
 };
 
@@ -45,7 +45,7 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = memo(
   const { updateNode, removeNode, nodeExecutionStates } = useNodeWorkflowStore();
   const [editModalVisible, setEditModalVisible] = useState(false);
   
-  // 실행 상태 가져오기
+  // Get execution state
   const executionState = nodeExecutionStates[id] || 'idle';
   const isExecuting = executionState === 'executing';
   
@@ -61,37 +61,37 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = memo(
     [data.nodeType]
   );
 
-  // 실행 상태 및 선택 상태에 따른 스타일 변경
+  // Style changes based on execution and selection state
   const getExecutingStyle = useCallback(() => {
     if (isExecuting) {
       return {
-        background: 'linear-gradient(45deg, #fff1f0, #ffccc7)', // 빨간색 그라데이션 배경
-        border: `3px solid #ff4d4f`, // 두꺼운 빨간색 테두리
-        boxShadow: '0 0 20px rgba(255, 77, 79, 0.6), 0 0 40px rgba(255, 77, 79, 0.3)', // 고정된 빨간색 glow
-        zIndex: 1000 // 다른 노드들보다 위에 표시
+        background: 'linear-gradient(45deg, #fff1f0, #ffccc7)', // Red gradient background
+        border: `3px solid #ff4d4f`, // Thick red border
+        boxShadow: '0 0 20px rgba(255, 77, 79, 0.6), 0 0 40px rgba(255, 77, 79, 0.3)', // Fixed red glow
+        zIndex: 1000 // Display above other nodes
       };
     }
-    
+
     if (selected) {
       return {
         background: colors.background,
-        border: `3px solid ${colors.border}`, // 선택된 노드는 더 굵은 테두리
-        boxShadow: `0 0 15px ${colors.border}40`, // 선택된 노드는 glow 효과
-        transform: 'scale(1.02)', // 약간 확대
+        border: `3px solid ${colors.border}`, // Selected nodes have thicker border
+        boxShadow: `0 0 15px ${colors.border}40`, // Selected nodes have glow effect
+        transform: 'scale(1.02)', // Slight enlargement
         transition: 'all 0.3s ease',
         zIndex: 100
       };
     }
-    
+
     return {
       background: colors.background,
       border: `2px solid ${colors.border}`,
       transform: 'scale(1)',
-      transition: 'all 0.3s ease' // 부드러운 전환
+      transition: 'all 0.3s ease' // Smooth transition
     };
   }, [isExecuting, selected, colors.background, colors.border]);
 
-  // 노드 편집 핸들러
+  // Node edit handler
   const handleEdit = useCallback(() => {
     setEditModalVisible(true);
   }, []);
@@ -101,18 +101,18 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = memo(
     setEditModalVisible(false);
   }, [updateNode]);
 
-  // 노드 삭제 핸들러
+  // Node delete handler
   const handleDelete = useCallback(() => {
     try {
       removeNode(id);
     } catch (error: any) {
-      // 에러는 이미 store에서 message로 표시됨
+      // Error is already displayed via store message
     }
   }, [removeNode, id]);
 
   return (
     <div>
-      {/* Target Handle (입력) */}
+      {/* Target Handle (input) */}
       {handles.target && (
         <Handle
           type="target"
@@ -131,7 +131,7 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = memo(
           style={{
             minWidth: 200,
             maxWidth: 300,
-            ...getExecutingStyle(), // 실행 상태에 따른 스타일 적용
+            ...getExecutingStyle(), // Apply style based on execution state
             borderRadius: 8,
             boxShadow: selected 
               ? `0 0 0 2px ${colors.border}40` 
@@ -170,14 +170,14 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = memo(
                       icon={<EditOutlined />}
                       onClick={handleEdit}
                       style={{ padding: 0, width: 16, height: 16 }}
-                      title="편집"
+                      title="Edit"
                     />
                     <Popconfirm
-                      title="노드 삭제"
-                      description={`이 ${data.nodeType}를 삭제하시겠습니까?`}
+                      title="Delete Node"
+                      description={`Are you sure you want to delete this ${data.nodeType}?`}
                       onConfirm={handleDelete}
-                      okText="삭제"
-                      cancelText="취소"
+                      okText="Delete"
+                      cancelText="Cancel"
                       okType="danger"
                     >
                       <Button
@@ -185,7 +185,7 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = memo(
                         type="text"
                         icon={<DeleteOutlined />}
                         style={{ padding: 0, width: 16, height: 16, color: '#ff4d4f' }}
-                        title="삭제"
+                        title="Delete"
                       />
                     </Popconfirm>
                   </div>
@@ -195,7 +195,7 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = memo(
           }
         >
           <div style={{ fontSize: 11 }}>
-            {/* LLM 노드 정보 표시 */}
+            {/* LLM node info display */}
             {isLLMNode && (
               <div style={{ marginBottom: 8 }}>
                 <div style={{ marginBottom: 4 }}>
@@ -230,18 +230,18 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = memo(
                 )}
                 {!data.prompt && (
                   <Text style={{ fontSize: 10, color: '#ff4d4f', fontStyle: 'italic' }}>
-                    ⚠️ 프롬프트가 설정되지 않았습니다
+                    ⚠️ Prompt not configured
                   </Text>
                 )}
               </div>
             )}
             
-            {/* Context 노드 정보 표시 */}
+            {/* Context node info display */}
             {data.nodeType === NodeType.CONTEXT && (
               <div style={{ marginBottom: 8 }}>
                 <div style={{ marginBottom: 4 }}>
                   <Text style={{ fontSize: 10, color: '#666' }}>
-                    <strong>{data.knowledge_base && data.knowledge_base !== 'none' ? `Base: ${data.knowledge_base}` : 'Base: 없음'}</strong>
+                    <strong>{data.knowledge_base && data.knowledge_base !== 'none' ? `Base: ${data.knowledge_base}` : 'Base: None'}</strong>
                   </Text>
                   <br />
                   <Text style={{ fontSize: 10, color: '#666' }}>
@@ -251,7 +251,7 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = memo(
               </div>
             )}
             
-            {/* Content 노드 정보 표시 */}
+            {/* Content node info display */}
             {isContentNode && (
               <div>
                 <Text style={{ fontSize: 10, color: '#666' }}>
@@ -265,7 +265,7 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = memo(
           </div>
         </Card>
       
-      {/* Source Handle (출력) */}
+      {/* Source Handle (output) */}
       {handles.source && (
         <Handle
           type="source"
@@ -279,7 +279,7 @@ export const NodeWorkflowComponent: React.FC<NodeWorkflowComponentProps> = memo(
         />
       )}
 
-      {/* 편집 모달 */}
+      {/* Edit modal */}
       <NodeEditModal
         open={editModalVisible}
         node={{ id, data, type: 'workflowNode', position: { x: 0, y: 0 } }}

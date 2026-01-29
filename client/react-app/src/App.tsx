@@ -12,37 +12,37 @@ const { Title } = Typography;
 
 function App() {
   const setPageVisible = useNodeWorkflowStore(state => state.setPageVisible);
-  
+
   useEffect(() => {
     const store = useDataLoadingStore.getState();
-    // 지식베이스만 미리 로드하고, 모델은 필요할 때 로드
+    // Pre-load knowledge bases only, models are loaded when needed
     store.loadKnowledgeBases();
   }, []);
-  
-  // 페이지 visibility 변경 감지
+
+  // Detect page visibility changes
   useEffect(() => {
     const handleVisibilityChange = () => {
       const isVisible = !document.hidden;
       setPageVisible(isVisible);
     };
-    
-    // 초기 상태 설정
+
+    // Set initial state
     setPageVisible(!document.hidden);
-    
-    // 이벤트 리스너 등록
+
+    // Register event listener
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    // 클린업
+
+    // Cleanup
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []); // setPageVisible dependency 제거
+  }, []); // Removed setPageVisible dependency
 
   return (
     <Layout style={{ height: '100vh', width: '100vw', overflow: 'hidden' }}>
-      <Header style={{ 
-        background: '#fff', 
-        padding: '0 24px', 
+      <Header style={{
+        background: '#fff',
+        padding: '0 24px',
         borderBottom: '1px solid #f0f0f0',
         display: 'flex',
         alignItems: 'center',
@@ -53,7 +53,7 @@ function App() {
         <Title level={4} style={{ margin: 0 }}>Multi-Model Generator</Title>
       </Header>
       <Layout style={{ height: 'calc(100vh - 64px)', width: '100%' }}>
-        <Content style={{ 
+        <Content style={{
           background: '#f0f2f5',
           padding: '0',
           display: 'flex',
@@ -66,11 +66,11 @@ function App() {
             <NodeWorkflowCanvas />
           </div>
         </Content>
-        
-        <Sider 
-          width="50%" 
-          style={{ 
-            background: '#f9f9f9', 
+
+        <Sider
+          width="50%"
+          style={{
+            background: '#f9f9f9',
             borderLeft: '1px solid #e8e8e8',
             height: '100%',
             overflowY: 'auto',
@@ -82,8 +82,8 @@ function App() {
           <NodeExecutionResultPanel />
         </Sider>
       </Layout>
-      
-      {/* 지속적인 에러 메시지 표시 */}
+
+      {/* Persistent error message display */}
       <PersistentErrorDisplay />
     </Layout>
   );

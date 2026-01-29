@@ -1,4 +1,4 @@
-// API 관련 상수
+// API related constants
 export const API_CONFIG = {
   BASE_URL: 'http://localhost:5001',
   ENDPOINTS: {
@@ -11,9 +11,9 @@ export const API_CONFIG = {
   }
 };
 
-// UI 관련 상수
+// UI related constants
 export const UI_CONFIG = {
-  MESSAGE_DURATION: 3, // 초
+  MESSAGE_DURATION: 3, // seconds
   MODAL_WIDTH: 800,
   REACT_FLOW: {
     BACKGROUND_COLOR: '#fafafa',
@@ -21,7 +21,7 @@ export const UI_CONFIG = {
   }
 };
 
-// 노드 관련 상수
+// Node related constants
 export const NODE_CONFIG = {
   COLORS: {
     'input-node': { background: '#e6f7ff', border: '#1890ff', tag: 'blue' },
@@ -32,18 +32,18 @@ export const NODE_CONFIG = {
     'output-node': { background: '#fff1f0', border: '#ff4d4f', tag: 'red' },
     default: { background: '#f5f5f5', border: '#d9d9d9', tag: 'default' }
   },
-  
-  // 노드 타입별 한국어 라벨
+
+  // Node type labels
   LABELS: {
-    'input-node': '입력 노드',
-    'generation-node': '생성 노드', 
-    'ensemble-node': '앙상블 노드',
-    'validation-node': '검증 노드',
-    'output-node': '출력 노드',
-    'context-node': '컨텍스트 노드'
+    'input-node': 'Input Node',
+    'generation-node': 'Generation Node',
+    'ensemble-node': 'Ensemble Node',
+    'validation-node': 'Validation Node',
+    'output-node': 'Output Node',
+    'context-node': 'Context Node'
   },
-  
-  // 검색 모드 표시 매핑 (결과값 helper)
+
+  // Search mode display mapping (result value helper)
   get SEARCH_INTENSITY_LABELS() {
     return {
       'exact': SEARCH_INTENSITY_CONFIG.exact.label,
@@ -53,58 +53,58 @@ export const NODE_CONFIG = {
   }
 };
 
-// BGE-M3 최적화 설정 (Token 기반 - 단일 진실 공급원)
+// BGE-M3 optimization settings (Token-based - single source of truth)
 export const BGE_M3_CONFIG = {
-  CHUNK_TOKENS: 512,          // 청크 크기 (tokens)
-  OVERLAP_RATIO: 0.15,        // 오버랩 비율
-  CHARS_PER_TOKEN: 4,         // 토큰당 평균 문자 수 (계산용)
+  CHUNK_TOKENS: 512,          // Chunk size (tokens)
+  OVERLAP_RATIO: 0.15,        // Overlap ratio
+  CHARS_PER_TOKEN: 4,         // Average characters per token (for calculation)
   TOKENIZER_MODEL: 'BAAI/bge-m3',
   RERANK_MODEL: 'BAAI/bge-reranker-v2-m3',
   EMBEDDING_DIMENSION: 1024
 };
 
-// 검색 강도 설정 (Top-K + Similarity Threshold)
-// 임계값: BGE-M3 실제 유사도 분포 기반 (실측값 0.2~0.4 범위)
-// - 이론적 권장값(0.8/0.65/0.5)은 실제로는 너무 높아 대부분 필터링됨
-// - 실용적 값(0.3/0.2/0.1)으로 조정하여 적절한 검색 결과 확보
+// Search intensity settings (Top-K + Similarity Threshold)
+// Threshold: Based on BGE-M3 actual similarity distribution (measured values in 0.2~0.4 range)
+// - Theoretical recommended values (0.8/0.65/0.5) are too high in practice and filter out most results
+// - Adjusted to practical values (0.3/0.2/0.1) to ensure appropriate search results
 export const SEARCH_INTENSITY_CONFIG = {
   exact: {
     init: 10,
     final: 5,
     similarity_threshold: 0.3,
-    label: '정확 검색'
+    label: 'Exact Search'
   },
   standard: {
     init: 20,
     final: 12,
     similarity_threshold: 0.2,
-    label: '표준 검색'
+    label: 'Standard Search'
   },
   comprehensive: {
     init: 40,
     final: 25,
     similarity_threshold: 0.1,
-    label: '포괄 검색'
+    label: 'Comprehensive Search'
   }
 };
 
-// UI 색상 상수
+// UI color constants
 export const UI_COLORS = {
-  // Edge 색상
+  // Edge colors
   EDGE: {
     SELECTED: '#1890ff',
     DEFAULT: '#b1b1b7'
   },
-  
-  // 패널 색상
+
+  // Panel colors
   PANEL: {
     HEADER_BACKGROUND: '#fff',
     HEADER_BORDER: '#eee',
     CONTENT_BACKGROUND: '#f6f6f6',
     BORDER: '#d9d9d9'
   },
-  
-  // 텍스트 색상
+
+  // Text colors
   TEXT: {
     MUTED: '#999',
     WARNING: '#ff8c00',
@@ -112,8 +112,8 @@ export const UI_COLORS = {
     PRIMARY: '#333',
     DARK: '#262626'
   },
-  
-  // 인터페이스 색상
+
+  // Interface colors
   UI: {
     INFO: '#1890ff',
     BACKGROUND_LIGHT: '#f5f5f5'

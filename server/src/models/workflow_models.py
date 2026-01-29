@@ -18,12 +18,12 @@ class LLMProvider(str, Enum):
     
     @classmethod
     def get_supported_providers(cls) -> List[str]:
-        """지원되는 LLM Provider 목록 반환"""
+        """Return list of supported LLM providers"""
         return [cls.OPENAI, cls.GOOGLE, cls.INTERNAL]
-    
+
     @classmethod
     def get_default_provider(cls) -> str:
-        """기본 LLM Provider 반환"""
+        """Return default LLM provider"""
         return cls.GOOGLE
 
 class SearchIntensity(str, Enum):
@@ -33,33 +33,33 @@ class SearchIntensity(str, Enum):
     
     @classmethod
     def get_search_params(cls, intensity: str) -> Dict[str, any]:
-        """검색 모드에 따른 파라미터 반환 (BGE-M3 실제 유사도 분포 기반)
-        
-        Top-K + Similarity Threshold 병행 필터링:
-        1. init: 초기 검색 개수 (ChromaDB에서 가져오기)
-        2. similarity_threshold: 최소 유사도 (cosine similarity 0.0~1.0)
-        3. final: Reranker 적용 후 최종 개수
-        
-        임계값 설정 근거 (실측 데이터 기반):
-        - BGE-M3 실제 유사도 범위: 관련 문서도 0.2~0.4 수준
-        - 이론적 권장값(0.8/0.65/0.5)은 너무 높아 대부분 필터링됨
-        - 실용적 값(0.3/0.25/0.2)으로 조정하여 적절한 검색 결과 확보
-        
-        - EXACT (고정밀 검색): init=10, final=5, threshold=0.3 (30%+ 유사도)
-          사용 예: "정확한 명령어 ID", "특정 사양"
-          특징: 명확히 관련된 문서만 선택
-          
-        - STANDARD (표준 검색): init=20, final=12, threshold=0.25 (25%+ 유사도) [기본값]
-          사용 예: "일반적인 기능", "표준 절차"
-          특징: 어느 정도 관련성 있는 문서 포함, 대부분의 경우 최적
-          
-        - COMPREHENSIVE (포괄 검색): init=40, final=25, threshold=0.2 (20%+ 유사도)
-          사용 예: "전반적인 메커니즘", "탐색적 조사"
-          특징: 약간이라도 관련 가능성 있는 모든 문서 포함
-          
-        * Similarity Threshold: 무관한 결과 필터링 (빈 결과 방지를 위해 최소 1개 반환)
-        * Reranker 사용 시: threshold 후 init 결과를 final로 LLM 기반 재정렬
-        * Reranker 미사용 시: threshold 필터링된 결과만 반환
+        """Return parameters based on search mode (based on BGE-M3 actual similarity distribution)
+
+        Top-K + Similarity Threshold parallel filtering:
+        1. init: Initial search count (fetch from ChromaDB)
+        2. similarity_threshold: Minimum similarity (cosine similarity 0.0~1.0)
+        3. final: Final count after Reranker
+
+        Threshold setting rationale (based on empirical data):
+        - BGE-M3 actual similarity range: related documents at 0.2~0.4 level
+        - Theoretical recommendations (0.8/0.65/0.5) are too high, filtering out most results
+        - Practical values (0.3/0.25/0.2) adjusted to get appropriate search results
+
+        - EXACT (high precision): init=10, final=5, threshold=0.3 (30%+ similarity)
+          Use cases: "exact command ID", "specific spec"
+          Characteristic: Select only clearly related documents
+
+        - STANDARD (standard search): init=20, final=12, threshold=0.25 (25%+ similarity) [default]
+          Use cases: "general features", "standard procedures"
+          Characteristic: Include reasonably related documents, optimal for most cases
+
+        - COMPREHENSIVE (broad search): init=40, final=25, threshold=0.2 (20%+ similarity)
+          Use cases: "overall mechanisms", "exploratory research"
+          Characteristic: Include all documents with any relevance possibility
+
+        * Similarity Threshold: Filter irrelevant results (return at least 1 to prevent empty results)
+        * With Reranker: LLM-based reranking of init results to final after threshold
+        * Without Reranker: Return only threshold-filtered results
         """
         intensity_map = {
             cls.EXACT: SEARCH_INTENSITY_CONFIG["exact"],
@@ -70,34 +70,34 @@ class SearchIntensity(str, Enum):
     
     @classmethod
     def from_top_k(cls, top_k: int) -> str:
-        """top_k 값을 기반으로 적절한 검색 모드 반환 (기준: final 개수)"""
+        """Return appropriate search mode based on top_k value (criterion: final count)"""
         if top_k <= 12:
             return cls.EXACT
         elif top_k <= 30:
             return cls.STANDARD
         else:
             return cls.COMPREHENSIVE
-    
+
     @classmethod
     def get_default(cls) -> str:
-        """기본 검색 모드 반환 (균형잡힌 표준 검색)"""
+        """Return default search mode (balanced standard search)"""
         return cls.STANDARD
 
 class RerankInfo(BaseModel):
-    """Rerank 설정 정보"""
-    provider: str = Field(..., description="rerank Provider (openai, google 등)")
-    model: str = Field(..., description="rerank 모델명")
+    """Rerank configuration info"""
+    provider: str = Field(..., description="Rerank provider (openai, google, etc.)")
+    model: str = Field(..., description="Rerank model name")
 
 class AvailableModel(BaseModel):
-    """사용 가능한 LLM 모델"""
-    label: str = Field(..., description="모델 이름")
+    """Available LLM model"""
+    label: str = Field(..., description="Model name")
     provider: str = Field(..., description="LLM Provider")
-    disabled: bool = Field(default=False, description="비활성화 여부")
-    model_type: str = Field(..., description="모델 타입 (실제 모델 ID)")
+    disabled: bool = Field(default=False, description="Disabled status")
+    model_type: str = Field(..., description="Model type (actual model ID)")
 
 class AvailableModelsResponse(BaseModel):
-    """사용 가능한 모델 목록 응답"""
-    models: List[AvailableModel] = Field(..., description="사용 가능한 모델 목록")
+    """Available models list response"""
+    models: List[AvailableModel] = Field(..., description="List of available models")
 
 class WorkflowNode(BaseModel):
     id: str = Field(..., description="Node ID")
@@ -110,10 +110,10 @@ class WorkflowNode(BaseModel):
     output_format: Optional[str] = Field(None, description="Expected output format for LLM nodes")
     knowledge_base: Optional[str] = Field(None, description="Knowledge base for context search")
     search_intensity: Optional[str] = Field(None, description="Search intensity for context search")
-    # context-node용 rerank 설정 (고정 모델: BAAI/bge-reranker-v2-m3)
-    rerank_provider: Optional[str] = Field(None, description="Rerank 사용 여부 for context-node ('none' or 'enabled')")
+    # Rerank settings for context-node (fixed model: BAAI/bge-reranker-v2-m3)
+    rerank_provider: Optional[str] = Field(None, description="Rerank enabled for context-node ('none' or 'enabled')")
     rerank_model: Optional[str] = Field(None, description="[DEPRECATED] Rerank model - now uses fixed BAAI/bge-reranker-v2-m3")
-    # context-node용 추가 컨텍스트 (사용자 정의 내용)
+    # Additional context for context-node (user-defined content)
     additional_context: Optional[str] = Field(None, description="Additional user-defined context for context-node")
     output: Optional[Any] = Field(None, description="Execution result")
     executed: bool = Field(default=False)
@@ -165,18 +165,18 @@ class ErrorResponse(BaseModel):
     node_id: Optional[str] = Field(None, description="Error node ID")
 
 class ProtectionRequest(BaseModel):
-    """폴더 또는 KB 보호 요청"""
+    """Folder or KB protection request"""
     path: str = Field(..., description="Folder path or KB name to protect")
     password: str = Field(..., description="Password for protection")
     reason: Optional[str] = Field("", description="Optional reason for protection")
 
 class UnprotectionRequest(BaseModel):
-    """폴더 또는 KB 보호 해제 요청"""
+    """Folder or KB unprotection request"""
     path: str = Field(..., description="Folder path or KB name to unprotect")
     password: str = Field(..., description="Password for verification")
 
 class VerifyProtectionRequest(BaseModel):
-    """보호 상태 및 비밀번호 검증 요청"""
+    """Protection status and password verification request"""
     path: str = Field(..., description="Folder path or KB name to verify")
     type: str = Field(..., description="Type: 'folder' or 'kb'")
     password: str = Field(..., description="Password to verify")

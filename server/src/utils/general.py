@@ -1,5 +1,5 @@
 """
-서버 유틸리티 함수들 - 공통으로 사용되는 헬퍼 함수들
+Server utility functions - Common helper functions
 """
 
 import os
@@ -12,25 +12,25 @@ from ..config import VECTOR_DB_CONFIG
 
 
 def get_kb_path(kb_name: str) -> str:
-    """지식 베이스별 경로 반환 (폴더 구조 지원)
-    
+    """Return path for knowledge base (supports folder structure)
+
     Args:
-        kb_name: 지식 베이스 이름 (경로 포함 가능, 예: 'folder1/kb_name')
-    
+        kb_name: Knowledge base name (can include path, e.g., 'folder1/kb_name')
+
     Returns:
-        절대 경로
+        Absolute path
     """
-    # PathResolver 사용으로 일관성 유지
+    # Use PathResolver for consistency
     from .path_resolver import PathResolver
     return PathResolver.resolve_kb_path(kb_name)
 
 
 def _get_kb_list_sync() -> List[str]:
-    """동기 방식으로 지식 베이스 목록 반환 (내부 사용)
-    
-    재귀적으로 모든 하위 폴더를 탐색하여 실제 KB만 반환합니다.
-    폴더(.folder_marker 존재)는 제외하고, chroma.sqlite3가 있는 KB만 반환합니다.
-    반환되는 이름은 상대 경로 형태입니다 (예: "folder1/kb_name").
+    """Return knowledge base list synchronously (internal use)
+
+    Recursively scans all subdirectories to return only actual KBs.
+    Excludes folders (.folder_marker exists), returns only KBs with chroma.sqlite3.
+    Returned names are in relative path format (e.g., "folder1/kb_name").
     """
     root_dir = VECTOR_DB_CONFIG["root_dir"]
     if not os.path.exists(root_dir):
@@ -39,7 +39,7 @@ def _get_kb_list_sync() -> List[str]:
     kb_list = []
     
     def scan_directory(current_path: str, relative_path: str = ""):
-        """재귀적으로 디렉토리 탐색하여 KB 찾기"""
+        """Recursively scan directories to find KBs"""
         try:
             for item in os.listdir(current_path):
                 item_path = os.path.join(current_path, item)
@@ -47,52 +47,52 @@ def _get_kb_list_sync() -> List[str]:
                 if not os.path.isdir(item_path):
                     continue
                 
-                # 삭제 마커가 있으면 무시
+                # Ignore if delete marker exists
                 delete_marker = os.path.join(item_path, '.delete_marker')
                 if os.path.exists(delete_marker):
                     continue
-                
-                # 폴더 마커 확인
+
+                # Check folder marker
                 folder_marker = os.path.join(item_path, '.folder_marker')
                 chroma_file = os.path.join(item_path, 'chroma.sqlite3')
-                
+
                 is_folder = os.path.exists(folder_marker)
-                
-                # 현재 항목의 상대 경로
+
+                # Relative path of current item
                 current_relative = os.path.join(relative_path, item) if relative_path else item
-                
+
                 if is_folder:
-                    # 폴더인 경우 하위 탐색
+                    # If folder, scan subdirectories
                     scan_directory(item_path, current_relative)
                 elif os.path.exists(chroma_file) and os.path.getsize(chroma_file) > 0:
-                    # KB인 경우 (chroma.sqlite3가 있고 크기가 0보다 큼)
+                    # If KB (chroma.sqlite3 exists and size > 0)
                     kb_list.append(current_relative)
         except Exception as e:
-            print(f"⚠️ 디렉토리 스캔 중 오류 ({current_path}): {e}")
+            print(f"⚠️ Error during directory scan ({current_path}): {e}")
     
     scan_directory(root_dir)
     return sorted(kb_list)
 
 
 async def get_kb_list() -> List[str]:
-    """존재하는 지식 베이스 목록 반환 (비동기)"""
+    """Return list of existing knowledge bases (async)"""
     loop = asyncio.get_event_loop()
     with ThreadPoolExecutor() as executor:
         return await loop.run_in_executor(executor, _get_kb_list_sync)
 
 
 def get_kb_list_sync() -> List[str]:
-    """동기 방식으로 지식 베이스 목록 반환 (호환성 유지)"""
+    """Return knowledge base list synchronously (for compatibility)"""
     return _get_kb_list_sync()
 
 
 def format_sse_data(data: Dict[str, Any]) -> str:
-    """Server-Sent Events 형식으로 데이터 포맷팅"""
+    """Format data as Server-Sent Events"""
     return f"data: {json.dumps(data)}\n\n"
 
 
 def safe_json_loads(json_str: str, default: Any = None) -> Any:
-    """안전한 JSON 파싱 (실패 시 기본값 반환)"""
+    """Safe JSON parsing (returns default on failure)"""
     try:
         return json.loads(json_str)
     except (json.JSONDecodeError, TypeError):
@@ -100,29 +100,29 @@ def safe_json_loads(json_str: str, default: Any = None) -> Any:
 
 
 def ensure_directory_exists(path: str) -> None:
-    """디렉토리가 존재하지 않으면 생성"""
+    """Create directory if it doesn't exist"""
     os.makedirs(path, exist_ok=True)
 
 
 def is_valid_kb_name(kb_name: str) -> bool:
-    """지식 베이스 이름 유효성 검사"""
+    """Validate knowledge base name"""
     if not kb_name or not isinstance(kb_name, str):
         return False
-    
-    # 기본적인 파일시스템 안전성 검사
+
+    # Basic filesystem safety check
     invalid_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|']
     return not any(char in kb_name for char in invalid_chars)
 
 
 def truncate_text(text: str, max_length: int = 100) -> str:
-    """텍스트를 지정된 길이로 자르기 (생략 표시 포함)"""
+    """Truncate text to specified length (with ellipsis)"""
     if len(text) <= max_length:
         return text
     return text[:max_length-3] + "..."
 
 
 def format_file_size(size_bytes: int) -> str:
-    """바이트 크기를 읽기 쉬운 형태로 포맷팅"""
+    """Format byte size to human-readable format"""
     if size_bytes == 0:
         return "0B"
     
@@ -137,15 +137,15 @@ def format_file_size(size_bytes: int) -> str:
 
 def parse_json_from_llm_output(content: str) -> Dict[str, Any]:
     """
-    LLM 출력에서 JSON을 안전하게 파싱하는 유틸리티 함수
-    코드 블록, 마크다운 등 다양한 형태의 JSON을 처리
+    Utility function to safely parse JSON from LLM output
+    Handles various JSON formats including code blocks, markdown, etc.
     """
     if not content or not content.strip():
         return {}
-    
+
     import re
-    
-    # 1. 코드 블록에서 JSON 추출 시도
+
+    # 1. Try extracting JSON from code blocks
     code_block_patterns = [
         r'```json\s*(.*?)\s*```',
         r'```JSON\s*(.*?)\s*```', 
@@ -160,13 +160,13 @@ def parse_json_from_llm_output(content: str) -> Dict[str, Any]:
                 return safe_json_loads(match.strip())
             except:
                 continue
-    
-    # 2. 전체 내용에서 JSON 객체 추출 시도
+
+    # 2. Try extracting JSON object from entire content
     json_match = re.search(r'\{.*\}', content, re.DOTALL)
     if json_match:
         try:
             json_str = json_match.group(0)
-            # 기본적인 정리
+            # Basic cleanup
             json_str = json_str.replace('\\n', '\n').replace('\\"', '"')
             return safe_json_loads(json_str)
         except:
@@ -176,7 +176,7 @@ def parse_json_from_llm_output(content: str) -> Dict[str, Any]:
 
 
 def clean_string_escapes(text: str) -> str:
-    """문자열의 이스케이프 문자들을 정리"""
+    """Clean escape characters in string"""
     if not text:
         return ""
     

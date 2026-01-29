@@ -1,111 +1,111 @@
-// 노드 타입별 기본 프롬프트 템플릿
+// Default prompt templates for each node type
 export const DEFAULT_PROMPTS = {
-  'generation-node': `당신은 요구사항 분석 전문가입니다. 지식 베이스 컨텍스트로부터 키워드 '{input_data}'에 대한 상세하고 구체적인 요구사항을 최대한 많이 생성해주세요.
+  'generation-node': `You are a requirements analysis expert. Generate as many detailed and specific requirements as possible for the keyword '{input_data}' from the knowledge base context.
 
-**지식 베이스 컨텍스트:**
+**Knowledge Base Context:**
 {context}
 
-**입력 데이터:**
+**Input Data:**
 {input_data}
 
-**작업 지침:**
-1. 제공된 컨텍스트를 바탕으로 구체적이고 수준 높은 요구사항을 생성하세요
-2. 각 요구사항은 명확해야 하며 최대한 상세하게 작성합니다
-3. 반드시 컨텍스트 내용 안에서만 요구사항을 도출하세요
-4. 컨텍스트에 명시된 내용에서 과하게 변형하지 마세요
-5. 문서 내에서 해당 요구사항의 근거가 되는 문장들을 상세하게 명시하세요
-6. 문서 내에서 해당 요구사항의 근거를 다시 확인할 수 있는 페이지 번호 또는 섹션 번호(ex) 5.1.8)를 최대한 명시하세요
-6. 요구사항 ID는 REQ-001부터 순차적으로 부여하세요
-7. 요구사항은 영어로 작성하세요`,
+**Instructions:**
+1. Generate specific and high-quality requirements based on the provided context
+2. Each requirement must be clear and written in maximum detail
+3. Derive requirements only from within the context content
+4. Do not excessively modify the content stated in the context
+5. Specify in detail the sentences that serve as the basis for each requirement in the document
+6. Specify the page number or section number (e.g., 5.1.8) where the basis for the requirement can be verified in the document
+7. Assign requirement IDs sequentially starting from REQ-001
+8. Write requirements in English`,
 
-  'ensemble-node': `당신은 여러 지식을 통합하는 기술의 전문가입니다. 다음 여러 주어진 요구사항 표들을 하나로 통합하고 일관된 형식으로 정리하세요.
+  'ensemble-node': `You are an expert in integrating multiple knowledge sources. Consolidate the following multiple requirement tables into one and organize them in a consistent format.
 
-**입력 결과들 (여러 모델의 요구사항 생성 결과 테이블들):**
+**Input Results (requirement generation result tables from multiple models):**
 {input_data}
 
-**통합 작업 지침:**
-1. **표 통합**: 여러 모델에서 생성된 요구사항 표들을 합쳐 하나의 표를 만드세요
-2. **일관성 확보**: 요구사항 ID 체계를 통일하고 일관된 형식으로 정리하세요
-3. **검증 상태 추가**: 검증 상태 필드를 추가한 뒤 모든 요구사항의 검증 상태를 "unchecked" 상태로 표시한 뒤 작업을 시작하세요
-4. **중복 제거**: 완전히 동일한 의미를 담고 있는 요구사항들을 식별하고 중복된 항목들 중 품질이 높은 요구사항은 놔두고, 품질이 낮은 요구사항을 제거하세요
-5. **수정 금지**: 내용을 수정하거나 순서를 임의로 변경하지 마세요
+**Integration Instructions:**
+1. **Merge Tables**: Combine requirement tables generated from multiple models into a single table
+2. **Ensure Consistency**: Unify the requirement ID system and organize in a consistent format
+3. **Add Verification Status**: Add a verification status field and mark all requirements as "unchecked" before starting
+4. **Remove Duplicates**: Identify requirements with completely identical meanings, keep the higher quality one, and remove lower quality duplicates
+5. **No Modifications**: Do not modify content or arbitrarily change the order
 
-**통합 과정 요약:**
-- 총 입력 요구사항 수: [개수]
-- 최종 통합 요구사항 수: [개수]
-- 중복으로 표시된 항목 수: [개수]
+**Integration Summary:**
+- Total input requirements: [count]
+- Final consolidated requirements: [count]
+- Items marked as duplicates: [count]
 
-**반드시 지켜야 할 규칙:**
-1. 검증 상태는 "unchecked" 만 사용하세요
-2. 요구사항 ID를 REQ-001부터 순차적으로 새로 부여하세요
-3. 내용 수정, 순서 변경 없이 검증 상태만 변경 또는 중복 제거만 하세요`,
+**Rules to Follow:**
+1. Use only "unchecked" for verification status
+2. Reassign requirement IDs sequentially starting from REQ-001
+3. Only change verification status or remove duplicates without modifying content or order`,
 
-  'validation-node': `당신은 기술 문서 검증 전문가입니다. 주어진 요구사항 표에서 검증 상태가 "unchecked" 상태인 요구사항들을 지식 베이스 컨텍스트를 바탕으로 순차적으로 검증하고 검증 상태를 변경해주세요.
+  'validation-node': `You are a technical document verification expert. Sequentially verify requirements with "unchecked" status in the given requirement table against the knowledge base context and update their verification status.
 
-**검증할 요구사항:**
+**Requirements to Verify:**
 {input_data}
 
-**지식 베이스 컨텍스트:**
+**Knowledge Base Context:**
 {context}
 
-**검증 작업 지침:**
-1. **이미 통과된 항목**: 검증 상태가 "pass", "fail" 상태인 요구사항은 그대로 유지
-2. **순차적 검증**: 검증 상태가 "unchecked" 상태인 요구사항들만 검증
-3. **통과 조건**: 지식 베이스에서 해당 요구사항의 근거를 명확히 찾을 수 있는 경우 검증 상태를 "pass"로 변경
-4. **실패 조건**: 지식 베이스의 내용과 모순되는 내용이 있는 경우 검증 상태를 "fail"로 변경
-5. **불확실한 경우**: 통과 조건과 실패 조건에 해당하지 않는 경우, 애매하거나 불확실한 경우는 모두 검증 상태를 "unchecked"로 유지
+**Verification Instructions:**
+1. **Already Passed Items**: Keep requirements with "pass" or "fail" status as is
+2. **Sequential Verification**: Only verify requirements with "unchecked" status
+3. **Pass Condition**: Change verification status to "pass" if clear evidence for the requirement can be found in the knowledge base
+4. **Fail Condition**: Change verification status to "fail" if content contradicts the knowledge base
+5. **Uncertain Cases**: Keep verification status as "unchecked" for ambiguous or uncertain cases that don't meet pass or fail conditions
 
-**검증 기준:**
-- **사실 정확성**: 지식 베이스 내용과 일치하는지 확인
-- **근거 존재성**: 요구사항의 근거(reference)를 지식 베이스에서 찾을 수 있는지 확인
-- **모호성 배제**: 요구사항 내용이 충분히 이해 가능한지 확인
+**Verification Criteria:**
+- **Factual Accuracy**: Check if it matches knowledge base content
+- **Evidence Existence**: Check if the requirement's reference can be found in the knowledge base
+- **Clarity**: Check if the requirement content is sufficiently understandable
 
-출력에 아래 내용을 포함해주세요. 
+Include the following in your output:
 
-✅ **통과된 요구사항:**
-| ID | 요약 | 요구사항 | 통과 사유 |
+✅ **Passed Requirements:**
+| ID | Summary | Requirement | Pass Reason |
 |---|---|---|---|
-| REQ-XXX | [요구사항에 대한 짧은 요약] | [원래 요구사항 내용] | [지식 베이스에서 찾은 명확한 근거] |
+| REQ-XXX | [Short summary of requirement] | [Original requirement content] | [Clear evidence found in knowledge base] |
 
-❌ **실패한 요구사항:**
-| ID | 요약 | 요구사항 | 실패 사유 |
+❌ **Failed Requirements:**
+| ID | Summary | Requirement | Fail Reason |
 |---|---|---|---|
-| REQ-YYY | [요구사항에 대한 짧은 요약] | [원래 요구사항 내용] | [지식 베이스와 모순되는 내용] |
+| REQ-YYY | [Short summary of requirement] | [Original requirement content] | [Content contradicting knowledge base] |
 
-**검증 통계:**
-- 전체 요구사항: [총 개수]개
-- 이번에 검증한 요구사항: [이번 검증 개수]개
-- 현재까지 총 통과: [누적 통과 개수]개
-- 현재까지 총 실패: [누적 실패 개수]개
-- Unchecked : [unchecked 개수]개
-- 현재 검증 완료율: [검증 완료율]%"
+**Verification Statistics:**
+- Total requirements: [total count]
+- Requirements verified this time: [current verification count]
+- Total passed so far: [cumulative pass count]
+- Total failed so far: [cumulative fail count]
+- Unchecked: [unchecked count]
+- Current verification completion rate: [completion rate]%
 
-**반드시 지켜야 할 규칙:**
-1. 검증 상태는 "unchecked", "pass", "fail"만 사용하세요
-2. 검증 상태를 변경할 때는 반드시 검증 기준에 따라 신중하게 판단하세요
-3. 내용 수정, 항목 제거, 순서 변경 없이 검증 상태만 변경하세요`
+**Rules to Follow:**
+1. Use only "unchecked", "pass", or "fail" for verification status
+2. When changing verification status, always judge carefully according to the verification criteria
+3. Only change verification status without modifying content, removing items, or changing order`
 };
 
-// 노드 타입별 출력 형식 템플릿 (마크다운 태그 기반)
+// Output format templates for each node type (markdown tag based)
 export const OUTPUT_FORMAT_TEMPLATES = {
-  'generation-node': `| ID | 요약 | 요구사항 | 근거(reference) |
+  'generation-node': `| ID | Summary | Requirement | Reference |
 |---|---|---|---|
-| REQ-001 | [요구사항에 대한 짧은 요약] | [구체적인 요구사항 내용] | [원문 내용과 위치] |
+| REQ-001 | [Short summary of requirement] | [Specific requirement content] | [Original text and location] |
 | REQ-002 | ... | ... | ... |`,
-  
-  'ensemble-node': `| ID | 요약 | 요구사항 (Requirement) | 근거(Reference) | 검증 상태 |
+
+  'ensemble-node': `| ID | Summary | Requirement | Reference | Verification Status |
 |---|---|---|---|---|
-| REQ-001 | [요구사항에 대한 짧은 요약] | [구체적인 요구사항 내용] | [원문 내용과 위치] | unchecked |
+| REQ-001 | [Short summary of requirement] | [Specific requirement content] | [Original text and location] | unchecked |
 | REQ-002 | ... | ... | ... | unchecked |`,
 
-  'validation-node': `| ID | 요약 | 요구사항 (Requirement) | 근거(reference) | 검증 상태 |
+  'validation-node': `| ID | Summary | Requirement | Reference | Verification Status |
 |---|---|---|---|---|
-| REQ-001 | [요구사항에 대한 짧은 요약] | [구체적인 요구사항 내용] | [원문 내용과 위치] | pass/fail/unchecked |
+| REQ-001 | [Short summary of requirement] | [Specific requirement content] | [Original text and location] | pass/fail/unchecked |
 | REQ-002 | ... | ... | ... | pass/fail/unchecked |`
 };
 
-// 변수 설명
+// Variable descriptions
 export const PROMPT_VARIABLES = {
-  '{input_data}': '이전 노드들에서 전달된 데이터가 여기에 삽입됩니다',
-  '{context}': '지식 베이스에서 검색된 관련 문서 내용이 여기에 삽입됩니다'
+  '{input_data}': 'Data passed from previous nodes will be inserted here',
+  '{context}': 'Related document content retrieved from knowledge base will be inserted here'
 };

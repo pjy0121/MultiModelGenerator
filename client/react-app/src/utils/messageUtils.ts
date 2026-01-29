@@ -2,7 +2,7 @@ import { message, notification } from 'antd';
 import { UI_CONFIG } from '../config/constants';
 
 /**
- * 성공 메시지 표시
+ * Display success message
  */
 export const showSuccessMessage = (content: string): void => {
   message.success({
@@ -12,19 +12,19 @@ export const showSuccessMessage = (content: string): void => {
 };
 
 /**
- * 에러 메시지 표시 (사용자가 직접 닫을 때까지 표시)
- * notification을 사용하여 닫기 버튼이 있는 지속적인 에러 메시지 표시
+ * Display error message (shown until user manually closes)
+ * Uses notification for persistent error message with close button
  */
 export const showErrorMessage = (content: string): void => {
   const key = `error-${Date.now()}`;
-  
+
   notification.error({
-    message: '오류',
+    message: 'Error',
     description: content,
     key,
-    duration: 0, // 자동으로 사라지지 않음
+    duration: 0, // Does not auto-dismiss
     placement: 'topRight',
-    closable: true, // 닫기 버튼 표시
+    closable: true, // Show close button
     style: {
       cursor: 'pointer'
     },
@@ -35,7 +35,7 @@ export const showErrorMessage = (content: string): void => {
 };
 
 /**
- * 정보 메시지 표시
+ * Display info message
  */
 export const showInfoMessage = (content: string): void => {
   message.info({

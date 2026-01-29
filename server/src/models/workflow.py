@@ -16,7 +16,7 @@ class WorkflowNode(BaseModel):
     output_format: Optional[str] = Field(None, description="Expected output format for LLM nodes")
     knowledge_base: Optional[str] = Field(None, description="Knowledge base for context search")
     search_intensity: Optional[str] = Field(None, description="Search intensity for context search")
-    rerank_provider: Optional[str] = Field(None, description="Rerank 사용 여부 for context-node ('none' or 'enabled')")
+    rerank_provider: Optional[str] = Field(None, description="Rerank enabled for context-node ('none' or 'enabled')")
     rerank_model: Optional[str] = Field(None, description="[DEPRECATED] Rerank model - now uses fixed BAAI/bge-reranker-v2-m3")
     additional_context: Optional[str] = Field(None, description="Additional user-defined context for context-node")
     output: Optional[Any] = Field(None, description="Execution result")

@@ -132,7 +132,7 @@ class TestValidationNodeChain:
         print(f"Warnings: {result['warnings']}")
         
         # This should fail - validation-node can't have multiple non-context inputs
-        chain_error = any("context-node를 제외한 입력은 최대 1개만" in error for error in result['errors'])
+        chain_error = any("maximum 1 non-context input" in error.lower() for error in result['errors'])
         
         if chain_error:
             print(f"\n✅ Correctly blocked multiple non-context inputs to validation-node")
@@ -140,7 +140,7 @@ class TestValidationNodeChain:
             print(f"\n❌ Should have blocked multiple non-context inputs to validation-node!")
         
         assert not result['valid'], "validation-node with multiple non-context inputs should be invalid"
-        assert chain_error, "Should get the specific 'context-node를 제외한 입력은 최대 1개만' error"
+        assert chain_error, "Should get the specific 'maximum 1 non-context input' error"
     
     def test_multiple_validation_node_chain(self):
         """Test longer validation-node chain (3 nodes)"""
@@ -201,6 +201,6 @@ class TestValidationNodeChain:
         result = validator.validate_workflow(workflow)
         
         # Should allow longer validation chains
-        chain_errors = [error for error in result['errors'] if "context-node를 제외한 입력은 최대 1개만" in error]
+        chain_errors = [error for error in result['errors'] if "maximum 1 non-context input" in error.lower()]
         
         assert len(chain_errors) == 0, f"Multiple validation-node chain should be allowed, but got errors: {chain_errors}"

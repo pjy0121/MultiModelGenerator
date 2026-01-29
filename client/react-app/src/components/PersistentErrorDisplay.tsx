@@ -6,8 +6,8 @@ import { useNodeWorkflowStore } from '../store/nodeWorkflowStore';
 const { Text } = Typography;
 
 /**
- * 지속적인 에러 메시지 표시 컴포넌트
- * 사용자가 수동으로 개별 또는 전체 에러 메시지를 닫을 수 있음
+ * Persistent error message display component
+ * User can manually close individual or all error messages
  */
 export const PersistentErrorDisplay: React.FC = () => {
   const { persistentErrors, removePersistentError, clearAllPersistentErrors } = useNodeWorkflowStore();
@@ -17,11 +17,11 @@ export const PersistentErrorDisplay: React.FC = () => {
   }
 
   return (
-    <div 
-      style={{ 
-        position: 'fixed', 
-        top: 16, 
-        right: 16, 
+    <div
+      style={{
+        position: 'fixed',
+        top: 16,
+        right: 16,
         zIndex: 1000,
         maxWidth: '400px',
         maxHeight: '60vh',
@@ -29,29 +29,29 @@ export const PersistentErrorDisplay: React.FC = () => {
       }}
     >
       <Space direction="vertical" size="small" style={{ width: '100%' }}>
-        {/* 전체 지우기 버튼 (여러 에러가 있을 때만) */}
+        {/* Clear all button (only when multiple errors) */}
         {persistentErrors.length > 1 && (
           <Button
             type="link"
             size="small"
             icon={<ClearOutlined />}
             onClick={clearAllPersistentErrors}
-            style={{ 
-              padding: 0, 
+            style={{
+              padding: 0,
               height: 'auto',
               alignSelf: 'flex-end',
               color: '#ff4d4f'
             }}
           >
-            모든 에러 메시지 지우기
+            Clear all error messages
           </Button>
         )}
-        
-        {/* 개별 에러 메시지들 */}
+
+        {/* Individual error messages */}
         {persistentErrors.map((error) => (
           <Alert
             key={error.id}
-            message="실행 오류"
+            message="Execution Error"
             description={
               <div>
                 <Text style={{ fontSize: '12px', wordBreak: 'break-word' }}>
@@ -68,7 +68,7 @@ export const PersistentErrorDisplay: React.FC = () => {
             closable
             onClose={() => removePersistentError(error.id)}
             closeIcon={<CloseOutlined style={{ fontSize: '12px' }} />}
-            style={{ 
+            style={{
               marginBottom: '8px',
               fontSize: '13px'
             }}

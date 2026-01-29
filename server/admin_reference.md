@@ -1,2 +1,2 @@
-## 프로젝트 컨셉
-특정 문서(Specification)의 요구사항을 추출하기 위한 목적으로 문서를 임베딩하고 Vector DB로 저장하기 위한 목적의 python 프로그램. 저장된 지식 베이스의 목록 조회, 추가 ㅁ치 삭제, 지식 베이스의 상태(저장 위치 및 청크 개수 등) 확인이 가능해야 함
+## Project Concept
+A Python program designed to embed documents (Specifications) and store them in a Vector DB for the purpose of extracting requirements from specific documents. It should support viewing the list of stored knowledge bases, adding and deleting them, and checking the status of knowledge bases (storage location, chunk count, etc.)

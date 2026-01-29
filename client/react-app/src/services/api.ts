@@ -1,9 +1,9 @@
 import axios from 'axios';
-import { 
-  KnowledgeBase, 
-  AvailableModel, 
+import {
+  KnowledgeBase,
+  AvailableModel,
   LLMProvider,
-  WorkflowExecutionRequest 
+  WorkflowExecutionRequest
 } from '../types';
 import { API_CONFIG } from '../config/constants';
 
@@ -22,10 +22,10 @@ api.interceptors.response.use(
   }
 );
 
-// ==================== 노드 기반 워크플로우 API ====================
+// ==================== Node-based Workflow API ====================
 
 export const nodeBasedWorkflowAPI = {
-  // 노드 기반 워크플로우 스트리밍 실행
+  // Node-based workflow streaming execution
   executeNodeWorkflowStream: async function* (request: WorkflowExecutionRequest) {
     const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.EXECUTE_WORKFLOW_STREAM}`, {
       method: 'POST',
@@ -50,15 +50,15 @@ export const nodeBasedWorkflowAPI = {
     try {
       while (true) {
         const { done, value } = await reader.read();
-        
+
         if (done) break;
-        
+
         buffer += decoder.decode(value, { stream: true });
-        
-        // SSE 형식 파싱
+
+        // Parse SSE format
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
-        
+
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
@@ -74,79 +74,79 @@ export const nodeBasedWorkflowAPI = {
       reader.releaseLock();
     }
   },
-  
-  // 워크플로우 중단
+
+  // Stop workflow execution
   stopWorkflowExecution: async (executionId: string): Promise<{ success: boolean; message: string }> => {
     const response = await api.post(`${API_CONFIG.ENDPOINTS.STOP_WORKFLOW}/${executionId}`);
     return response.data;
   }
 };
 
-// ==================== 기본 데이터 API ====================
+// ==================== Base Data API ====================
 
 export const workflowAPI = {
-  // 지식 베이스 목록 조회
+  // Get knowledge bases list
   getKnowledgeBases: async (): Promise<KnowledgeBase[]> => {
     const response = await api.get(API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES);
     return response.data.knowledge_bases;
   },
 
-  // Provider별 모델 목록
+  // Get models by provider
   getProviderModels: async (provider: LLMProvider): Promise<AvailableModel[]> => {
     const response = await api.get(`${API_CONFIG.ENDPOINTS.AVAILABLE_MODELS}/${provider}`);
-    // 서버 응답이 이미 클라이언트 형식과 일치하므로 그대로 반환
+    // Server response already matches client format, return as-is
     return response.data;
   },
 
-  // 지식 베이스 삭제
+  // Delete knowledge base
   deleteKnowledgeBase: async (kbName: string): Promise<{ success: boolean; message: string }> => {
     const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/delete`, { kb_name: kbName });
     return response.data;
   },
 
-  // 지식 베이스 이름 변경
+  // Rename knowledge base
   renameKnowledgeBase: async (oldName: string, newName: string): Promise<{ success: boolean; message: string; old_name: string; new_name: string }> => {
     const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/rename`, { old_name: oldName, new_name: newName });
     return response.data;
   },
 
-  // 지식 베이스 이동
+  // Move knowledge base
   moveKnowledgeBase: async (kbName: string, targetFolder: string): Promise<{ success: boolean; message: string; old_path: string; new_path: string }> => {
     const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/move`, { kb_name: kbName, target_folder: targetFolder });
     return response.data;
   },
 
-  // 지식 베이스 디렉토리 구조 조회
+  // Get knowledge base directory structure
   getKnowledgeBaseStructure: async (): Promise<{ structure: Record<string, any> }> => {
     const response = await api.get(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/structure`);
     return response.data;
   },
 
-  // 폴더 생성
+  // Create folder
   createFolder: async (folderPath: string): Promise<{ success: boolean; message: string; folder_path: string }> => {
     const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/create-folder`, { folder_path: folderPath });
     return response.data;
   },
 
-  // 폴더 삭제
+  // Delete folder
   deleteFolder: async (folderPath: string): Promise<{ success: boolean; message: string; folder_path: string }> => {
     const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/delete-folder`, { folder_path: folderPath });
     return response.data;
   },
 
-  // 폴더 이름 변경
+  // Rename folder
   renameFolder: async (oldPath: string, newName: string): Promise<{ success: boolean; message: string; old_path: string; new_path: string }> => {
     const response = await api.put(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/rename-folder`, { old_path: oldPath, new_name: newName });
     return response.data;
   },
 
-  // 폴더 이동
+  // Move folder
   moveFolder: async (oldPath: string, targetFolder: string): Promise<{ success: boolean; message: string; old_path: string; new_path: string }> => {
     const response = await api.put(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/move-folder`, { old_path: oldPath, target_folder: targetFolder });
     return response.data;
   },
 
-  // 지식 베이스 생성 (BGE-M3 최적화)
+  // Create knowledge base (BGE-M3 optimized)
   createKnowledgeBase: async (
     kbName: string,
     contentBase64: string,
@@ -162,7 +162,7 @@ export const workflowAPI = {
       chunk_overlap: chunkOverlap,
       target_folder: targetFolder
     };
-    
+
     if (contentType === 'file') {
       payload.file_content = contentBase64;
       payload.file_type = fileType || 'pdf';
@@ -170,7 +170,7 @@ export const workflowAPI = {
       payload.text_content = contentBase64;
       payload.text_type = contentType;  // 'base64' or 'plain'
     }
-    
+
     console.log('[KB Create] Payload:', {
       kb_name: kbName,
       content_type: contentType,
@@ -179,44 +179,44 @@ export const workflowAPI = {
       chunk_size: chunkSize,
       chunk_overlap: chunkOverlap
     });
-    
+
     const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/create`, payload);
     return response.data;
   },
 
-  // 🔒 폴더 보호 설정
+  // Set folder protection
   protectFolder: async (folderPath: string, password: string, reason?: string): Promise<{ success: boolean; message: string; folder_path: string }> => {
-    const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/protect-folder`, { 
-      folder_path: folderPath, 
+    const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/protect-folder`, {
+      folder_path: folderPath,
       password: password,
       reason: reason || ''
     });
     return response.data;
   },
 
-  // 🔓 폴더 보호 해제
+  // Remove folder protection
   unprotectFolder: async (folderPath: string, password: string): Promise<{ success: boolean; message: string; folder_path: string }> => {
-    const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/unprotect-folder`, { 
-      folder_path: folderPath, 
+    const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/unprotect-folder`, {
+      folder_path: folderPath,
       password: password
     });
     return response.data;
   },
 
-  // 🔒 지식 베이스 보호 설정
+  // Set knowledge base protection
   protectKnowledgeBase: async (kbName: string, password: string, reason?: string): Promise<{ success: boolean; message: string; kb_name: string }> => {
-    const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/protect`, { 
-      kb_name: kbName, 
+    const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/protect`, {
+      kb_name: kbName,
       password: password,
       reason: reason || ''
     });
     return response.data;
   },
 
-  // 🔓 지식 베이스 보호 해제
+  // Remove knowledge base protection
   unprotectKnowledgeBase: async (kbName: string, password: string): Promise<{ success: boolean; message: string; kb_name: string }> => {
-    const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/unprotect`, { 
-      kb_name: kbName, 
+    const response = await api.post(`${API_CONFIG.ENDPOINTS.KNOWLEDGE_BASES}/unprotect`, {
+      kb_name: kbName,
       password: password
     });
     return response.data;

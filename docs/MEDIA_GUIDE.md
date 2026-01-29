@@ -1,116 +1,116 @@
-# 웹페이지 미디어 가이드
+# Website Media Guide
 
-이 문서는 `docs/index.html`에 삽입할 스크린샷과 동영상 목록입니다.
+This document lists the screenshots and videos to be inserted into `docs/index.html`.
 
-## 폴더 구조
+## Folder Structure
 ```
 docs/
 ├── index.html
 ├── assets/
 │   ├── videos/
-│   │   ├── demo-main.mp4          # 메인 데모 (전체 과정)
-│   │   ├── demo-node-connect.mp4  # 노드 추가 및 연결
-│   │   ├── demo-execution.mp4     # 워크플로우 실행
-│   │   ├── demo-requirements.mp4  # 요구사항 추출 예시
-│   │   └── demo-multi-model.mp4   # 다중 모델 비교 예시
+│   │   ├── demo-main.mp4          # Main demo (full process)
+│   │   ├── demo-node-connect.mp4  # Adding and connecting nodes
+│   │   ├── demo-execution.mp4     # Workflow execution
+│   │   ├── demo-requirements.mp4  # Requirements extraction example
+│   │   └── demo-multi-model.mp4   # Multi-model comparison example
 │   └── screenshots/
-│       ├── concept-diagram.png    # 워크플로우 컨셉 다이어그램
-│       ├── canvas.png             # 워크플로우 캔버스
-│       ├── node-config.png        # 노드 설정 패널
-│       ├── kb-manager.png         # 지식 베이스 관리
-│       ├── kb-create-modal.png    # KB 생성 모달
-│       ├── kb-created.png         # KB 생성 완료
-│       ├── node-generation.png    # 생성 노드 설정
-│       ├── node-context.png       # 컨텍스트 노드 설정
-│       ├── node-validation.png    # 검증 노드 설정
-│       ├── result-panel.png       # 결과 확인 패널
-│       └── save-export.png        # 저장 및 내보내기
+│       ├── concept-diagram.png    # Workflow concept diagram
+│       ├── canvas.png             # Workflow canvas
+│       ├── node-config.png        # Node settings panel
+│       ├── kb-manager.png         # Knowledge base management
+│       ├── kb-create-modal.png    # KB creation modal
+│       ├── kb-created.png         # KB creation complete
+│       ├── node-generation.png    # Generation node settings
+│       ├── node-context.png       # Context node settings
+│       ├── node-validation.png    # Validation node settings
+│       ├── result-panel.png       # Results panel
+│       └── save-export.png        # Save and export
 ```
 
 ---
 
-## 필요한 미디어 목록
+## Required Media List
 
-### 동영상 (5개)
+### Videos (5)
 
-| 파일명 | 위치 | 설명 | 권장 길이 |
-|--------|------|------|-----------|
-| `demo-main.mp4` | 히어로 섹션 | 워크플로우 구성부터 실행까지 전체 과정 | 1-2분 |
-| `demo-node-connect.mp4` | 사용법 Step 2 | 노드 추가하고 드래그로 연결하는 과정 | 20-30초 |
-| `demo-execution.mp4` | 기능 - 실시간 실행 | 실행 버튼 클릭 후 스트리밍 결과 표시 | 30-60초 |
-| `demo-requirements.mp4` | 활용 예시 1 | 기술 문서에서 요구사항 추출 전체 과정 | 1-2분 |
-| `demo-multi-model.mp4` | 활용 예시 2 | 여러 모델 비교 앙상블 과정 | 1-2분 |
+| Filename | Location | Description | Recommended Length |
+|----------|----------|-------------|-------------------|
+| `demo-main.mp4` | Hero section | Complete workflow configuration to execution | 1-2 min |
+| `demo-node-connect.mp4` | Tutorial Step 2 | Adding nodes and dragging to connect | 20-30 sec |
+| `demo-execution.mp4` | Feature - Real-time Execution | Clicking execute and streaming results | 30-60 sec |
+| `demo-requirements.mp4` | Use Case 1 | Full requirements extraction from tech docs | 1-2 min |
+| `demo-multi-model.mp4` | Use Case 2 | Multi-model comparison and ensemble | 1-2 min |
 
-### 스크린샷 (11개)
+### Screenshots (11)
 
-| 파일명 | 위치 | 설명 |
-|--------|------|------|
-| `concept-diagram.png` | 핵심 컨셉 | 노드 흐름 다이어그램 (Input→Context→Generation→Validation→Output) |
-| `canvas.png` | 기능 - 워크플로우 캔버스 | 여러 노드가 연결된 캔버스 전체 화면 |
-| `node-config.png` | 기능 - 노드 설정 | 생성 노드의 설정 패널 (모델, 프롬프트 등) |
-| `kb-manager.png` | 기능 - 지식 베이스 | 좌측 KB 목록 패널 (폴더 구조 포함) |
-| `kb-create-modal.png` | 사용법 Step 1 | KB 생성 모달 (파일 업로드 또는 텍스트 입력) |
-| `kb-created.png` | 사용법 Step 1 | KB 생성 완료 후 목록에 표시된 모습 |
-| `node-generation.png` | 사용법 Step 3 | 생성 노드 설정 화면 |
-| `node-context.png` | 사용법 Step 3 | 컨텍스트 노드 설정 (KB 선택, 검색 강도) |
-| `node-validation.png` | 사용법 Step 3 | 검증 노드 설정 화면 |
-| `result-panel.png` | 사용법 Step 5 | 실행 결과가 표시된 우측 패널 |
-| `save-export.png` | 사용법 Step 5 | 저장/내보내기 버튼 및 JSON 내보내기 |
+| Filename | Location | Description |
+|----------|----------|-------------|
+| `concept-diagram.png` | Core Concept | Node flow diagram (Input→Context→Generation→Validation→Output) |
+| `canvas.png` | Feature - Workflow Canvas | Full canvas view with multiple connected nodes |
+| `node-config.png` | Feature - Node Settings | Generation node settings panel (model, prompt, etc.) |
+| `kb-manager.png` | Feature - Knowledge Base | Left KB list panel (with folder structure) |
+| `kb-create-modal.png` | Tutorial Step 1 | KB creation modal (file upload or text input) |
+| `kb-created.png` | Tutorial Step 1 | KB shown in list after creation |
+| `node-generation.png` | Tutorial Step 3 | Generation node settings screen |
+| `node-context.png` | Tutorial Step 3 | Context node settings (KB selection, search intensity) |
+| `node-validation.png` | Tutorial Step 3 | Validation node settings screen |
+| `result-panel.png` | Tutorial Step 5 | Right panel showing execution results |
+| `save-export.png` | Tutorial Step 5 | Save/export buttons and JSON export |
 
 ---
 
-## 삽입 방법
+## Insertion Method
 
-각 플레이스홀더에 주석으로 `<!-- TODO: ... -->`가 표시되어 있습니다.
+Placeholders are marked with `<!-- TODO: ... -->` comments.
 
-### 동영상 삽입
+### Video Insertion
 ```html
-<!-- 변경 전 -->
+<!-- Before -->
 <div class="video-placeholder ...">
-    <!-- TODO: 메인 데모 동영상 삽입 -->
+    <!-- TODO: Insert main demo video -->
     <!-- <video src="assets/videos/demo-main.mp4" controls class="w-full h-full rounded-2xl"></video> -->
     <div class="text-center text-white/70 z-10">...</div>
 </div>
 
-<!-- 변경 후 -->
+<!-- After -->
 <div class="rounded-2xl overflow-hidden shadow-2xl">
     <video src="assets/videos/demo-main.mp4" controls class="w-full h-full"></video>
 </div>
 ```
 
-### 스크린샷 삽입
+### Screenshot Insertion
 ```html
-<!-- 변경 전 -->
+<!-- Before -->
 <div class="screenshot-placeholder rounded-xl aspect-video flex items-center justify-center">
-    <!-- TODO: 워크플로우 캔버스 스크린샷 삽입 -->
-    <!-- <img src="assets/screenshots/canvas.png" alt="워크플로우 캔버스"> -->
-    <p class="text-gray-500">워크플로우 캔버스 스크린샷</p>
+    <!-- TODO: Insert workflow canvas screenshot -->
+    <!-- <img src="assets/screenshots/canvas.png" alt="Workflow canvas"> -->
+    <p class="text-gray-500">Workflow canvas screenshot</p>
 </div>
 
-<!-- 변경 후 -->
+<!-- After -->
 <div class="rounded-xl overflow-hidden shadow-lg">
-    <img src="assets/screenshots/canvas.png" alt="워크플로우 캔버스" class="w-full h-auto">
+    <img src="assets/screenshots/canvas.png" alt="Workflow canvas" class="w-full h-auto">
 </div>
 ```
 
 ---
 
-## 권장 사항
+## Recommendations
 
-### 동영상
-- 해상도: 1920x1080 또는 1280x720
-- 형식: MP4 (H.264)
-- 파일 크기: 각 10MB 이하 권장
-- 마우스 커서 강조 효과 사용 권장
+### Videos
+- Resolution: 1920x1080 or 1280x720
+- Format: MP4 (H.264)
+- File size: Under 10MB each recommended
+- Use mouse cursor highlighting recommended
 
-### 스크린샷
-- 해상도: 최소 1280px 너비
-- 형식: PNG (투명 배경 불필요)
-- 브라우저 UI 제외하고 앱 화면만 캡처
-- 민감한 정보(API 키 등) 마스킹
+### Screenshots
+- Resolution: Minimum 1280px width
+- Format: PNG (transparent background not required)
+- Capture app screen only, exclude browser UI
+- Mask sensitive information (API keys, etc.)
 
-### GIF 대안
-동영상 대신 GIF 사용 가능 (파일 크기가 더 작을 경우):
+### GIF Alternative
+GIFs can be used instead of videos (if file size is smaller):
 ```html
-<img src="assets/videos/demo-node-connect.gif" alt="노드 연결" class="w-full h-auto">
+<img src="assets/videos/demo-node-connect.gif" alt="Node connection" class="w-full h-auto">
 ```

@@ -16,162 +16,162 @@ import { nodeBasedWorkflowAPI } from '../services/api';
 import { validateNodeWorkflow, formatValidationErrors } from '../utils/nodeWorkflowValidation';
 import { createWorkflowNode, createInitialNodes } from '../utils/nodeFactory';
 
-// ==================== 노드 기반 워크플로우 전용 스토어 ====================
-// project_reference.md 기준 - 5가지 노드 타입만 지원
+// ==================== Node-based Workflow Store ====================
+// Based on project_reference.md - supports 5 node types only
 
 interface NodeWorkflowState {
-  // 워크플로우 구성
+  // Workflow configuration
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
-  
-  // ReactFlow 뷰포트 상태 (중복 제거: viewport만 유지)
+
+  // ReactFlow viewport state (deduplication: only viewport maintained)
   viewport: { x: number; y: number; zoom: number };
-  isRestoring: boolean; // 복원 상태 플래그
-  
-  // 실행 상태
+  isRestoring: boolean; // Restoration state flag
+
+  // Execution state
   isExecuting: boolean;
-  isStopping: boolean; // 워크플로우 중단 중인 상태
-  currentExecutionId: string | null; // 현재 실행 중인 워크플로우의 ID
+  isStopping: boolean; // Workflow stopping state
+  currentExecutionId: string | null; // ID of currently executing workflow
   executionResult: NodeBasedWorkflowResponse | null;
-  
-  // 노드별 실행 상태 및 스트리밍 출력
+
+  // Node execution states and streaming outputs
   nodeExecutionStates: Record<string, 'idle' | 'executing' | 'completed' | 'error'>;
   nodeStreamingOutputs: Record<string, string>;
   nodeExecutionResults: Record<string, { success: boolean; description?: string; error?: string; execution_time?: number; }>;
-  nodeStartOrder: string[]; // 노드 실행 시작 순서 추적
-  
-  // 페이지 visibility 상태 (백그라운드 전환 시 스트리밍 업데이트 제한용)
+  nodeStartOrder: string[]; // Track node execution start order
+
+  // Page visibility state (for limiting streaming updates when in background)
   isPageVisible: boolean;
-  
-  // 백그라운드에서 누적된 스트리밍 출력 (페이지가 다시 보일 때 적용)
+
+  // Accumulated streaming outputs in background (applied when page becomes visible)
   pendingStreamingOutputs: Record<string, string>;
-  
-  // 검증 상태
+
+  // Validation state
   validationResult: ValidationResult | null;
   validationErrors: string[];
-  
-  // 에러 메시지 관리
+
+  // Error message management
   persistentErrors: Array<{ id: string; message: string; timestamp: number }>;
-  
-  // 노드 실행 상태 업데이트
+
+  // Node execution status update
   setNodeExecutionStatus: (nodeId: string, isExecuting: boolean, isCompleted?: boolean) => void;
-  
-  // 액션들
+
+  // Actions
   addNode: (nodeType: NodeType, position: { x: number; y: number }) => void;
   updateNode: (nodeId: string, updates: Partial<NodeData>) => void;
   removeNode: (nodeId: string) => void;
   addEdge: (edge: WorkflowEdge) => void;
   removeEdge: (edgeId: string) => void;
-  
+
   validateWorkflow: () => boolean;
   getValidationErrors: () => string[];
-  
+
   executeWorkflowStream: (onStreamUpdate: (data: StreamChunk) => void) => Promise<void>;
   stopWorkflowExecution: () => void;
   clearAllExecutionResults: () => void;
-  
-  // 뷰포트 상태 관리
+
+  // Viewport state management
   setViewport: (viewport: { x: number; y: number; zoom: number }) => void;
-  
-  // 노드 위치 업데이트
+
+  // Node position update
   updateNodePositions: (nodePositions: { id: string; position: { x: number; y: number } }[]) => void;
-  
-  // 워크플로우 저장/복원/Import/Export 기능
+
+  // Workflow save/restore/Import/Export functions
   saveCurrentWorkflow: () => void;
   restoreWorkflow: () => boolean;
   resetToInitialState: () => void;
   exportToJSON: () => void;
   importFromJSON: (jsonData: string) => boolean;
   setRestoring: (isRestoring: boolean) => void;
-  
-  // 페이지 가시성 상태 관리
+
+  // Page visibility state management
   setPageVisible: (isVisible: boolean) => void;
-  
-  // 에러 메시지 관리 함수
+
+  // Error message management functions
   addPersistentError: (errorMessage: string) => void;
   removePersistentError: (id: string) => void;
   clearAllPersistentErrors: () => void;
 }
 
 export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
-  // 초기 노드들 생성 (연결 없이)
+  // Create initial nodes (without connections)
   const initialNodes = createInitialNodes();
 
   return {
-    // 초기 상태 - input-node와 output-node가 기본으로 생성됨 (연결 없음)
+    // Initial state - input-node and output-node are created by default (no connections)
     nodes: initialNodes,
     edges: [],
-    
+
     viewport: { x: 0, y: 0, zoom: 1 },
-    isRestoring: false, // 복원 상태 초기값
-    
+    isRestoring: false, // Restoration state initial value
+
     isExecuting: false,
-    isStopping: false, // 중단 상태 초기값
-    currentExecutionId: null, // 실행 ID 초기값
+    isStopping: false, // Stopping state initial value
+    currentExecutionId: null, // Execution ID initial value
     executionResult: null,
-    
+
     validationResult: null,
     validationErrors: [],
-    
-    // 에러 메시지 관리
+
+    // Error message management
     persistentErrors: [],
-    
-    // 노드별 실행 상태 및 출력
+
+    // Node execution states and outputs
     nodeExecutionStates: {},
     nodeStreamingOutputs: {},
     nodeExecutionResults: {},
-    nodeStartOrder: [], // 노드 실행 시작 순서
-    
-    isPageVisible: true, // 페이지 가시성 초기값
-    pendingStreamingOutputs: {}, // 백그라운드에서 누적된 스트리밍 출력 초기값
+    nodeStartOrder: [], // Node execution start order
+
+    isPageVisible: true, // Page visibility initial value
+    pendingStreamingOutputs: {}, // Accumulated streaming outputs initial value
 
     setRestoring: (isRestoring: boolean) => set({ isRestoring }),
-  
-  // 노드 관리 액션들
+
+  // Node management actions
   addNode: async (nodeType: NodeType, position: { x: number; y: number }) => {
-    // output-node는 하나만 존재할 수 있음
+    // Only one output-node can exist
     if (nodeType === NodeType.OUTPUT) {
       const state = get();
       const hasOutputNode = state.nodes.some(node => node.data.nodeType === NodeType.OUTPUT);
       if (hasOutputNode) {
-        throw new Error('출력 노드는 하나만 존재할 수 있습니다.');
+        throw new Error('Only one output node can exist.');
       }
     }
-    
-    // Output 노드만 고정 위치 사용
+
+    // Only Output node uses fixed position
     let nodePosition = position;
     if (nodeType === NodeType.OUTPUT) {
-      nodePosition = { x: 400, y: 550 }; // 하단 중앙 고정
+      nodePosition = { x: 400, y: 550 }; // Fixed at bottom center
     }
-    
+
     const newNode = createWorkflowNode(nodeType, nodePosition);
-    
-    // 먼저 노드를 추가
+
+    // First add the node
     set(_ => ({
       nodes: get().nodes.concat(newNode)
     }));
-    
-    // LLM 노드인 경우 기본 provider와 모델 설정
+
+    // Set default provider and model for LLM nodes
     if ([NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION].includes(nodeType)) {
       const state = get();
       state.updateNode(newNode.id, {
         llm_provider: LLMProvider.GOOGLE,
-        model_type: 'gemini-1.5-flash' // 기본 모델 설정
+        model_type: 'gemini-2.0-flash-lite' // Default model setting
       });
-      showSuccessMessage(`${nodeType} 노드가 생성되었습니다. 필요시 편집에서 모델을 변경해주세요.`);
+      showSuccessMessage(`${nodeType} node created. Change model in edit if needed.`);
     }
-    
-    // Context 노드인 경우 기본 검색 강도와 rerank 설정
+
+    // Set default search intensity and rerank for Context node
     if (nodeType === NodeType.CONTEXT) {
       const state = get();
       state.updateNode(newNode.id, {
         search_intensity: SearchIntensity.STANDARD,
-        rerank_provider: LLMProvider.NONE // 기본값: 재정렬 사용 안 함
+        rerank_provider: LLMProvider.NONE // Default: no reranking
       });
-      message.success(`${nodeType} 노드가 생성되었습니다. 지식 베이스를 선택해주세요.`);
+      message.success(`${nodeType} node created. Please select a knowledge base.`);
     }
   },
-  
+
   updateNode: (nodeId, updates) => {
     set(state => ({
       nodes: state.nodes.map(node =>
@@ -184,44 +184,44 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
 
   removeNode: (nodeId) => {
     const nodeToRemove = get().nodes.find(n => n.id === nodeId);
-    
+
     if (!nodeToRemove) return;
-    
-    // output-node는 삭제 불가
+
+    // Output-node cannot be deleted
     if (nodeToRemove.data.nodeType === NodeType.OUTPUT) {
-      showErrorMessage('출력 노드는 삭제할 수 없습니다.');
-      throw new Error('출력 노드는 삭제할 수 없습니다.');
+      showErrorMessage('Output node cannot be deleted.');
+      throw new Error('Output node cannot be deleted.');
     }
-    
-    // input-node가 마지막 하나인 경우 삭제 불가
+
+    // Input-node cannot be deleted if it's the last one
     if (nodeToRemove.data.nodeType === NodeType.INPUT) {
       const inputNodes = get().nodes.filter(node => node.data.nodeType === NodeType.INPUT);
       if (inputNodes.length <= 1) {
-        showErrorMessage('입력 노드는 최소 하나는 존재해야 합니다.');
-        throw new Error('입력 노드는 최소 하나는 존재해야 합니다.');
+        showErrorMessage('At least one input node must exist.');
+        throw new Error('At least one input node must exist.');
       }
     }
-    
+
     set(state => ({
       nodes: state.nodes.filter(node => node.id !== nodeId),
       edges: state.edges.filter(edge => edge.source !== nodeId && edge.target !== nodeId)
     }));
-    
-    message.success(`${nodeToRemove.data.nodeType} 노드가 삭제되었습니다.`);
+
+    message.success(`${nodeToRemove.data.nodeType} node deleted.`);
   },
-  
+
   addEdge: (edge: WorkflowEdge) => {
     set(state => ({
       edges: [...state.edges, edge]
     }));
   },
-  
+
   removeEdge: (edgeId: string) => {
     set(state => ({
       edges: state.edges.filter(edge => edge.id !== edgeId)
     }));
   },
-  
+
     setViewport: (viewport: { x: number; y: number; zoom: number }) => {
       set({ viewport });
     },  updateNodePositions: (nodePositions: { id: string; position: { x: number; y: number } }[]) => {
@@ -238,68 +238,68 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       })
     }));
   },
-  
-  // 노드 실행 상태 업데이트
+
+  // Node execution status update
   setNodeExecutionStatus: (nodeId: string, isExecuting: boolean, isCompleted?: boolean) => {
     set(state => ({
-      nodes: state.nodes.map(node => 
-        node.id === nodeId 
-          ? { 
-              ...node, 
-              data: { 
-                ...node.data, 
+      nodes: state.nodes.map(node =>
+        node.id === nodeId
+          ? {
+              ...node,
+              data: {
+                ...node.data,
                 isExecuting,
                 isCompleted: isCompleted ?? node.data.isCompleted
-              } 
+              }
             }
           : node
       )
     }));
   },
-  // 검증 액션들
+  // Validation actions
   validateWorkflow: () => {
     const { nodes, edges } = get();
     const result = validateNodeWorkflow(nodes, edges);
     const errors = result.isValid ? [] : formatValidationErrors(result.errors);
-    
-    set({ 
+
+    set({
       validationResult: result,
-      validationErrors: errors 
+      validationErrors: errors
     });
-    
+
     return result.isValid;
   },
-  
+
   getValidationErrors: () => {
     return get().validationErrors;
   },
-  
-  // 워크플로우 스트리밍 실행 (유일한 실행 방법)
+
+  // Workflow streaming execution (the only execution method)
   executeWorkflowStream: async (onStreamUpdate: (data: StreamChunk) => void) => {
     const state = get();
-    
-    // 실행 전 검증 - 구체적인 에러 메시지 제공
+
+    // Pre-execution validation - provide specific error messages
     if (!state.validateWorkflow()) {
       const errors = state.getValidationErrors();
-      const detailedMessage = errors.length > 0 
-        ? `워크플로우 검증 실패:\n${errors.join('\n')}`
-        : '워크플로우 검증 실패. 연결 규칙을 확인해주세요.';
-      
-      console.error('워크플로우 검증 실패:', errors);
+      const detailedMessage = errors.length > 0
+        ? `Workflow validation failed:\n${errors.join('\n')}`
+        : 'Workflow validation failed. Please check connection rules.';
+
+      console.error('Workflow validation failed:', errors);
       throw new Error(detailedMessage);
     }
 
     set({ isExecuting: true, executionResult: null, currentExecutionId: null });
-    
+
     try {
-      // 서버가 기대하는 WorkflowExecutionRequest 형식으로 변환
+      // Convert to WorkflowExecutionRequest format expected by server
       const workflowDefinition = {
         nodes: state.nodes.map(node => {
           const isLlmNode = [NodeType.GENERATION, NodeType.ENSEMBLE, NodeType.VALIDATION].includes(node.data.nodeType);
           let finalPrompt = node.data.prompt || '';
 
           if (isLlmNode && node.data.output_format) {
-            const outputFormatInstruction = `\n\n핵심 결과를 반드시 다음과 같은 형태로 만들어 출력 시 가장 앞 부분에 포함시키세요. 이건 절대적으로 지켜야 할 사항입니다.\n\n<output>\n${node.data.output_format}\n</output>`;
+            const outputFormatInstruction = `\n\nYou must include key results in the following format at the beginning of your output. This is an absolute requirement.\n\n<output>\n${node.data.output_format}\n</output>`;
             finalPrompt += outputFormatInstruction;
           }
 
@@ -327,47 +327,47 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       const request = {
         workflow: workflowDefinition,
       };
-      
-      // 초기화 - 모든 노드를 idle 상태로 설정
+
+      // Initialize - set all nodes to idle state
       const initialStates: Record<string, 'idle' | 'executing' | 'completed' | 'error'> = {};
       const initialOutputs: Record<string, string> = {};
       const initialResults: Record<string, { success: boolean; description?: string; error?: string; execution_time?: number; }> = {};
-      
+
       state.nodes.forEach(node => {
         initialStates[node.id] = 'idle';
         initialOutputs[node.id] = '';
         initialResults[node.id] = { success: false };
       });
-      
-      set({ 
+
+      set({
         nodeExecutionStates: initialStates,
         nodeStreamingOutputs: initialOutputs,
         nodeExecutionResults: initialResults,
-        nodeStartOrder: [], // 스트리밍 실행 시작 시 초기화
-        pendingStreamingOutputs: {} // 누적 출력도 초기화
+        nodeStartOrder: [], // Initialize at streaming execution start
+        pendingStreamingOutputs: {} // Also initialize accumulated outputs
       });
-      
-      // 스트리밍 업데이트 배치 처리 변수들 - React 무한 루프 방지
+
+      // Streaming update batch processing variables - prevent React infinite loop
       let streamBatch: Record<string, string> = {};
       let pendingBatch: Record<string, string> = {};
       let batchTimeout: number | null = null;
       let lastFlushTime = 0;
-      const MIN_FLUSH_INTERVAL = 50; // 20 FPS (50ms) - 더 강력한 throttling
+      const MIN_FLUSH_INTERVAL = 50; // 20 FPS (50ms) - stronger throttling
 
-      // 배치 플러시 함수 - React 업데이트 깊이 초과 방지
+      // Batch flush function - prevent React update depth exceeded
       const flushBatch = () => {
         const now = Date.now();
         if (now - lastFlushTime < MIN_FLUSH_INTERVAL) {
-          return; // 너무 빈번한 업데이트 방지
+          return; // Prevent too frequent updates
         }
-        
+
         if (Object.keys(streamBatch).length > 0 || Object.keys(pendingBatch).length > 0) {
           set(state => {
             let hasChanges = false;
             let newStreamingOutputs = { ...state.nodeStreamingOutputs };
             let newPendingOutputs = { ...state.pendingStreamingOutputs };
-            
-            // 스트림 배치 적용
+
+            // Apply stream batch
             Object.keys(streamBatch).forEach(nodeId => {
               const currentOutput = state.nodeStreamingOutputs[nodeId] || '';
               const newOutput = streamBatch[nodeId];
@@ -376,8 +376,8 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
                 hasChanges = true;
               }
             });
-            
-            // 펜딩 배치 적용
+
+            // Apply pending batch
             Object.keys(pendingBatch).forEach(nodeId => {
               const currentPending = state.pendingStreamingOutputs[nodeId] || '';
               const newPending = pendingBatch[nodeId];
@@ -386,96 +386,96 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
                 hasChanges = true;
               }
             });
-            
+
             if (!hasChanges) {
-              return state; // 변경사항이 없으면 리렌더링 방지
+              return state; // Prevent re-render if no changes
             }
-            
+
             return {
               ...state,
               nodeStreamingOutputs: newStreamingOutputs,
               pendingStreamingOutputs: newPendingOutputs
             };
           });
-          
-          // 배치 초기화
+
+          // Reset batch
           streamBatch = {};
           pendingBatch = {};
           lastFlushTime = now;
         }
         batchTimeout = null;
       };
-      
-      // 스트리밍 실행
+
+      // Streaming execution
       for await (const chunk of nodeBasedWorkflowAPI.executeNodeWorkflowStream(request)) {
         onStreamUpdate(chunk);
-        
-        // execution_id 수신 및 저장
+
+        // Receive and store execution_id
         if (chunk.type === 'execution_started' && chunk.execution_id) {
           set({ currentExecutionId: chunk.execution_id });
           console.log('Execution ID received:', chunk.execution_id);
         }
-        
-        // validation_error 타입 처리
+
+        // Handle validation_error type
         if (chunk.type === 'validation_error') {
-          const validationErrors = chunk.errors || ['알 수 없는 검증 오류'];
-          const detailedMessage = `백엔드 워크플로우 검증 실패:\n${validationErrors.map((error: string, index: number) => `${index + 1}. ${error}`).join('\n')}`;
-          
-          console.error('백엔드 검증 실패:', validationErrors);
+          const validationErrors = chunk.errors || ['Unknown validation error'];
+          const detailedMessage = `Backend workflow validation failed:\n${validationErrors.map((error: string, index: number) => `${index + 1}. ${error}`).join('\n')}`;
+
+          console.error('Backend validation failed:', validationErrors);
           throw new Error(detailedMessage);
         }
-        
-        // 중단 요청 이벤트 처리
+
+        // Handle stop request event
         if (chunk.type === 'stop_requested') {
-          console.log('서버에서 중단 요청을 확인했습니다:', chunk.message);
-          // 이미 isStopping이 true로 설정되어 있으므로 추가 처리 불필요
+          console.log('Server confirmed stop request:', chunk.message);
+          // isStopping is already set to true, no additional processing needed
         }
-        
-        // 노드별 상태 업데이트 - 페이지 백그라운드 시 무한 루프 방지
+
+        // Node state update - prevent infinite loop when page is in background
         if (chunk.type === 'node_start' && chunk.node_id) {
           set(state => {
             const currentStartOrder = state.nodeStartOrder;
             const isAlreadyStarted = currentStartOrder.includes(chunk.node_id);
             const isAlreadyExecuting = state.nodeExecutionStates[chunk.node_id] === 'executing';
-            
-            // 이미 실행 중이고 시작 순서에 포함되어 있으면 상태 변경 없음
+
+            // No state change if already executing and in start order
             if (isAlreadyExecuting && isAlreadyStarted) {
               return state;
             }
-            
+
             return {
               ...state,
               nodeExecutionStates: {
                 ...state.nodeExecutionStates,
                 [chunk.node_id]: 'executing'
               },
-              nodeStartOrder: isAlreadyStarted 
-                ? currentStartOrder 
+              nodeStartOrder: isAlreadyStarted
+                ? currentStartOrder
                 : [...currentStartOrder, chunk.node_id]
             };
           });
         } else if (chunk.type === 'stream' && chunk.node_id && chunk.content) {
-          // 스트리밍 콘텐츠를 배치에 누적 - get() 호출 최소화로 무한 루프 방지
+          // Accumulate streaming content to batch - minimize get() calls to prevent infinite loop
           if (!streamBatch[chunk.node_id]) {
-            // 첫 번째 청크일 때만 현재 상태를 가져옴
+            // Only get current state for first chunk
             const currentState = get();
-            const baseOutput = currentState.isPageVisible 
+            const baseOutput = currentState.isPageVisible
               ? (currentState.nodeStreamingOutputs[chunk.node_id] || '')
               : (currentState.pendingStreamingOutputs[chunk.node_id] || '');
-            
+
             if (currentState.isPageVisible) {
               streamBatch[chunk.node_id] = baseOutput + chunk.content;
             } else {
               pendingBatch[chunk.node_id] = baseOutput + chunk.content;
             }
           } else {
-            // 이후 청크들은 배치에만 누적 (get() 호출 없음)
+            // Subsequent chunks only accumulate to batch (no get() call)
             if (streamBatch[chunk.node_id] !== undefined) {
               streamBatch[chunk.node_id] += chunk.content;
             } else if (pendingBatch[chunk.node_id] !== undefined) {
               pendingBatch[chunk.node_id] += chunk.content;
             } else {
-              // fallback: 현재 상태 확인
+              // fallback: check current state
               const currentState = get();
               if (currentState.isPageVisible) {
                 streamBatch[chunk.node_id] = (currentState.nodeStreamingOutputs[chunk.node_id] || '') + chunk.content;
@@ -484,32 +484,32 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
               }
             }
           }
-          
-          // 배치 업데이트 스케줄링 (throttled)
+
+          // Schedule batch update (throttled)
           if (batchTimeout) {
             clearTimeout(batchTimeout);
           }
           batchTimeout = setTimeout(flushBatch, MIN_FLUSH_INTERVAL);
         } else if (chunk.type === 'node_complete' && chunk.node_id) {
           const status = chunk.success ? 'completed' : 'error';
-          
+
           set(state => {
-            // 이미 완료된 상태이면 중복 업데이트 방지
+            // Prevent duplicate update if already completed
             const currentStatus = state.nodeExecutionStates[chunk.node_id];
             if (currentStatus === status) {
               return state;
             }
-            
-            // ✅ 실패한 경우에도 지금까지 받은 스트리밍 출력을 보존
+
+            // Preserve streaming output received so far even on failure
             const currentStreamingOutput = state.nodeStreamingOutputs[chunk.node_id] || '';
-            
-            // 실패했지만 스트리밍 출력이 있는 경우 에러 메시지만 추가
+
+            // If failed but has streaming output, only add error message
             const description = chunk.description || (chunk.success ? '' : chunk.error);
-            const finalDescription = !chunk.success && currentStreamingOutput 
+            const finalDescription = !chunk.success && currentStreamingOutput
               ? `${currentStreamingOutput}\n\n[Error] ${description}`
               : description;
-            
-            // 모든 노드의 완료 결과를 즉시 저장 (성공/실패 상관없이)
+
+            // Immediately save completion results for all nodes (regardless of success/failure)
             const updatedResults = {
               ...state.nodeExecutionResults,
               [chunk.node_id]: {
@@ -519,7 +519,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
                 execution_time: chunk.execution_time
               }
             };
-            
+
             return {
               ...state,
               nodeExecutionStates: {
@@ -527,21 +527,21 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
                 [chunk.node_id]: status
               },
               nodeExecutionResults: updatedResults
-              // ✅ nodeStreamingOutputs는 명시적으로 삭제하지 않으므로 유지됨
+              // nodeStreamingOutputs is not explicitly deleted so it's preserved
             };
           });
         }
-        
-        // 완료 시 결과 저장
+
+        // Save results on completion
         if (chunk.type === 'complete') {
-          // 실제 노드 실행 결과로 nodeExecutionResults 업데이트
+          // Update nodeExecutionResults with actual node execution results
           const nodeResults: Record<string, { success: boolean; description?: string; error?: string; execution_time?: number }> = {};
           if (chunk.results && Array.isArray(chunk.results)) {
             chunk.results.forEach((result: { node_id?: string; success: boolean; description?: string; error?: string; execution_time?: number }) => {
               if (result.node_id) {
                 nodeResults[result.node_id] = {
                   success: result.success,
-                  description: result.description, // 실제 노드 실행 결과
+                  description: result.description, // Actual node execution result
                   error: result.error,
                   execution_time: result.execution_time
                 };
@@ -549,7 +549,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
             });
           }
 
-          // 완료된 모든 노드의 상태를 completed로 설정
+          // Set all completed nodes' state to completed
           const completedStates: Record<string, 'idle' | 'executing' | 'completed' | 'error'> = {};
           if (chunk.results && Array.isArray(chunk.results)) {
             chunk.results.forEach((result: { node_id?: string; success: boolean }) => {
@@ -559,12 +559,12 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
             });
           }
 
-          // 중단 상태 확인 (상태 업데이트 전에)
+          // Check stopping state (before state update)
           const currentState = get();
           const wasStopping = currentState.isStopping;
-          const serverWasStopped = chunk.was_stopped; // 서버에서 전달된 중단 정보
-          
-          set(state => ({ 
+          const serverWasStopped = chunk.was_stopped; // Stop info from server
+
+          set(state => ({
             executionResult: {
               success: chunk.success,
               results: chunk.results || [],
@@ -575,192 +575,192 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
             },
             nodeExecutionResults: {
               ...state.nodeExecutionResults,
-              ...nodeResults // 실제 실행 결과로 업데이트
+              ...nodeResults // Update with actual execution results
             },
             nodeExecutionStates: {
               ...state.nodeExecutionStates,
-              ...completedStates // 완료된 노드 상태 업데이트
+              ...completedStates // Update completed node states
             },
             isExecuting: false,
-            isStopping: false, // 워크플로우 완료 시 중단 상태도 정리
-            currentExecutionId: null // 실행 ID 정리
+            isStopping: false, // Clear stopping state on workflow completion
+            currentExecutionId: null // Clear execution ID
           }));
-          
-          // 중단 요청이 있었다면 여기서 처리 완료
+
+          // Processing complete if there was a stop request
           if (wasStopping || serverWasStopped) {
-            message.success('워크플로우가 중단되었습니다. 실행 중이던 노드들의 출력은 모두 완료되었습니다.');
+            message.success('Workflow stopped. All outputs from executing nodes have been completed.');
           }
-          
-          // WorkflowComplete 처리 완료, finally 블록 실행하지 않음
+
+          // WorkflowComplete processing complete, don't execute finally block
           return;
         } else if (chunk.type === 'error') {
-          // 에러 발생 시 실행 중이던 노드만 idle로 되돌리고, 완료된 노드는 유지
+          // On error, only reset executing nodes to idle, keep completed nodes
           const state = get();
           const updatedStates = { ...state.nodeExecutionStates };
-          
-          // 실행 중인 노드만 idle로 되돌림
+
+          // Only reset executing nodes to idle
           Object.keys(updatedStates).forEach(nodeId => {
             if (updatedStates[nodeId] === 'executing') {
               updatedStates[nodeId] = 'idle';
             }
           });
-          
-          set({ 
+
+          set({
             isExecuting: false,
             nodeExecutionStates: updatedStates
-            // 완료된 노드의 결과와 출력은 유지
+            // Keep completed nodes' results and outputs
           });
         }
       }
-      
-      // 스트리밍 완료 시 남은 배치 업데이트 플러시
+
+      // Flush remaining batch updates when streaming completes
       if (batchTimeout) {
         clearTimeout(batchTimeout);
       }
       flushBatch();
-      
+
     } catch (error: unknown) {
-      console.error('스트리밍 워크플로우 실행 에러:', error);
-      
-      // 에러 발생 시 실행 중이던 노드만 idle로 되돌리고, 완료된 노드는 유지
+      console.error('Streaming workflow execution error:', error);
+
+      // On error, only reset executing nodes to idle, keep completed nodes
       const state = get();
       const updatedStates = { ...state.nodeExecutionStates };
-      
-      // 실행 중인 노드만 idle로 되돌림
+
+      // Only reset executing nodes to idle
       Object.keys(updatedStates).forEach(nodeId => {
         if (updatedStates[nodeId] === 'executing') {
           updatedStates[nodeId] = 'idle';
         }
       });
-      
-      set({ 
+
+      set({
         isExecuting: false,
         nodeExecutionStates: updatedStates,
-        currentExecutionId: null // 에러 시도 정리
-        // 완료된 노드의 결과와 출력은 유지
+        currentExecutionId: null // Clear on error too
+        // Keep completed nodes' results and outputs
       });
-      
-      let errorMessage = '알 수 없는 오류가 발생했습니다.';
+
+      let errorMessage = 'An unknown error occurred.';
       if (error instanceof Error && error.message) {
         errorMessage = error.message;
       }
-      
-      // persistent error로 표시하고 throw하지 않아 무한 루프 방지
-      // store 메서드는 직접 접근할 수 없으므로 message.error 사용
+
+      // Display as persistent error and don't throw to prevent infinite loop
+      // Can't directly access store methods so use message.error
       const id = `execution-error-${Date.now()}`;
       message.error({
-        content: `스트리밍 실행 오류: ${errorMessage}`,
-        duration: 0, // 사라지지 않음
+        content: `Streaming execution error: ${errorMessage}`,
+        duration: 0, // Won't disappear
         key: id,
         onClick: () => {
           message.destroy(id);
         }
       });
     } finally {
-      // 중단 상태인지 확인 (상태 정리 전에)
+      // Check stopping state (before state cleanup)
       const currentState = get();
       const wasStopping = currentState.isStopping;
-      
-      // 실행 상태 및 중단 상태 정리
-      set({ 
+
+      // Clean up execution and stopping states
+      set({
         isExecuting: false,
         isStopping: false,
-        currentExecutionId: null // 정리
+        currentExecutionId: null // Cleanup
       });
-      
-      // 중단된 경우 메시지 표시
+
+      // Show message if stopped
       if (wasStopping) {
-        message.success('워크플로우가 중단되었습니다. 실행 중이던 노드들의 출력은 모두 완료되었습니다.');
+        message.success('Workflow stopped. All outputs from executing nodes have been completed.');
       }
     }
   },
 
   stopWorkflowExecution: async () => {
-    // 워크플로우 실행을 수동으로 중단
+    // Manually stop workflow execution
     const state = get();
     if (!state.isExecuting || state.isStopping) return;
-    
+
     const executionId = state.currentExecutionId;
     if (!executionId) {
-      showErrorMessage('실행 ID를 찾을 수 없습니다.');
+      showErrorMessage('Execution ID not found.');
       return;
     }
-    
-    // 중단 상태로 전환
+
+    // Transition to stopping state
     set({ isStopping: true });
-    
+
     try {
-      // 서버에 중단 요청
+      // Send stop request to server
       const result = await nodeBasedWorkflowAPI.stopWorkflowExecution(executionId);
-      message.info(result.message || '워크플로우 중단 요청이 전송되었습니다.');
+      message.info(result.message || 'Workflow stop request sent.');
     } catch (error) {
-      console.error('워크플로우 중단 요청 실패:', error);
-      showErrorMessage('워크플로우 중단 요청에 실패했습니다.');
-      // 실패 시 중단 상태 해제
+      console.error('Workflow stop request failed:', error);
+      showErrorMessage('Failed to send workflow stop request.');
+      // Release stopping state on failure
       set({ isStopping: false });
     }
   },
 
   clearAllExecutionResults: () => {
-    // 모든 실행 결과를 완전히 초기화 (사용자가 의도적으로 선택)
+    // Completely reset all execution results (user intentionally selected)
     const state = get();
     const resetStates: Record<string, 'idle' | 'executing' | 'completed' | 'error'> = {};
     const resetOutputs: Record<string, string> = {};
     const resetResults: Record<string, { success: boolean; description?: string; error?: string; execution_time?: number; }> = {};
-    
+
     state.nodes.forEach(node => {
       resetStates[node.id] = 'idle';
       resetOutputs[node.id] = '';
       resetResults[node.id] = { success: false };
     });
-    
-    set({ 
+
+    set({
       isExecuting: false,
       nodeExecutionStates: resetStates,
       nodeStreamingOutputs: resetOutputs,
       nodeExecutionResults: resetResults,
       nodeStartOrder: [],
       executionResult: null,
-      pendingStreamingOutputs: {} // 누적 출력도 초기화
+      pendingStreamingOutputs: {} // Also reset accumulated outputs
     });
-    
-    message.success('모든 실행 결과가 초기화되었습니다.');
+
+    message.success('All execution results have been reset.');
   },
-  
-  // 데이터 로딩
-  // 워크플로우 저장/복원/Import/Export 기능 구현
+
+  // Data loading
+  // Workflow save/restore/Import/Export function implementations
   saveCurrentWorkflow: () => {
     const { nodes, edges, viewport } = get();
     const workflowState = {
       nodes,
       edges,
-      viewport, // 현재 뷰포트 상태 저장
+      viewport, // Save current viewport state
       savedAt: new Date().toISOString(),
-      version: '1.1' // 버전 업데이트
+      version: '1.1' // Version update
     };
-    
+
     try {
       localStorage.setItem('node_workflow_state', JSON.stringify(workflowState));
     } catch (error) {
-      console.error('워크플로우 저장 실패:', error);
-      showErrorMessage('워크플로우 저장에 실패했습니다.');
+      console.error('Workflow save failed:', error);
+      showErrorMessage('Failed to save workflow.');
     }
   },
-  
+
   restoreWorkflow: () => {
     try {
       const savedState = localStorage.getItem('node_workflow_state');
       if (!savedState) return false;
-      
+
       const workflowState = JSON.parse(savedState);
       const savedViewport = workflowState.viewport || { x: 0, y: 0, zoom: 1 };
-      
+
       set({
         nodes: workflowState.nodes || [],
         edges: workflowState.edges || [],
         viewport: savedViewport,
-        // viewport는 이미 위에서 설정됨
-        // 실행 관련 상태는 초기화
+        // viewport is already set above
+        // Reset execution-related states
         isExecuting: false,
         executionResult: null,
         nodeExecutionStates: {},
@@ -768,31 +768,31 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
         nodeExecutionResults: {},
         validationResult: null,
         validationErrors: [],
-        isRestoring: true, // 복원 시작
+        isRestoring: true, // Start restoration
       });
 
-      // 복원 완료 후 isRestoring을 false로 설정
+      // Set isRestoring to false after restoration completes
       setTimeout(() => set({ isRestoring: false }), 100);
 
       return true;
-      
+
     } catch (error) {
-      console.error('워크플로우 복원 실패:', error);
-      showErrorMessage('워크플로우 복원에 실패했습니다.');
-      set({ isRestoring: false }); // 에러 시 복원 상태 해제
+      console.error('Workflow restoration failed:', error);
+      showErrorMessage('Failed to restore workflow.');
+      set({ isRestoring: false }); // Release restoration state on error
       return false;
     }
   },
-  
+
   resetToInitialState: () => {
     const initialNodes = createInitialNodes();
-    const initialViewport = { x: 0, y: 0, zoom: 1 }; // 노드들이 중앙에 보이도록 조정
+    const initialViewport = { x: 0, y: 0, zoom: 1 }; // Adjusted so nodes are centered
     set({
       nodes: initialNodes,
       edges: [],
       viewport: initialViewport,
-      // viewport는 이미 위에서 설정됨
-      // 실행 관련 상태 초기화
+      // viewport is already set above
+      // Reset execution-related states
       isExecuting: false,
       executionResult: null,
       nodeExecutionStates: {},
@@ -802,11 +802,11 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       validationErrors: []
     });
   },
-  
+
   exportToJSON: () => {
     const { nodes, edges, viewport } = get();
     const exportData = {
-      version: '1.1', // 버전 업데이트
+      version: '1.1', // Version update
       exportedAt: new Date().toISOString(),
       workflow: {
         nodes,
@@ -814,7 +814,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
         viewport,
       }
     };
-    
+
     try {
       const jsonString = JSON.stringify(exportData, null, 2);
       const blob = new Blob([jsonString], { type: 'application/json' });
@@ -824,37 +824,37 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       a.download = `workflow_${new Date().toISOString()}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      message.success('워크플로우를 파일로 내보냈습니다.');
+      message.success('Workflow exported to file.');
     } catch (error) {
-      console.error('워크플로우 내보내기 실패:', error);
-      showErrorMessage('워크플로우 내보내기에 실패했습니다.');
+      console.error('Workflow export failed:', error);
+      showErrorMessage('Failed to export workflow.');
     }
   },
-  
+
   importFromJSON: (jsonData: string) => {
     try {
       const workflowData = JSON.parse(jsonData);
-      
-      // 노드와 엣지 데이터 추출
+
+      // Extract node and edge data
       let nodes = workflowData.nodes || workflowData.workflow?.nodes || [];
       let edges = workflowData.edges || workflowData.workflow?.edges || [];
       const viewport = workflowData.viewport || workflowData.workflow?.viewport || { x: 0, y: 0, zoom: 1 };
-      
-      // 노드 데이터 검증 및 정규화
+
+      // Validate and normalize node data
       if (!Array.isArray(nodes)) {
-        throw new Error('JSON 데이터에 노드 정보가 없습니다.');
+        throw new Error('No node information in JSON data.');
       }
       if (!Array.isArray(edges)) {
-        throw new Error('JSON 데이터에 엣지 정보가 없습니다.');
+        throw new Error('No edge information in JSON data.');
       }
-      
-      // 워크플로우 상태 업데이트
+
+      // Update workflow state
       set({
         nodes,
         edges,
         viewport,
-        // viewport는 이미 설정됨
-        // 실행 관련 상태는 초기화
+        // viewport is already set
+        // Reset execution-related states
         isExecuting: false,
         executionResult: null,
         nodeExecutionStates: {},
@@ -862,34 +862,34 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
         nodeExecutionResults: {},
         validationResult: null,
         validationErrors: [],
-        isRestoring: true, // 복원 시작
+        isRestoring: true, // Start restoration
       });
 
-      // 복원 완료 후 isRestoring을 false로 설정
+      // Set isRestoring to false after restoration completes
       setTimeout(() => set({ isRestoring: false }), 100);
 
       return true;
-      
+
     } catch (error) {
-      console.error('JSON 파싱 오류:', error);
-      showErrorMessage('유효하지 않은 JSON 형식입니다.');
+      console.error('JSON parsing error:', error);
+      showErrorMessage('Invalid JSON format.');
       return false;
     }
   },
-  
-  // 페이지 가시성 상태 업데이트
+
+  // Page visibility state update
   setPageVisible: (isVisible: boolean) => {
     set(state => {
-      // 상태가 이미 동일하면 업데이트하지 않음
+      // Don't update if state is already the same
       if (state.isPageVisible === isVisible) {
         return state;
       }
-      
+
       if (isVisible && !state.isPageVisible) {
-        // 페이지가 다시 보이게 될 때, 누적된 출력을 실제 출력에 병합
+        // When page becomes visible again, merge accumulated outputs to actual outputs
         const updatedOutputs = { ...state.nodeStreamingOutputs };
         let hasUpdates = false;
-        
+
         Object.keys(state.pendingStreamingOutputs).forEach(nodeId => {
           const pendingContent = state.pendingStreamingOutputs[nodeId];
           if (pendingContent) {
@@ -897,17 +897,17 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
             hasUpdates = true;
           }
         });
-        
+
         if (hasUpdates) {
           return {
             ...state,
             isPageVisible: isVisible,
             nodeStreamingOutputs: updatedOutputs,
-            pendingStreamingOutputs: {} // 누적된 출력 초기화
+            pendingStreamingOutputs: {} // Reset accumulated outputs
           };
         }
       }
-      
+
       return {
         ...state,
         isPageVisible: isVisible
@@ -915,7 +915,7 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
     });
   },
 
-  // 에러 메시지 관리 함수
+  // Error message management functions
   addPersistentError: (errorMessage: string) => {
     const id = Date.now().toString();
     set(state => ({
@@ -925,11 +925,11 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
         { id, message: errorMessage, timestamp: Date.now() }
       ]
     }));
-    
+
     message.error({
       content: errorMessage,
-      duration: 0, // 사라지지 않음
-      key: id, // 중복 방지
+      duration: 0, // Won't disappear
+      key: id, // Prevent duplicates
       onClick: () => {
         message.destroy(id);
       }
@@ -941,19 +941,19 @@ export const useNodeWorkflowStore = create<NodeWorkflowState>((set, get) => {
       ...state,
       persistentErrors: state.persistentErrors.filter(error => error.id !== id)
     }));
-    
-    // antd message도 함께 제거
+
+    // Also remove antd message
     message.destroy(id);
   },
 
   clearAllPersistentErrors: () => {
     const { persistentErrors } = get();
-    
-    // 모든 antd message 제거
+
+    // Remove all antd messages
     persistentErrors.forEach(error => {
       message.destroy(error.id);
     });
-    
+
     set(state => ({
       ...state,
       persistentErrors: []

@@ -1,9 +1,9 @@
-// ==================== 노드 기반 워크플로우 전용 타입 시스템 ====================
-// project_reference.md에 기반한 6가지 노드 타입 지원
+// ==================== Node-based workflow type system ====================
+// Based on project_reference.md - Supports 6 node types
 
 export enum NodeType {
   INPUT = "input-node",
-  GENERATION = "generation-node", 
+  GENERATION = "generation-node",
   ENSEMBLE = "ensemble-node",
   VALIDATION = "validation-node",
   CONTEXT = "context-node",
@@ -14,7 +14,7 @@ export enum LLMProvider {
   OPENAI = "openai",
   GOOGLE = "google",
   INTERNAL = "internal",
-  NONE = "none"  // 새로 추가: 재정렬 사용 안 함
+  NONE = "none"  // No reranking
 }
 
 export enum SearchIntensity {
@@ -23,19 +23,19 @@ export enum SearchIntensity {
   COMPREHENSIVE = "comprehensive"
 }
 
-// ==================== 노드 기반 워크플로우 핵심 타입들 ====================
+// ==================== Node-based workflow core types ====================
 
 export interface NodeBasedConfig {
   id: string;
   node_type: NodeType;
-  content?: string;           // input-node, output-node용 텍스트 내용
-  model_type?: string;        // LLM 모델 식별자
+  content?: string;           // Text content for input-node, output-node
+  model_type?: string;        // LLM model identifier
   llm_provider?: LLMProvider; // LLM Provider
-  prompt?: string;            // LLM 노드용 프롬프트
-  knowledge_base?: string;    // context-node용 지식베이스
-  search_intensity?: SearchIntensity; // context-node용 검색 강도
-  rerank_provider?: LLMProvider | 'enabled'; // context-node용 rerank 사용 여부 (NONE 또는 enabled)
-  additional_context?: string; // context-node용 사용자 정의 컨텍스트
+  prompt?: string;            // Prompt for LLM nodes
+  knowledge_base?: string;    // Knowledge base for context-node
+  search_intensity?: SearchIntensity; // Search intensity for context-node
+  rerank_provider?: LLMProvider | 'enabled'; // Rerank usage for context-node (NONE or enabled)
+  additional_context?: string; // User-defined context for context-node
   position: { x: number; y: number };
 }
 
@@ -62,10 +62,10 @@ export interface NodeBasedExecutionResult {
   error?: string;
 }
 
-// 스트림 데이터 타입
+// Stream data type
 export interface StreamChunk {
   type: 'execution_started' | 'node_start' | 'node_streaming' | 'node_complete' | 'workflow_complete' | 'validation_error' | 'stop_requested' | 'error';
-  execution_id?: string;  // execution_started 이벤트에서 전달
+  execution_id?: string;  // Delivered in execution_started event
   node_id?: string;
   content?: string;
   results?: NodeBasedExecutionResult[];
@@ -74,7 +74,7 @@ export interface StreamChunk {
   warnings?: string[];
 }
 
-// 워크플로우 실행 요청 타입
+// Workflow execution request type
 export interface WorkflowExecutionRequest {
   workflow: {
     nodes: any[];
@@ -91,26 +91,26 @@ export interface NodeBasedWorkflowResponse {
   error?: string;
 }
 
-// ==================== React Flow 노드 타입들 ====================
+// ==================== React Flow node types ====================
 
 export interface NodeData extends Record<string, unknown> {
   id: string;
   nodeType: NodeType;
   label: string;
-  content?: string;           // input-node, output-node용
-  model_type?: string;        // LLM 노드용
-  llm_provider?: LLMProvider; // LLM 노드용
-  prompt?: string;            // LLM 노드용 프롬프트
-  output_format?: string;     // LLM 노드용 출력 형식
-  knowledge_base?: string;    // context-node용 지식베이스
-  search_intensity?: SearchIntensity; // context-node용 검색 강도
-  rerank_provider?: LLMProvider | 'enabled'; // context-node용 rerank 사용 여부 (NONE 또는 enabled)
-  additional_context?: string; // context-node용 사용자 정의 컨텍스트
-  isExecuting?: boolean;      // 실행 상태 표시용
-  isCompleted?: boolean;      // 완료 상태 표시용
+  content?: string;           // For input-node, output-node
+  model_type?: string;        // For LLM nodes
+  llm_provider?: LLMProvider; // For LLM nodes
+  prompt?: string;            // Prompt for LLM nodes
+  output_format?: string;     // Output format for LLM nodes
+  knowledge_base?: string;    // Knowledge base for context-node
+  search_intensity?: SearchIntensity; // Search intensity for context-node
+  rerank_provider?: LLMProvider | 'enabled'; // Rerank usage for context-node (NONE or enabled)
+  additional_context?: string; // User-defined context for context-node
+  isExecuting?: boolean;      // For execution state display
+  isCompleted?: boolean;      // For completion state display
 }
 
-// React Flow용 노드 인터페이스
+// Node interface for React Flow
 export interface WorkflowNode {
   id: string;
   type: 'workflowNode';
@@ -121,7 +121,7 @@ export interface WorkflowNode {
   deletable?: boolean;
 }
 
-// ==================== 지식 베이스 관련 타입들 ====================
+// ==================== Knowledge base related types ====================
 
 export interface KnowledgeBase {
   name: string;
@@ -133,14 +133,14 @@ export interface KnowledgeBaseListResponse {
   knowledge_bases: KnowledgeBase[];
 }
 
-// ==================== 워크플로우 검증 관련 타입들 ====================
+// ==================== Workflow validation related types ====================
 
 export interface ValidationResult {
   isValid: boolean;
   errors: string[];
 }
 
-// ==================== 모델 관리 타입들 ====================
+// ==================== Model management types ====================
 
 export interface AvailableModel {
   value: string;

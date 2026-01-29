@@ -1,20 +1,20 @@
-"""KB 목록 함수 테스트"""
+"""KB list function test"""
 import sys
 import os
 
-# 서버 모듈을 import 가능하도록 경로 추가
+# Add server module path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'server'))
 
 from src.utils import get_kb_list_sync
 import json
 
 print("=" * 60)
-print("KB 목록 테스트")
+print("KB List Test")
 print("=" * 60)
 
 kb_list = get_kb_list_sync()
 
-print(f"\n총 {len(kb_list)}개의 KB 발견:\n")
+print(f"\nFound {len(kb_list)} KBs:\n")
 for kb in kb_list:
     print(f"  - {kb}")
 

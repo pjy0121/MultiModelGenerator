@@ -10,22 +10,22 @@ class WorkflowExecutionRequest(BaseModel):
 
 
 class RerankInfo(BaseModel):
-    """Rerank 설정 정보"""
-    provider: str = Field(..., description="rerank Provider (openai, google 등)")
-    model: str = Field(..., description="rerank 모델명")
+    """Rerank configuration info"""
+    provider: str = Field(..., description="Rerank provider (openai, google, etc.)")
+    model: str = Field(..., description="Rerank model name")
 
 
 class AvailableModel(BaseModel):
-    """사용 가능한 LLM 모델"""
-    label: str = Field(..., description="모델 이름")
+    """Available LLM model"""
+    label: str = Field(..., description="Model name")
     provider: str = Field(..., description="LLM Provider")
-    disabled: bool = Field(default=False, description="비활성화 여부")
-    model_type: str = Field(..., description="모델 타입 (실제 모델 ID)")
+    disabled: bool = Field(default=False, description="Disabled status")
+    model_type: str = Field(..., description="Model type (actual model ID)")
 
 
 class AvailableModelsResponse(BaseModel):
-    """사용 가능한 모델 목록 응답"""
-    models: List[AvailableModel] = Field(..., description="사용 가능한 모델 목록")
+    """Available models list response"""
+    models: List[AvailableModel] = Field(..., description="List of available models")
 
 
 class ErrorResponse(BaseModel):
@@ -35,20 +35,20 @@ class ErrorResponse(BaseModel):
 
 
 class ProtectionRequest(BaseModel):
-    """폴더 또는 KB 보호 요청"""
+    """Folder or KB protection request"""
     path: str = Field(..., description="Folder path or KB name to protect")
     password: str = Field(..., description="Password for protection")
     reason: Optional[str] = Field("", description="Optional reason for protection")
 
 
 class UnprotectionRequest(BaseModel):
-    """폴더 또는 KB 보호 해제 요청"""
+    """Folder or KB unprotection request"""
     path: str = Field(..., description="Folder path or KB name to unprotect")
     password: str = Field(..., description="Password for verification")
 
 
 class VerifyProtectionRequest(BaseModel):
-    """보호 상태 및 비밀번호 검증 요청"""
+    """Protection status and password verification request"""
     path: str = Field(..., description="Folder path or KB name to verify")
     type: str = Field(..., description="Type: 'folder' or 'kb'")
     password: str = Field(..., description="Password to verify")

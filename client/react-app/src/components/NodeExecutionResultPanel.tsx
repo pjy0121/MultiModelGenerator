@@ -7,7 +7,7 @@ import { formatMarkdown } from '../utils/markdownUtils';
 
 const { Title, Text } = Typography;
 
-// 스트리밍 출력 컴포넌트 (자동 스크롤 기능 포함)
+// Streaming output component (with auto-scroll feature)
 interface StreamingOutputProps {
   output: string;
   isExecuting: boolean;
@@ -17,46 +17,46 @@ const StreamingOutput: React.FC<StreamingOutputProps> = memo(({ output, isExecut
   const scrollRef = useRef<HTMLDivElement>(null);
   const previousOutputLength = useRef<number>(0);
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
-  const userScrolledRef = useRef<boolean>(false); // 사용자가 수동으로 스크롤했는지 추적
-  const programmaticScrollRef = useRef<boolean>(false); // 프로그래밍 방식 스크롤 추적
-  const lastScrollTopRef = useRef<number>(0); // 마지막 스크롤 위치 추적
+  const userScrolledRef = useRef<boolean>(false); // Track if user manually scrolled
+  const programmaticScrollRef = useRef<boolean>(false); // Track programmatic scroll
+  const lastScrollTopRef = useRef<number>(0); // Track last scroll position
 
-  // 사용자가 스크롤 위치를 변경했는지 감지 (개선된 로직)
+  // Detect if user changed scroll position (improved logic)
   const handleScroll = useCallback(() => {
     if (!scrollRef.current) return;
-    
-    // 프로그래밍 방식 스크롤이면 무시
+
+    // Ignore if programmatic scroll
     if (programmaticScrollRef.current) {
       programmaticScrollRef.current = false;
       return;
     }
-    
+
     const scrollElement = scrollRef.current;
     const currentScrollTop = scrollElement.scrollTop;
     const scrollHeight = scrollElement.scrollHeight;
     const clientHeight = scrollElement.clientHeight;
-    const isAtBottom = currentScrollTop + clientHeight >= scrollHeight - 10; // 여유를 좀 더 둠
-    
-    // 사용자가 위로 스크롤했는지 확인 (정확한 감지)
-    const scrolledUp = currentScrollTop < lastScrollTopRef.current - 5; // 작은 변화는 무시
+    const isAtBottom = currentScrollTop + clientHeight >= scrollHeight - 10; // Add more margin
+
+    // Check if user scrolled up (precise detection)
+    const scrolledUp = currentScrollTop < lastScrollTopRef.current - 5; // Ignore small changes
     const scrolledDown = currentScrollTop > lastScrollTopRef.current + 5;
-    
+
     if (scrolledUp && autoScroll && isExecuting) {
       setAutoScroll(false);
       userScrolledRef.current = true;
     } else if (isAtBottom && !autoScroll) {
-      // 맨 아래로 스크롤했으면 자동 스크롤 재활성화
+      // Re-enable auto-scroll if scrolled to bottom
       setAutoScroll(true);
       userScrolledRef.current = false;
     }
-    
-    // 스크롤 위치 업데이트 (디바운싱으로 너무 자주 업데이트되는 것 방지)
+
+    // Update scroll position (prevent too frequent updates with debouncing)
     if (scrolledUp || scrolledDown) {
       lastScrollTopRef.current = currentScrollTop;
     }
   }, [autoScroll, isExecuting]);
 
-  // 프로그래밍 방식으로 스크롤하는 함수
+  // Function to scroll programmatically
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) {
       programmaticScrollRef.current = true;
@@ -66,33 +66,33 @@ const StreamingOutput: React.FC<StreamingOutputProps> = memo(({ output, isExecut
     }
   }, []);
 
-  // 스트리밍 출력이 업데이트될 때마다 스크롤을 맨 아래로 이동 (자동 스크롤이 활성화된 경우에만)
+  // Scroll to bottom when streaming output updates (only if auto-scroll is enabled)
   useEffect(() => {
     if (scrollRef.current && output && autoScroll && !userScrolledRef.current) {
       const currentOutputLength = output.length;
-      
-      // 새로운 콘텐츠가 추가되었을 때만 스크롤
+
+      // Scroll only when new content is added
       if (currentOutputLength > previousOutputLength.current) {
-        // requestAnimationFrame을 사용해서 DOM 업데이트 후에 스크롤
+        // Scroll after DOM update using requestAnimationFrame
         requestAnimationFrame(() => {
           if (autoScroll && !userScrolledRef.current) {
             scrollToBottom();
           }
         });
-        
+
         previousOutputLength.current = currentOutputLength;
       }
     }
   }, [output, autoScroll, scrollToBottom]);
 
-  // 실행이 시작될 때 자동 스크롤 활성화 및 상태 초기화
+  // Enable auto-scroll and reset state when execution starts
   useEffect(() => {
     if (isExecuting) {
       setAutoScroll(true);
       userScrolledRef.current = false;
       previousOutputLength.current = 0;
       lastScrollTopRef.current = 0;
-      // 실행 시작 시 맨 아래로 스크롤
+      // Scroll to bottom when execution starts
       setTimeout(() => scrollToBottom(), 100);
     }
   }, [isExecuting, scrollToBottom]);
@@ -103,18 +103,18 @@ const StreamingOutput: React.FC<StreamingOutputProps> = memo(({ output, isExecut
 
   return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ 
-        fontSize: 10, 
-        color: '#999', 
+      <div style={{
+        fontSize: 10,
+        color: '#999',
         marginBottom: 4,
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center'
       }}>
         {!autoScroll && isExecuting && (
-          <span style={{ 
-            fontSize: 9, 
-            color: '#ff8c00', 
+          <span style={{
+            fontSize: 9,
+            color: '#ff8c00',
             fontStyle: 'italic',
             cursor: 'pointer',
             padding: '2px 6px',
@@ -122,33 +122,33 @@ const StreamingOutput: React.FC<StreamingOutputProps> = memo(({ output, isExecut
             border: '1px solid #ffecb5',
             borderRadius: 3
           }} onClick={() => {
-            console.log('자동 스크롤 재개 버튼 클릭');
+            console.log('Auto-scroll resume button clicked');
             setAutoScroll(true);
             userScrolledRef.current = false;
-            // 클릭 시 즉시 아래로 스크롤
+            // Scroll down immediately on click
             scrollToBottom();
           }}>
-            ⏸️ 자동 스크롤 중지됨 (클릭하여 재개)
+            ⏸️ Auto-scroll paused (click to resume)
           </span>
         )}
       </div>
-      <div 
+      <div
         ref={scrollRef}
         onScroll={handleScroll}
-        style={{ 
+        style={{
           padding: 8,
           backgroundColor: '#f6f6f6',
           border: '1px solid #d9d9d9',
           borderRadius: 4,
           maxHeight: 200,
           overflowY: 'auto',
-          scrollBehavior: 'smooth', // 모든 스크롤을 부드럽게
-          WebkitOverflowScrolling: 'touch' // iOS에서 부드러운 스크롤
+          scrollBehavior: 'smooth', // Smooth all scrolling
+          WebkitOverflowScrolling: 'touch' // Smooth scrolling on iOS
         }}
       >
-        <div 
-          style={{ 
-            margin: 0, 
+        <div
+          style={{
+            margin: 0,
             fontSize: 11,
             color: '#333',
             lineHeight: 1.4
@@ -162,31 +162,31 @@ const StreamingOutput: React.FC<StreamingOutputProps> = memo(({ output, isExecut
   );
 });
 
-// 완료된 결과 표시 컴포넌트 (자동 스크롤 기능 포함)
+// Completed result display component (with auto-scroll feature)
 interface CompletedResultDisplayProps {
   content: string;
   nodeType: string;
-  isNewResult?: boolean; // 새로 완료된 결과인지 여부
+  isNewResult?: boolean; // Whether this is a newly completed result
 }
 
 const CompletedResultDisplay: React.FC<CompletedResultDisplayProps> = memo(({ content, nodeType, isNewResult = false }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 결과가 렌더링될 때마다 스크롤을 맨 아래로 이동
+  // Scroll to bottom each time result is rendered
   useEffect(() => {
     if (scrollRef.current && content) {
-      // DOM이 완전히 렌더링된 후 스크롤
+      // Scroll after DOM is fully rendered
       const timer = setTimeout(() => {
         if (scrollRef.current) {
           scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
-      }, isNewResult ? 200 : 100); // 새 결과일 때는 조금 더 지연
-      
+      }, isNewResult ? 200 : 100); // Add more delay for new results
+
       return () => clearTimeout(timer);
     }
   }, [content, isNewResult]);
 
-  // 컴포넌트가 마운트된 후에도 한 번 더 스크롤 (늦게 로딩되는 내용 대응)
+  // Scroll once more after component mounts (handle late-loading content)
   useEffect(() => {
     if (scrollRef.current && content) {
       const timer = setTimeout(() => {
@@ -194,7 +194,7 @@ const CompletedResultDisplay: React.FC<CompletedResultDisplayProps> = memo(({ co
           scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
       }, 300);
-      
+
       return () => clearTimeout(timer);
     }
   }, []);
@@ -204,16 +204,16 @@ const CompletedResultDisplay: React.FC<CompletedResultDisplayProps> = memo(({ co
   }
 
   return (
-    <div 
+    <div
       ref={scrollRef}
-      style={{ 
-        maxHeight: '300px', 
-        overflowY: 'auto', 
+      style={{
+        maxHeight: '300px',
+        overflowY: 'auto',
         padding: '8px',
         border: '1px solid #d9d9d9',
         borderRadius: '4px',
         backgroundColor: nodeType === 'output-node' ? '#fafafa' : nodeType === 'input-node' ? '#f0f8ff' : '#f6f8fa',
-        scrollBehavior: 'auto' // 즉시 스크롤 이동
+        scrollBehavior: 'auto' // Scroll immediately
       }}
     >
       <MarkdownWithDownload content={content} />
@@ -221,17 +221,17 @@ const CompletedResultDisplay: React.FC<CompletedResultDisplayProps> = memo(({ co
   );
 });
 
-// 테이블 다운로드 컴포넌트
+// Table download component
 interface TableDownloadButtonsProps {
   headerRow: string[];
   dataRows: string[][];
   tableIndex: number;
 }
 
-const TableDownloadButtons: React.FC<TableDownloadButtonsProps> = memo(({ 
-  headerRow, 
-  dataRows, 
-  tableIndex 
+const TableDownloadButtons: React.FC<TableDownloadButtonsProps> = memo(({
+  headerRow,
+  dataRows,
+  tableIndex
 }) => {
   const [isModalVisible, setIsModalVisible] = useState(false);
 
@@ -257,7 +257,7 @@ const TableDownloadButtons: React.FC<TableDownloadButtonsProps> = memo(({
 
   return (
     <>
-      <div style={{ 
+      <div style={{
         margin: '8px 0',
         padding: '8px',
         backgroundColor: '#f8f9fa',
@@ -269,7 +269,7 @@ const TableDownloadButtons: React.FC<TableDownloadButtonsProps> = memo(({
       }}>
         <Space size="small">
           <Text strong style={{ fontSize: '11px', color: '#666' }}>
-            표 다운로드:
+            Table download:
           </Text>
           <Button
             type="link"
@@ -306,11 +306,11 @@ const TableDownloadButtons: React.FC<TableDownloadButtonsProps> = memo(({
           onClick={openModal}
           style={{ padding: '2px 8px', height: 'auto', fontSize: '11px' }}
         >
-          크게 보기
+          View Larger
         </Button>
       </div>
       <Modal
-        title={`표 크게 보기 (테이블 ${tableIndex + 1})`}
+        title={`View Larger (Table ${tableIndex + 1})`}
         open={isModalVisible}
         onOk={closeModal}
         onCancel={closeModal}
@@ -356,7 +356,7 @@ const TableDownloadButtons: React.FC<TableDownloadButtonsProps> = memo(({
   );
 });
 
-// 다운로드 기능이 포함된 마크다운 렌더러
+// Markdown renderer with download feature
 interface MarkdownWithDownloadProps {
   content: string;
 }
@@ -365,10 +365,10 @@ const MarkdownWithDownload: React.FC<MarkdownWithDownloadProps> = memo(({ conten
   const renderContentWithDownload = useCallback(() => {
     if (!content) return null;
 
-    // 테이블이 있는지 확인
+    // Check if table exists
     const hasTable = content.includes('|');
-    
-    // 테이블이 없으면 기존 formatMarkdown 사용
+
+    // Use existing formatMarkdown if no table
     if (!hasTable) {
       return (
         <div dangerouslySetInnerHTML={{ __html: formatMarkdown(content) }} />
@@ -393,14 +393,14 @@ const MarkdownWithDownload: React.FC<MarkdownWithDownloadProps> = memo(({ conten
         tableLines.push(line);
       } else {
         if (inTable) {
-          // 테이블 종료 - 테이블과 다운로드 버튼을 함께 렌더링
+          // Table ends - render table and download buttons together
           const table = renderTableWithDownload(tableLines, currentTableIndex++);
           if (table) elements.push(table);
           inTable = false;
           tableLines = [];
         }
 
-        // 일반 텍스트 처리
+        // Process normal text
         if (line.trim()) {
           elements.push(
             <div key={`text-${i}`} style={{ marginBottom: '8px' }}>
@@ -408,13 +408,13 @@ const MarkdownWithDownload: React.FC<MarkdownWithDownloadProps> = memo(({ conten
             </div>
           );
         } else {
-          // 빈 줄 처리
+          // Handle empty line
           elements.push(<div key={`empty-${i}`} style={{ height: '8px' }} />);
         }
       }
     }
 
-    // 마지막에 테이블이 있는 경우
+    // Handle table at the end
     if (inTable && tableLines.length > 0) {
       const table = renderTableWithDownload(tableLines, currentTableIndex);
       if (table) elements.push(table);
@@ -426,15 +426,15 @@ const MarkdownWithDownload: React.FC<MarkdownWithDownloadProps> = memo(({ conten
   const renderTableWithDownload = (tableLines: string[], tableIndex: number): React.ReactElement | null => {
     if (tableLines.length < 2) return null;
 
-    const processedRows = tableLines.map(row => 
+    const processedRows = tableLines.map(row =>
       row.replace(/^\||\|$/g, '').split('|').map(cell => cell.trim())
     );
 
-    // 구분선 행 찾기 및 스킵
-    const separatorIndex = processedRows.findIndex(row => 
+    // Find and skip separator row
+    const separatorIndex = processedRows.findIndex(row =>
       row.every(cell => cell.match(/^-+$/))
     );
-    
+
     const headerRow = processedRows[0];
     const dataStartIndex = separatorIndex > 0 ? separatorIndex + 1 : 1;
     const dataRows = processedRows.slice(dataStartIndex);
@@ -443,15 +443,15 @@ const MarkdownWithDownload: React.FC<MarkdownWithDownloadProps> = memo(({ conten
 
     return (
       <div key={`table-${tableIndex}`} style={{ margin: '12px 0' }}>
-        <TableDownloadButtons 
+        <TableDownloadButtons
           headerRow={headerRow}
           dataRows={dataRows}
           tableIndex={tableIndex}
         />
-        <table style={{ 
-          borderCollapse: 'collapse', 
-          width: '100%', 
-          fontSize: '11px', 
+        <table style={{
+          borderCollapse: 'collapse',
+          width: '100%',
+          fontSize: '11px',
           border: '1px solid #d9d9d9'
         }}>
           <thead>
@@ -492,8 +492,8 @@ const MarkdownWithDownload: React.FC<MarkdownWithDownloadProps> = memo(({ conten
   };
 
   return (
-    <div 
-      style={{ 
+    <div
+      style={{
         padding: 8,
         backgroundColor: '#f9f9f9',
         borderRadius: 4,
@@ -520,99 +520,99 @@ export const NodeExecutionResultPanel: React.FC = memo(() => {
     nodeStartOrder,
   } = useNodeWorkflowStore();
 
-  // 이전 실행 상태를 추적하여 새로 완료된 노드 감지
+  // Track previous execution state to detect newly completed nodes
   const previousExecutionStates = useRef<Record<string, string>>({});
   const [newlyCompletedNodes, setNewlyCompletedNodes] = useState<Set<string>>(new Set());
 
-  // 실행 상태 변화 감지
+  // Detect execution state changes
   useEffect(() => {
     const currentStates = { ...nodeExecutionStates };
     const newlyCompleted = new Set<string>();
-    
+
     Object.keys(currentStates).forEach(nodeId => {
       const currentState = currentStates[nodeId];
       const previousState = previousExecutionStates.current[nodeId];
-      
-      // 이전 상태가 'executing'이고 현재 상태가 'completed'이면 새로 완료됨
+
+      // Newly completed if previous state was 'executing' and current state is 'completed'
       if (previousState === 'executing' && currentState === 'completed') {
         newlyCompleted.add(nodeId);
       }
     });
-    
+
     if (newlyCompleted.size > 0) {
       setNewlyCompletedNodes(newlyCompleted);
-      
-      // 일정 시간 후 새로 완료됨 플래그 제거
+
+      // Remove newly completed flag after a certain time
       const timer = setTimeout(() => {
         setNewlyCompletedNodes(new Set());
       }, 1000);
-      
+
       return () => clearTimeout(timer);
     }
-    
+
     previousExecutionStates.current = currentStates;
   }, [nodeExecutionStates]);
 
-  // 노드 실행 시작 순서대로 정렬 (고정된 순서 유지) - 메모이제이션으로 최적화
+  // Sort by node execution start order (maintain fixed order) - optimized with memoization
   const orderedNodes = useMemo(() => {
-    // 실행 결과가 있거나 실행 상태가 설정된 노드들만 포함
+    // Include only nodes with execution results or execution state set
     const startedNodes = nodes.filter(node => {
       const state = nodeExecutionStates[node.id];
       const hasResult = nodeExecutionResults[node.id];
       return hasResult || (state && state !== 'idle');
     });
-    
-    // 노드 시작 순서가 있으면 그 순서를 기준으로 정렬
+
+    // Sort based on start order if available
     if (nodeStartOrder.length > 0) {
       const orderedNodes: any[] = [];
-      
-      // 시작 순서에 따라 노드 배치
+
+      // Place nodes according to start order
       nodeStartOrder.forEach(nodeId => {
         const node = startedNodes.find(n => n.id === nodeId);
         if (node) {
           orderedNodes.push(node);
         }
       });
-      
-      // 시작 순서에 없지만 현재 실행된 노드들을 뒤에 추가 (ID 순)
+
+      // Add remaining executed nodes not in start order (by ID)
       const remainingNodes = startedNodes
         .filter(node => !nodeStartOrder.includes(node.id))
         .sort((a, b) => a.id.localeCompare(b.id));
-      
+
       return [...orderedNodes, ...remainingNodes];
     }
-    
-    // 시작 순서 정보가 없으면 단순히 ID 순으로 정렬
+
+    // Simply sort by ID if no start order info
     return startedNodes.sort((a, b) => a.id.localeCompare(b.id));
   }, [nodes, nodeExecutionStates, nodeExecutionResults, nodeStartOrder]);
 
   return (
     <div style={{ padding: '16px', height: '100%' }}>
       <Title level={4} style={{ marginBottom: 16 }}>
-        실행 결과
+        Execution Results
       </Title>
 
-      {/* 실행 중 표시 */}
+      {/* Executing indicator */}
       {isExecuting && (
         <Alert
-          message="워크플로우 실행 중..."
+          message="Workflow executing..."
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
         />
       )}
 
-      {/* 노드별 실행 결과 */}
+      {/* Node execution results */}
       {orderedNodes.length > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {orderedNodes.map(node => {
             const executionState = nodeExecutionStates[node.id];
             const streamingOutput = nodeStreamingOutputs[node.id];
             const executionResult = nodeExecutionResults[node.id];
-            
+
             const getStatusColor = () => {
               switch (executionState) {
-                case 'executing': return '#ff4d4f'; // 실행 중만 빨간색
+                case 'executing': return '#ff4d4f'; // Red only for executing
                 case 'completed': return '#52c41a';
                 case 'error': return '#ff4d4f';
                 default: return '#666';
@@ -620,16 +620,16 @@ export const NodeExecutionResultPanel: React.FC = memo(() => {
             };
 
             const getBorderColor = () => {
-              // 실행 중인 노드만 빨간색 테두리, 나머지는 기본 테두리
+              // Red border only for executing node, default for others
               return executionState === 'executing' ? '#ff4d4f' : '#d9d9d9';
             };
-            
+
             const getStatusText = () => {
               switch (executionState) {
-                case 'executing': return '실행 중...';
-                case 'completed': return '완료';
-                case 'error': return '오류';
-                default: return '대기';
+                case 'executing': return 'Executing...';
+                case 'completed': return 'Completed';
+                case 'error': return 'Error';
+                default: return 'Pending';
               }
             };
 
@@ -641,7 +641,7 @@ export const NodeExecutionResultPanel: React.FC = memo(() => {
                 default: return '#f9f9f9';
               }
             };
-            
+
             return (
               <Card
                 key={node.id}
@@ -655,8 +655,8 @@ export const NodeExecutionResultPanel: React.FC = memo(() => {
                     <Text strong style={{ color: getStatusColor() }}>
                       {node.data?.label || node.id}
                     </Text>
-                    <span style={{ 
-                      padding: '2px 8px', 
+                    <span style={{
+                      padding: '2px 8px',
                       backgroundColor: getStatusColor(),
                       color: '#fff',
                       borderRadius: 3,
@@ -667,79 +667,79 @@ export const NodeExecutionResultPanel: React.FC = memo(() => {
                   </div>
                 }
               >
-                {/* 스트리밍 출력 (실행 중일 때만 표시) */}
+                {/* Streaming output (only shown while executing) */}
                 {executionState === 'executing' && (
-                  <StreamingOutput 
-                    output={streamingOutput || ''} 
-                    isExecuting={true} 
+                  <StreamingOutput
+                    output={streamingOutput || ''}
+                    isExecuting={true}
                   />
                 )}
-                
-                {/* 실행 결과 표시 (완료된 경우에만) */}
+
+                {/* Display execution result (only when completed) */}
                 {executionResult && executionState === 'completed' && (
                   <div style={{ fontSize: 11 }}>
                     {executionResult.success ? (
                       <div>
-                        {/* 완료된 경우 최종 결과만 표시 */}
+                        {/* Show final result only when completed */}
                         {executionResult.description && (
                           <div>
-                            {/* output-node의 경우 <output></output> 또는 <출력></출력> 내의 내용만 추출하여 스크롤 가능하게 표시 */}
+                            {/* For output-node, extract content within <output></output> or <출력></출력> tags and display scrollably */}
                             {node.node_type === 'output-node' ? (
                               (() => {
                                 const outputPatterns = [
                                   /<output>([\s\S]*?)<\/output>/i,
                                   /<출력>([\s\S]*?)<\/출력>/i
                                 ];
-                                
+
                                 let outputMatch = null;
                                 for (const pattern of outputPatterns) {
                                   outputMatch = executionResult.description?.match(pattern);
                                   if (outputMatch) break;
                                 }
-                                
+
                                 const outputContent = outputMatch ? outputMatch[1].trim() : executionResult.description;
-                                
+
                                 return (
-                                  <CompletedResultDisplay 
-                                    content={outputContent || ''} 
+                                  <CompletedResultDisplay
+                                    content={outputContent || ''}
                                     nodeType={node.node_type}
                                     isNewResult={newlyCompletedNodes.has(node.id)}
                                   />
                                 );
                               })()
                             ) : (
-                              // input-node와 일반 노드의 경우 전체 내용을 스크롤 가능하게 표시
+                              // For input-node and general nodes, display full content scrollably
                               (() => {
                                 const content = executionResult.description || '';
                                 const isInputNode = node.node_type === 'input-node';
-                                
+
                                 return (
                                   <div>
                                     {isInputNode && (
-                                      <div style={{ 
-                                        marginBottom: '8px', 
-                                        fontSize: '10px', 
+                                      <div style={{
+                                        marginBottom: '8px',
+                                        fontSize: '10px',
                                         color: '#1890ff',
                                         fontWeight: 'bold'
                                       }}>
-                                        📄 입력 데이터 내용: {content ? `(${content.length}자)` : '(내용 없음)'}
+                                        📄 Input data content: {content ? `(${content.length} chars)` : '(no content)'}
                                       </div>
                                     )}
                                     {content && content.trim() ? (
-                                      <CompletedResultDisplay 
-                                        content={content} 
+                                      <CompletedResultDisplay
+                                        content={content}
                                         nodeType={node.node_type}
                                         isNewResult={newlyCompletedNodes.has(node.id)}
                                       />
                                     ) : (
-                                      <div style={{ 
-                                        color: '#999', 
+                                      <div style={{
+                                        color: '#999',
                                         fontStyle: 'italic',
                                         fontSize: '10px',
                                         textAlign: 'center',
                                         padding: '20px'
                                       }}>
-                                        {isInputNode ? '입력 노드에 내용이 설정되지 않았습니다.' : '출력 내용이 없습니다.'}
+                                        {isInputNode ? 'No content set in input node.' : 'No output content.'}
                                       </div>
                                     )}
                                   </div>
@@ -751,17 +751,17 @@ export const NodeExecutionResultPanel: React.FC = memo(() => {
                       </div>
                     ) : (
                       <Text style={{ color: '#ff4d4f' }}>
-                        {executionResult.error || '알 수 없는 오류가 발생했습니다.'}
+                        {executionResult.error || 'An unknown error occurred.'}
                       </Text>
                     )}
                   </div>
                 )}
-                
-                {/* 에러 상태 표시 */}
+
+                {/* Display error state */}
                 {executionState === 'error' && executionResult && (
                   <div style={{ fontSize: 11 }}>
                     <Text style={{ color: '#ff4d4f' }}>
-                      {executionResult.error || '알 수 없는 오류가 발생했습니다.'}
+                      {executionResult.error || 'An unknown error occurred.'}
                     </Text>
                   </div>
                 )}
@@ -770,38 +770,38 @@ export const NodeExecutionResultPanel: React.FC = memo(() => {
           })}
         </div>
       ) : (
-        <div style={{ 
-          textAlign: 'center', 
-          color: '#999', 
-          marginTop: 40 
+        <div style={{
+          textAlign: 'center',
+          color: '#999',
+          marginTop: 40
         }}>
-          워크플로우를 실행하면 결과가 여기에 표시됩니다.
+          Workflow execution results will be displayed here.
         </div>
       )}
 
-      {/* 전체 실행 결과 요약 */}
+      {/* Overall execution result summary */}
       {executionResult && (
         <Card
           size="small"
-          style={{ 
+          style={{
             marginTop: 16,
-            background: executionResult.success ? '#f6ffed' : '#fff2f0', 
+            background: executionResult.success ? '#f6ffed' : '#fff2f0',
             border: `1px solid ${executionResult.success ? '#b7eb8f' : '#ffccc7'}`,
           }}
           title={
             <Text strong style={{ color: executionResult.success ? '#52c41a' : '#ff4d4f' }}>
-              {executionResult.success ? '워크플로우 실행 완료!' : '워크플로우 실행 실패'}
+              {executionResult.success ? 'Workflow execution completed!' : 'Workflow execution failed'}
             </Text>
           }
         >
           <Text style={{ fontSize: 12 }}>
-            총 실행 시간: {(executionResult.total_execution_time || 0).toFixed(2)}초
+            Total execution time: {(executionResult.total_execution_time || 0).toFixed(2)}s
           </Text>
           {executionResult.execution_order && executionResult.execution_order.length > 0 && (
             <>
               <br />
               <Text style={{ fontSize: 12 }}>
-                실행 순서: {executionResult.execution_order.map(nodeId => {
+                Execution order: {executionResult.execution_order.map(nodeId => {
                   const node = nodes.find(n => n.id === nodeId);
                   return node?.data?.label || nodeId;
                 }).join(' → ')}

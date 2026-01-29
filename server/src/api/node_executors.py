@@ -1,6 +1,6 @@
 """
-Node별 실행자 구현 - 간소화된 버전
-핵심 기능만 유지하고 불필요한 복잡성 제거
+Node executor implementation - Simplified version
+Maintains core functionality while removing unnecessary complexity
 """
 
 import asyncio
@@ -15,27 +15,27 @@ from ..services.vector_store_service import VectorStoreService
 
 
 class NodeExecutor:
-    """노드 실행자 - 모든 노드 타입을 처리"""
-    
+    """Node executor - Handles all node types"""
+
     def __init__(self):
         self.llm_factory = LLMFactory()
         self.result_parser = ResultParser()
-        # VectorStoreService는 필요할 때마다 새로 생성하여 블로킹 방지
+        # Create VectorStoreService as needed to prevent blocking
 
     async def execute_node(self, node: WorkflowNode, pre_outputs: List[str]) -> NodeExecutionResult:
-        """노드 실행 (레거시 인터페이스)"""
+        """Execute node (legacy interface)"""
         return await self.execute_node_with_context(node, pre_outputs, [])
 
     async def execute_node_with_context(self, node: WorkflowNode, pre_outputs: List[str], context_outputs: List[str]) -> NodeExecutionResult:
-        """노드 실행 - context-node 출력과 일반 pre-node 출력을 분리해서 처리"""
+        """Execute node - Process context-node output and regular pre-node output separately"""
         try:
             if self._is_text_node(node.type):
-                # Text 노드는 일반 pre_outputs만 사용
+                # Text nodes use only regular pre_outputs
                 return self._execute_text_node(node, pre_outputs)
             elif node.type == "context-node":
                 return await self._execute_context_node(node, pre_outputs)
             else:
-                # LLM 노드는 context와 input_data를 분리해서 처리
+                # LLM nodes process context and input_data separately
                 return await self._execute_llm_node_with_context(node, pre_outputs, context_outputs)
         except Exception as e:
             import traceback
@@ -49,15 +49,15 @@ class NodeExecutor:
             )
     
     async def execute_node_stream(self, node: WorkflowNode, pre_outputs: List[str]):
-        """노드 스트리밍 실행 (레거시 인터페이스)"""
+        """Execute node with streaming (legacy interface)"""
         async for chunk in self.execute_node_stream_with_context(node, pre_outputs, []):
             yield chunk
 
     async def execute_node_stream_with_context(self, node: WorkflowNode, pre_outputs: List[str], context_outputs: List[str]):
-        """노드 스트리밍 실행 - context-node 출력과 일반 pre-node 출력을 분리해서 처리"""
+        """Execute node with streaming - Process context-node output and regular pre-node output separately"""
         try:
             if self._is_text_node(node.type):
-                # 텍스트 노드는 즉시 결과 반환
+                # Text nodes return result immediately
                 result = self._execute_text_node(node, pre_outputs)
                 yield {
                     "type": "result",
@@ -68,10 +68,10 @@ class NodeExecutor:
                     "error": result.error
                 }
             elif node.type == "context-node":
-                # 컨텍스트 노드는 즉시 결과 반환
+                # Context nodes return result immediately
                 result = await self._execute_context_node(node, pre_outputs)
                 yield {
-                    "type": "result", 
+                    "type": "result",
                     "success": result.success,
                     "output": result.output,
                     "description": result.description,
@@ -79,7 +79,7 @@ class NodeExecutor:
                     "error": result.error
                 }
             else:
-                # LLM 노드는 context와 input_data를 분리해서 처리
+                # LLM nodes process context and input_data separately
                 async for chunk in self._execute_llm_node_stream_with_context(node, pre_outputs, context_outputs):
                     yield chunk
         except Exception as e:
@@ -92,23 +92,23 @@ class NodeExecutor:
             }
     
     def _is_text_node(self, node_type: str) -> bool:
-        """텍스트 노드 여부 확인"""
+        """Check if node is a text node"""
         return node_type in ["input-node", "output-node"]
     
     def _execute_text_node(self, node: WorkflowNode, pre_outputs: List[str]) -> NodeExecutionResult:
-        """텍스트 노드 실행 (Input/Output)"""
+        """Execute text node (Input/Output)"""
         if node.type == "input-node":
-            content = node.content or "입력 데이터가 설정되지 않았습니다."
+            content = node.content or "Input data not set."
         else:  # Output node
             if pre_outputs:
-                # pre_outputs에서 <output> 태그가 있는지 확인하고 파싱 시도
+                # Check for <output> tag in pre_outputs and try parsing
                 combined_content = "\n".join(pre_outputs)
                 try:
-                    # output parsing 시도
+                    # Try output parsing
                     parsed_result = self.result_parser.parse_node_output(combined_content)
                     content = parsed_result.output
                 except:
-                    # 파싱 실패 시 원본 사용
+                    # Use original if parsing fails
                     content = combined_content
             else:
                 content = node.content or ""
@@ -122,7 +122,7 @@ class NodeExecutor:
         )
     
     async def _execute_llm_node(self, node: WorkflowNode, pre_outputs: List[str]) -> NodeExecutionResult:
-        """LLM 노드 실행 (Generation/Ensemble/Validation)"""
+        """Execute LLM node (Generation/Ensemble/Validation)"""
         start_time = time.time()
         
         try:
@@ -154,18 +154,18 @@ class NodeExecutor:
             )
 
     async def _execute_llm_node_with_context(self, node: WorkflowNode, pre_outputs: List[str], context_outputs: List[str]) -> NodeExecutionResult:
-        """LLM 노드 실행 - context와 input_data를 분리해서 처리"""
+        """Execute LLM node - Process context and input_data separately"""
         start_time = time.time()
-        
+
         try:
-            # input_data는 일반 pre-node 출력들만 사용
+            # input_data uses only regular pre-node outputs
             input_data = "\n".join(pre_outputs) if pre_outputs else ""
-            # context는 context-node 출력들 사용
+            # context uses context-node outputs
             context = "\n".join(context_outputs) if context_outputs else ""
-            
+
             prompt_template = node.prompt or ""
-            
-            # 프롬프트 변수 치환
+
+            # Substitute prompt variables
             formatted_prompt = prompt_template.replace("{input_data}", input_data).replace("{context}", context)
             prompt = formatted_prompt if formatted_prompt.strip() else input_data
             
@@ -195,19 +195,19 @@ class NodeExecutor:
             )
     
     async def _execute_llm_node_stream(self, node: WorkflowNode, pre_outputs: List[str]):
-        """LLM 노드 스트리밍 실행"""
+        """Execute LLM node with streaming"""
         try:
-            # LLM 노드에서는 지식베이스 검색을 하지 않음 (context-node에서 처리)
+            # LLM nodes don't perform knowledge base search (handled by context-node)
             input_data = "\n".join(pre_outputs) if pre_outputs else ""
             prompt_template = node.prompt or ""
-            
-            # context는 빈 문자열로 처리 (context-node에서 제공받음)
+
+            # context is empty string (provided by context-node)
             context = ""
-            
-            # LLM 실행 시작 알림
-            yield {"type": "stream", "content": f"🤖 [{node.id}] {node.llm_provider}/{node.model_type} 모델 실행 중...\n\n"}
-            
-            # 프롬프트 변수 치환
+
+            # LLM execution start notification
+            yield {"type": "stream", "content": f"🤖 [{node.id}] Running {node.llm_provider}/{node.model_type} model...\n\n"}
+
+            # Substitute prompt variables
             formatted_prompt = prompt_template.replace("{input_data}", input_data).replace("{context}", context)
             prompt = formatted_prompt if formatted_prompt.strip() else input_data
 
@@ -220,7 +220,7 @@ class NodeExecutor:
             
             full_response = ""
             
-            # 통합된 스트리밍 인터페이스 사용
+            # Use unified streaming interface
             async for chunk in client.generate_stream(
                 prompt=prompt,
                 model=node.model_type,
@@ -230,7 +230,7 @@ class NodeExecutor:
                     full_response += chunk
                     yield {"type": "stream", "content": chunk}
             
-            # 결과 파싱
+            # Parse result
             if full_response:
                 parsed_result = self.result_parser.parse_node_output(full_response)
                 yield {
@@ -248,44 +248,44 @@ class NodeExecutor:
                 "type": "result",
                 "success": False,
                 "error": str(e),
-                "description": f"LLM 실행 오류: {str(e)}",
+                "description": f"LLM execution error: {str(e)}",
                 "output": None
             }
     
     async def _prepare_prompt(self, node: WorkflowNode, pre_outputs: List[str]) -> str:
-        """프롬프트 준비 (비스트리밍) - LLM 노드용, 지식베이스 검색 제거"""
+        """Prepare prompt (non-streaming) - For LLM nodes, knowledge base search removed"""
         input_data = "\n".join(pre_outputs) if pre_outputs else ""
         prompt_template = node.prompt or ""
-        
-        # context는 빈 문자열로 처리 (context-node에서 제공받음)
+
+        # context is empty string (provided by context-node)
         context = ""
-        
-        # 프롬프트 변수 치환
+
+        # Substitute prompt variables
         formatted_prompt = prompt_template.replace("{input_data}", input_data).replace("{context}", context)
         return formatted_prompt if formatted_prompt.strip() else input_data
 
     async def _execute_context_node(self, node: WorkflowNode, pre_outputs: List[str]) -> NodeExecutionResult:
         """
-        Context 노드 실행 - 벡터 DB에서 컨텍스트 검색 + 사용자 정의 컨텍스트 추가
-        지식베이스가 없을 경우 additional_context만 사용 가능
+        Execute context node - Search context from vector DB + add user-defined context
+        If no knowledge base is set, only additional_context can be used
         """
         start_time = time.time()
-        
+
         try:
-            # 입력 데이터 준비 (pre_outputs 결합)
+            # Prepare input data (combine pre_outputs)
             input_data = " ".join(pre_outputs) if pre_outputs else ""
-            
-            # 지식베이스 및 검색 강도 확인
+
+            # Check knowledge base and search intensity
             knowledge_base = node.knowledge_base
             search_intensity = node.search_intensity or SearchIntensity.get_default()
             additional_context = node.additional_context or ""
-            
+
             context_parts = []
             total_chunks = 0
             found_chunks = 0
-            kb_searched = False  # 지식베이스 검색 수행 여부
-            
-            # 지식베이스가 설정되어 있고 "none"이 아니면 검색 수행
+            kb_searched = False  # Whether knowledge base search was performed
+
+            # Perform search if knowledge base is set and not "none"
             if knowledge_base and knowledge_base.lower() != "none":
                 kb_searched = True
                 if not input_data.strip():
@@ -296,16 +296,16 @@ class NodeExecutor:
                         execution_time=time.time() - start_time
                     )
                 
-                # context-node 자체의 rerank 설정 사용
+                # Use context-node's own rerank settings
                 rerank_info = None
                 if (node.rerank_provider and node.rerank_provider not in ["none", None]):
-                    from ..core.config import VECTOR_DB_CONFIG
+                    from ..config import VECTOR_DB_CONFIG
                     rerank_info = {
                         "provider": "internal",
                         "model": VECTOR_DB_CONFIG.get("default_rerank_model")
                     }
-                
-                # 벡터 DB 검색 실행
+
+                # Execute vector DB search
                 vector_store_service = VectorStoreService()
                 search_result = await vector_store_service.search(
                     kb_name=knowledge_base,
@@ -319,26 +319,26 @@ class NodeExecutor:
                 found_chunks = search_result["found_chunks"]
                 
                 if context_results:
-                    # 지식베이스 이름만 출력 앞에 추가 (청크 수 정보는 description에 포함)
+                    # Add knowledge base name to output header (chunk count info in description)
                     kb_header = f"=== Knowledge Base: {knowledge_base} ==="
                     kb_content = "\n".join(context_results)
                     context_parts.append(f"{kb_header}\n{kb_content}")
-            
-            # 추가 컨텍스트가 있으면 추가
+
+            # Add additional context if available
             if additional_context.strip():
                 context_parts.append(additional_context.strip())
-            
-            # 최종 컨텍스트 결합
+
+            # Combine final context
             if not context_parts:
                 context_content = "No context available."
                 if kb_searched:
-                    # 검색은 했지만 결과가 없는 경우
+                    # Searched but no results
                     description = f"No context found from KB '{knowledge_base}' ({found_chunks}/{total_chunks} chunks found)"
                 else:
                     description = "No knowledge base search performed and no additional context provided."
             else:
                 context_content = "\n\n".join(context_parts)
-                # description에 청크 수 정보 포함
+                # Include chunk count info in description
                 if kb_searched:
                     kb_info = f" from KB '{knowledge_base}' ({found_chunks}/{total_chunks} chunks found)"
                 else:
@@ -364,44 +364,44 @@ class NodeExecutor:
     
     async def _execute_context_node_stream(self, node: WorkflowNode, pre_outputs: List[str]):
         """
-        Context 노드 스트리밍 실행
-        지식베이스가 없을 경우 additional_context만 사용 가능
+        Execute context node with streaming
+        If no knowledge base is set, only additional_context can be used
         """
         try:
-            # 입력 데이터 준비
+            # Prepare input data
             query = "\n".join(pre_outputs) if pre_outputs else ""
             knowledge_base = node.knowledge_base
             additional_context = node.additional_context or ""
-            
+
             context_parts = []
             total_chunks = 0
             found_chunks = 0
-            kb_searched = False  # 지식베이스 검색 수행 여부
-            
-            # 지식베이스가 설정되어 있고 "none"이 아니면 검색 수행
+            kb_searched = False  # Whether knowledge base search was performed
+
+            # Perform search if knowledge base is set and not "none"
             if knowledge_base and knowledge_base.lower() != "none":
                 kb_searched = True
                 if not query.strip():
                     yield {"type": "result", "success": False, "error": "No input data for context search"}
                     return
-                
-                # 검색 시작 알림
-                yield {"type": "stream", "content": f"🔍 [{node.id}] 지식 베이스 '{knowledge_base}' 검색 중...\n"}
-            
-            # rerank 정보 설정
+
+                # Search start notification
+                yield {"type": "stream", "content": f"🔍 [{node.id}] Searching knowledge base '{knowledge_base}'...\n"}
+
+            # Set rerank info
             rerank_info = None
             if (node.rerank_provider and node.rerank_provider not in ["none", None]):
-                from ..core.config import VECTOR_DB_CONFIG
+                from ..config import VECTOR_DB_CONFIG
                 rerank_model = VECTOR_DB_CONFIG.get("default_rerank_model")
                 rerank_info = {
                     "provider": "internal",
                     "model": rerank_model
                 }
-                yield {"type": "stream", "content": f"🔄 [{node.id}] 재정렬 설정됨: {rerank_model}\n"}
-            
-            # 지식베이스 검색 수행 (설정되어 있고 "none"이 아닐 경우)
+                yield {"type": "stream", "content": f"🔄 [{node.id}] Reranking enabled: {rerank_model}\n"}
+
+            # Perform knowledge base search (if set and not "none")
             if kb_searched:
-                # 벡터 스토어에서 관련 컨텍스트 검색
+                # Search for related context from vector store
                 vector_store_service = VectorStoreService()
                 search_result = await vector_store_service.search(
                     kb_name=knowledge_base,
@@ -415,23 +415,23 @@ class NodeExecutor:
                 found_chunks = search_result["found_chunks"]
                 
                 if context_results:
-                    # 지식베이스 이름만 출력 앞에 추가 (청크 수 정보는 description과 스트림 메시지에 포함)
+                    # Add knowledge base name to output header (chunk count info in description and stream message)
                     kb_header = f"=== Knowledge Base: {knowledge_base} ==="
                     kb_content = "\n".join(context_results)
                     context_parts.append(f"{kb_header}\n{kb_content}")
-                    yield {"type": "stream", "content": f"✅ [{node.id}] 전체 {total_chunks}개 청크 중 {found_chunks}개의 관련 컨텍스트를 찾았습니다.\n"}
+                    yield {"type": "stream", "content": f"✅ [{node.id}] Found {found_chunks} relevant contexts from {total_chunks} total chunks.\n"}
                 else:
-                    yield {"type": "stream", "content": f"⚠️ [{node.id}] 지식베이스 (전체 {total_chunks}개 청크)에서 관련 컨텍스트를 찾지 못했습니다.\n"}
-            
-            # 추가 컨텍스트가 있으면 추가
+                    yield {"type": "stream", "content": f"⚠️ [{node.id}] No relevant context found from knowledge base ({total_chunks} total chunks).\n"}
+
+            # Add additional context if available
             if additional_context.strip():
                 additional_header = "=== Additional Context ==="
                 context_parts.append(f"{additional_header}\n{additional_context.strip()}")
-                yield {"type": "stream", "content": f"📝 [{node.id}] 사용자 정의 컨텍스트가 추가되었습니다.\n"}
-            
-            # 최종 컨텍스트 결합
+                yield {"type": "stream", "content": f"📝 [{node.id}] User-defined context added.\n"}
+
+            # Combine final context
             if not context_parts:
-                yield {"type": "stream", "content": f"⚠️ [{node.id}] 사용 가능한 컨텍스트가 없습니다.\n"}
+                yield {"type": "stream", "content": f"⚠️ [{node.id}] No context available.\n"}
                 if kb_searched:
                     description = f"No context found from KB '{knowledge_base}' ({found_chunks}/{total_chunks} chunks found)"
                 else:
@@ -445,7 +445,7 @@ class NodeExecutor:
                 }
             else:
                 context_content = "\n\n".join(context_parts)
-                # description에 청크 수 정보 포함
+                # Include chunk count info in description
                 if kb_searched:
                     kb_info = f" from KB '{knowledge_base}' ({found_chunks}/{total_chunks} chunks)"
                 else:
@@ -464,9 +464,9 @@ class NodeExecutor:
             yield {"type": "result", "success": False, "error": f"Context search failed: {str(e)}"}
     
     async def _call_llm(self, llm_client: Any, model_type: str, prompt: str) -> str:
-        """LLM 호출 - 스트리밍 인터페이스를 사용하여 전체 응답 수집"""
+        """Call LLM - Collect full response using streaming interface"""
         try:
-            # 스트리밍으로 전체 응답 수집
+            # Collect full response via streaming
             full_response = ""
             async for chunk in llm_client.generate_stream(
                 prompt=prompt,
@@ -484,19 +484,19 @@ class NodeExecutor:
             raise Exception(f"LLM call failed: {str(e)}")
     
     async def _execute_llm_node_stream_with_context(self, node: WorkflowNode, pre_outputs: List[str], context_outputs: List[str]):
-        """LLM 노드 스트리밍 실행 - context와 input_data를 분리해서 처리"""
+        """Execute LLM node with streaming - Process context and input_data separately"""
         try:
-            # input_data는 일반 pre-node 출력들만 사용
+            # input_data uses only regular pre-node outputs
             input_data = "\n".join(pre_outputs) if pre_outputs else ""
-            # context는 context-node 출력들 사용
+            # context uses context-node outputs
             context = "\n".join(context_outputs) if context_outputs else ""
-            
+
             prompt_template = node.prompt or ""
-            
-            # 스트리밍 시작 알림
-            yield {"type": "stream", "content": f"🤖 [{node.id}] Context-aware 실행: {node.llm_provider}/{node.model_type}\n"}
-            
-            # 프롬프트 변수 치환
+
+            # Streaming start notification
+            yield {"type": "stream", "content": f"🤖 [{node.id}] Context-aware execution: {node.llm_provider}/{node.model_type}\n"}
+
+            # Substitute prompt variables
             formatted_prompt = prompt_template.replace("{input_data}", input_data).replace("{context}", context)
             prompt = formatted_prompt if formatted_prompt.strip() else input_data
 
@@ -509,7 +509,7 @@ class NodeExecutor:
             
             full_response = ""
             
-            # 통합된 스트리밍 인터페이스 사용
+            # Use unified streaming interface
             async for chunk in client.generate_stream(
                 prompt=prompt,
                 model=node.model_type,
@@ -519,7 +519,7 @@ class NodeExecutor:
                     full_response += chunk
                     yield {"type": "stream", "content": chunk}
             
-            # 결과 파싱
+            # Parse result
             if full_response:
                 parsed_result = self.result_parser.parse_node_output(full_response)
                 yield {

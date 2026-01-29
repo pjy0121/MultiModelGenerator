@@ -8,10 +8,10 @@ from ..config import API_KEYS, NODE_EXECUTION_CONFIG
 from ..utils import handle_llm_error
 
 class GoogleLLMClient(LLMClientInterface):
-    """Google AI Studio API 클라이언트"""
-    
+    """Google AI Studio API client"""
+
     def __init__(self):
-        """Google AI API 클라이언트 초기화"""
+        """Initialize Google AI API client"""
         self.api_key = API_KEYS["google"]
         self.client = None
         
@@ -26,16 +26,16 @@ class GoogleLLMClient(LLMClientInterface):
                 self.client = None
     
     def is_available(self) -> bool:
-        """Google AI API 사용 가능 여부 확인"""
+        """Check if Google AI API is available"""
         return genai is not None and self.client is not None and self.api_key is not None
     
     def get_available_models(self) -> List[Dict[str, Any]]:
-        """사용 가능한 Google AI 모델 목록 반환"""
+        """Return list of available Google AI models"""
         if not self.is_available():
             return []
         
         try:
-            # thinking 필드 버그 우회: REST API 직접 호출
+            # Workaround for thinking field bug: direct REST API call
             import requests
             
             url = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -52,7 +52,7 @@ class GoogleLLMClient(LLMClientInterface):
                 model_name = model_data.get('name', '').replace('models/', '')
                 supported_methods = model_data.get('supportedGenerationMethods', [])
                                 
-                # 생성 가능한 모델만 필터링
+                # Filter only models capable of generation
                 if 'generateContent' in supported_methods:
                     model_info = {
                         "value": model_name,
@@ -68,23 +68,23 @@ class GoogleLLMClient(LLMClientInterface):
             return []
     
     async def generate_stream(
-        self, 
-        prompt: str, 
-        model: str, 
-        temperature: float = 0.3, 
+        self,
+        prompt: str,
+        model: str,
+        temperature: float = 0.3,
         max_tokens: int = NODE_EXECUTION_CONFIG["max_tokens_default"]
     ):
-        """스트리밍으로 응답 생성 (통합된 단일 인터페이스)"""
+        """Generate response via streaming (unified single interface)"""
         if not self.is_available():
-            error_msg = handle_llm_error("google", model, Exception("키가 설정되지 않음"), log_error=False)
+            error_msg = handle_llm_error("google", model, Exception("API key not configured"), log_error=False)
             raise Exception(error_msg)
         
         try:
-            # 모델 이름에 'models/' 접두사가 없으면 추가
+            # Add 'models/' prefix if not present in model name
             if not model.startswith('models/'):
                 model = f'models/{model}'
-            
-            # 생성형 모델 초기화 (temperature 등 설정)
+
+            # Initialize generative model (temperature settings, etc.)
             generation_config = {
                 "temperature": temperature,
                 "max_output_tokens": max_tokens,
@@ -95,30 +95,30 @@ class GoogleLLMClient(LLMClientInterface):
                 generation_config=generation_config
             )
             
-            print(f"🔄 Google AI 응답 생성 시작...")
-            
-            # 비동기 스트리밍 응답 생성 - 실시간 청크 전송
+            print(f"🔄 Starting Google AI response generation...")
+
+            # Async streaming response generation - real-time chunk transmission
             try:
                 import concurrent.futures
                 
-                # 큐를 통한 실시간 스트리밍
+                # Real-time streaming via queue
                 chunk_queue = asyncio.Queue()
-                
-                # 메인 이벤트 루프 참조 저장 (별도 스레드에서 사용)
+
+                # Store main event loop reference (for use in separate thread)
                 main_loop = asyncio.get_event_loop()
-                
+
                 def _sync_generate_to_queue():
-                    """동기 스트리밍을 큐로 실시간 전송"""
+                    """Send synchronous streaming to queue in real-time"""
                     try:
                         response = genai_model.generate_content(prompt, stream=True)
                         for chunk in response:
                             if hasattr(chunk, 'text') and chunk.text:
-                                # 메인 루프에 큐 put 요청
+                                # Request queue put to main loop
                                 asyncio.run_coroutine_threadsafe(
-                                    chunk_queue.put(chunk.text), 
+                                    chunk_queue.put(chunk.text),
                                     main_loop
                                 )
-                        # 완료 신호
+                        # Completion signal
                         asyncio.run_coroutine_threadsafe(
                             chunk_queue.put(None), 
                             main_loop
@@ -129,43 +129,43 @@ class GoogleLLMClient(LLMClientInterface):
                             main_loop
                         )
                 
-                # ThreadPoolExecutor로 별도 스레드에서 실행
+                # Execute in separate thread with ThreadPoolExecutor
                 executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
                 main_loop.run_in_executor(executor, _sync_generate_to_queue)
-                
-                print(f"✅ Google AI 스트리밍 시작")
-                
-                # 큐에서 실시간으로 청크 받아서 전송
+
+                print(f"✅ Google AI streaming started")
+
+                # Receive and send chunks from queue in real-time
                 while True:
                     chunk = await chunk_queue.get()
-                    
-                    # 완료 신호
+
+                    # Completion signal
                     if chunk is None:
                         break
-                    
-                    # 에러 체크
+
+                    # Error check
                     if isinstance(chunk, Exception):
                         raise chunk
-                    
-                    # 청크 즉시 전송
+
+                    # Send chunk immediately
                     yield chunk
-                    await asyncio.sleep(0)  # 다른 태스크에게 제어권 양보
+                    await asyncio.sleep(0)  # Yield control to other tasks
                 
                 executor.shutdown(wait=False)
                         
             except Exception as stream_e:
                 error_detail = traceback.format_exc()
-                print(f"⚠️ Google AI 스트림 생성 오류: {stream_e}")
-                print(f"⚠️ 상세 오류 정보:\n{error_detail}")
+                print(f"⚠️ Google AI stream generation error: {stream_e}")
+                print(f"⚠️ Detailed error info:\n{error_detail}")
                 raise
-                    
+
         except Exception as e:
             error_msg = str(e)
-            # 특정 에러 메시지에 대한 더 명확한 설명 제공
+            # Provide clearer explanation for specific error messages
             if "finish_message" in error_msg:
-                error_msg = f"Google AI API 구조 변경으로 인한 오류: {error_msg}"
+                error_msg = f"Error due to Google AI API structure change: {error_msg}"
             elif "Unknown field" in error_msg:
-                error_msg = f"Google AI API 필드 변경으로 인한 오류: {error_msg}"
-            
-            raise Exception(f"Google AI 스트리밍 응답 생성 실패: {error_msg}")
+                error_msg = f"Error due to Google AI API field change: {error_msg}"
+
+            raise Exception(f"Google AI streaming response generation failed: {error_msg}")
         

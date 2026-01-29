@@ -1,5 +1,5 @@
 """
-Node execution engine - project_reference.md 기준 의존성 해결 및 병렬 실행
+Node execution engine - Dependency resolution and parallel execution based on project_reference.md
 """
 
 import asyncio
@@ -16,18 +16,18 @@ from ..api.node_executors import NodeExecutor
 from ..config import NODE_EXECUTION_CONFIG
 
 
-# 로거 설정
+# Logger setup
 logger = logging.getLogger(__name__)
 
 class NodeExecutionEngine:
     """
-    노드 기반 워크플로우 실행 엔진
-    
-    project_reference.md의 실행 알고리즘:
-    1. 모든 input-node들을 찾아 실행 대기 목록에 추가
-    2. pre-node가 없거나 모든 pre-node 실행 완료된 노드들을 병렬 실행
-    3. 실행 완료된 노드의 post-node들을 목록에 등록
-    4. 목록이 빌 때까지 반복
+    Node-based workflow execution engine
+
+    Execution algorithm from project_reference.md:
+    1. Find all input-nodes and add to execution queue
+    2. Execute nodes in parallel if they have no pre-nodes or all pre-nodes are completed
+    3. Register post-nodes of completed nodes to the queue
+    4. Repeat until queue is empty
     """
     
     def __init__(self):
@@ -35,15 +35,15 @@ class NodeExecutionEngine:
         self.completed_nodes: Set[str] = set()
         self.node_outputs: Dict[str, str] = {}
         self.execution_results: List[NodeExecutionResult] = []
-        self.execution_order: List[str] = []  # 실행 순서 추적
-        self.is_stopping: bool = False  # 중단 플래그 추가
-        self.stop_logged: bool = False  # 중단 로그 중복 방지용 플래그
-        
-        # 노드 실행자 생성
+        self.execution_order: List[str] = []  # Track execution order
+        self.is_stopping: bool = False  # Stop flag
+        self.stop_logged: bool = False  # Flag to prevent duplicate stop logs
+
+        # Create node executor
         self.node_executor = NodeExecutor()
     
     async def _collect_stream_output(self, stream_queue: asyncio.Queue, expected_completions: int) -> List[Dict]:
-        """스트리밍 출력을 수집하는 헬퍼 메서드"""
+        """Helper method to collect streaming output"""
         outputs = []
         completed_count = 0
         
@@ -63,28 +63,28 @@ class NodeExecutionEngine:
                     completed_count += 1
                     
             except asyncio.TimeoutError:
-                # 타임아웃 발생 시 로그 남기고 계속
+                # Log timeout and continue
                 logger.warning(f"Stream timeout waiting for completion ({completed_count}/{expected_completions})")
                 break
         
         return outputs
     
     async def _execute_single_node_stream(
-        self, 
-        node: WorkflowNode, 
-        workflow: WorkflowDefinition, 
+        self,
+        node: WorkflowNode,
+        workflow: WorkflowDefinition,
         stream_queue: asyncio.Queue
     ):
-        """단일 노드를 실행하고 스트리밍 출력을 실시간으로 큐에 전송"""
+        """Execute a single node and send streaming output to queue in real-time"""
         
         accumulated_output = ""
         final_result = None
         try:
-            # 스트리밍 출력 처리
+            # Process streaming output
             async for chunk in self._execute_node_stream(node, workflow):
                 if chunk["type"] == "stream":
                     accumulated_output += chunk["content"]
-                    # 즉시 스트리밍 출력 전송
+                    # Send streaming output immediately
                     await stream_queue.put({
                         "type": "stream",
                         "node_id": node.id,
@@ -95,9 +95,9 @@ class NodeExecutionEngine:
                 elif chunk["type"] == "parsed_result":
                     final_result = chunk
 
-            # 노드 실행 결과 처리
+            # Process node execution result
             if final_result and final_result.get("success") != False:
-                # 성공한 경우
+                # Success case
                 if "output" in final_result:
                     output_value = final_result.get("output")
                 elif "result" in final_result:
@@ -105,7 +105,7 @@ class NodeExecutionEngine:
                 else:
                     output_value = accumulated_output
                     
-                # output_value가 None이면 accumulated_output 사용
+                # Use accumulated_output if output_value is None
                 if output_value is None:
                     output_value = accumulated_output
                     
@@ -121,17 +121,17 @@ class NodeExecutionEngine:
                     execution_time=final_result.get("execution_time", 0.0)
                 ))
                 
-                # 즉시 완료 알림 전송
+                # Send completion notification immediately
                 await stream_queue.put({
                     "type": "node_complete",
                     "node_id": node.id,
                     "success": True,
                     "description": description_value,
                     "execution_time": final_result.get("execution_time", 0.0),
-                    "message": f"{node.type} 노드 실행 완료"
+                    "message": f"{node.type} node execution completed"
                 })
             else:
-                # 실패한 경우
+                # Failure case
                 error_msg = final_result.get("error", "Unknown error") if final_result else "No result"
                 description = final_result.get("description", str(error_msg)) if final_result else str(error_msg)
                 
@@ -145,7 +145,7 @@ class NodeExecutionEngine:
                     execution_time=final_result.get("execution_time", 0.0) if final_result else 0.0
                 ))
                 
-                # 즉시 실패 알림 전송
+                # Send failure notification immediately
                 await stream_queue.put({
                     "type": "node_complete",
                     "node_id": node.id,
@@ -156,7 +156,7 @@ class NodeExecutionEngine:
                 })
  
         except Exception as e:
-            # 예외 발생 시 처리
+            # Handle exception
             await stream_queue.put({
                 "type": "node_complete",
                 "node_id": node.id,
@@ -166,18 +166,18 @@ class NodeExecutionEngine:
             })
     
     async def execute_workflow(
-        self, 
+        self,
         workflow: WorkflowDefinition
     ) -> WorkflowExecutionResponse:
-        """워크플로우 전체 실행 (비스트리밍)"""
-        
-        # 스트리밍 실행을 사용하되 결과만 수집
+        """Execute entire workflow (non-streaming)"""
+
+        # Use streaming execution but only collect results
         results = []
         async for event in self.execute_workflow_stream(workflow):
             if event["type"] == "final_result":
                 return event["result"]
         
-        # fallback (정상적으로는 도달하지 않음)
+        # Fallback (normally unreachable)
         return WorkflowExecutionResponse(
             success=False,
             results=[],
@@ -185,29 +185,29 @@ class NodeExecutionEngine:
         )
     
     def _reset_state(self):
-        """실행 상태 초기화"""
+        """Reset execution state"""
         self.execution_queue.clear()
         self.completed_nodes.clear()
         self.node_outputs.clear()
         self.execution_results.clear()
-        self.execution_order.clear()  # 실행 순서도 초기화
-        self.workflow_nodes = []  # workflow nodes 초기화
+        self.execution_order.clear()  # Reset execution order
+        self.workflow_nodes = []  # Reset workflow nodes
     
     def _build_dependency_graph(self, workflow: WorkflowDefinition) -> Dict[str, List[str]]:
-        """의존성 그래프 구축 (각 노드의 pre-nodes 맵핑)"""
+        """Build dependency graph (map each node's pre-nodes)"""
         pre_nodes_map = defaultdict(list)
         
         for edge in workflow.edges:
             pre_nodes_map[edge.target].append(edge.source)
         
-        # 모든 노드에 대해 빈 리스트라도 생성
+        # Create empty list for all nodes
         for node in workflow.nodes:
             if node.id not in pre_nodes_map:
                 pre_nodes_map[node.id] = []
         return dict(pre_nodes_map)
     
     def _build_post_nodes_map(self, workflow: WorkflowDefinition) -> Dict[str, List[str]]:
-        """각 노드의 post-nodes 맵핑"""
+        """Map each node's post-nodes"""
         post_nodes_map = defaultdict(list)
         
         for edge in workflow.edges:
@@ -216,7 +216,7 @@ class NodeExecutionEngine:
         return dict(post_nodes_map)
     
     def _find_ready_nodes(self, pre_nodes_map: Dict[str, List[str]]) -> List[str]:
-        """실행 가능한 노드들 찾기 (모든 pre-node가 완료된 노드들)"""
+        """Find nodes ready for execution (all pre-nodes completed)"""
         ready_nodes = []
         
         logger.info(f"Finding ready nodes from queue: {list(self.execution_queue)}")
@@ -226,7 +226,7 @@ class NodeExecutionEngine:
             pre_nodes = pre_nodes_map.get(node_id, [])
             logger.info(f"Node {node_id} has pre_nodes: {pre_nodes}")
             
-            # pre-node가 없거나 모든 pre-node가 완료되었으면 실행 가능
+            # Ready if no pre-nodes or all pre-nodes are completed
             if not pre_nodes or all(pre_id in self.completed_nodes for pre_id in pre_nodes):
                 ready_nodes.append(node_id)
                 logger.info(f"Node {node_id} is ready for execution")
@@ -237,7 +237,7 @@ class NodeExecutionEngine:
         return ready_nodes
     
     def _get_final_output(self, workflow: WorkflowDefinition) -> Optional[str]:
-        """최종 출력 결과 (output-node의 결과)"""
+        """Get final output result (from output-node)"""
         output_nodes = [node for node in workflow.nodes if node.type == "output-node"]
         
         if output_nodes:
@@ -247,46 +247,46 @@ class NodeExecutionEngine:
         return None
     
     async def execute_workflow_stream(
-        self, 
+        self,
         workflow: WorkflowDefinition
     ):
-        """워크플로우 이벤트 기반 병렬 스트리밍 실행 - 각 노드가 완료되는 즉시 다음 단계 진행"""
+        """Event-based parallel streaming workflow execution - proceed to next step as soon as each node completes"""
 
         start_time = time.time()
 
         try:
-            # 초기화
+            # Initialize
             self._reset_state()
-            
-            # workflow nodes 저장 (context-node 구분을 위해)
+
+            # Store workflow nodes (for context-node distinction)
             self.workflow_nodes = workflow.nodes
-            
-            # 스트리밍 시작 알림
+
+            # Streaming start notification
             yield {
                 "type": "start",
-                "message": "워크플로우 이벤트 기반 실행을 시작합니다.",
+                "message": "Starting event-based workflow execution.",
                 "total_nodes": len(workflow.nodes)
             }
-            
-            # 의존성 그래프 구축
+
+            # Build dependency graph
             pre_nodes_map = self._build_dependency_graph(workflow)
             node_lookup = {node.id: node for node in workflow.nodes}
 
-            # 전체 스트리밍 출력을 위한 큐
+            # Queue for overall streaming output
             global_stream_queue = asyncio.Queue()
-            
-            # 활성 노드 태스크들을 추적
+
+            # Track active node tasks
             active_tasks = {}
-            
-            # input-node들을 먼저 시작
+
+            # Start input-nodes first
             for node in workflow.nodes:
                 if node.type == "input-node":
-                    # 노드 실행 시작 알림을 먼저 발생시킴
+                    # Send node start notification first
                     yield {
                         "type": "node_start",
                         "node_id": node.id,
                         "node_type": node.type,
-                        "message": f"{node.type} 노드 실행 시작"
+                        "message": f"{node.type} node execution started"
                     }
                     
                     task = asyncio.create_task(
@@ -296,76 +296,76 @@ class NodeExecutionEngine:
                     )
                     active_tasks[node.id] = task
             
-            # 전체 노드 완료 추적
+            # Track total node completions
             total_completed = 0
             total_nodes = len(workflow.nodes)
 
-            # 이벤트 기반 실행 루프
+            # Event-based execution loop
             while total_completed < total_nodes:
-                # 중단 요청 체크 - 루프 시작 시 즉시 확인
+                # Check stop request - verify immediately at loop start
                 if self.is_stopping:
                     if not self.stop_logged:
                         logger.info("Workflow execution stopped by user request")
                         self.stop_logged = True
                         yield {
                             "type": "stop_requested",
-                            "message": "워크플로우 중단이 요청되었습니다. 현재 실행 중인 노드들이 완료되면 중단됩니다."
+                            "message": "Workflow stop requested. Will stop after currently running nodes complete."
                         }
-                    
-                    # 활성 태스크가 없으면 즉시 중단
+
+                    # Stop immediately if no active tasks
                     if not active_tasks:
                         logger.info("Workflow execution stopping - no active tasks")
                         break
                 
-                # 스트리밍 출력 처리
+                # Process streaming output
                 try:
                     chunk = await asyncio.wait_for(global_stream_queue.get(), timeout=0.1)
                     yield chunk
                     
-                    # 노드 완료 이벤트 처리
+                    # Handle node completion event
                     if chunk["type"] == "node_complete" and chunk["success"]:
                         completed_node_id = chunk["node_id"]
                         total_completed += 1
-                        
-                        # 완료된 노드를 completed_nodes에 추가
+
+                        # Add completed node to completed_nodes
                         self.completed_nodes.add(completed_node_id)
                         self.execution_order.append(completed_node_id)
-                        
-                        # 완료된 노드를 active_tasks에서 제거
+
+                        # Remove completed node from active_tasks
                         if completed_node_id in active_tasks:
                             del active_tasks[completed_node_id]
-                        
-                        # 중단 요청이 있으면 새로운 노드 시작하지 않고 다음 루프로
+
+                        # If stop requested, don't start new nodes and continue loop
                         if self.is_stopping:
                             if not active_tasks:
                                 logger.info("Workflow execution stopping - all active tasks completed")
                                 break
-                            continue  # 새 노드 시작하지 않고 루프 계속
-                        
-                        # 즉시 post-node들 확인하고 실행 가능한 노드 시작
+                            continue  # Continue loop without starting new nodes
+
+                        # Check post-nodes immediately and start ready nodes
                         for edge in workflow.edges:
                             if edge.source == completed_node_id:
                                 target_node_id = edge.target
-                                
-                                # 이미 실행 중이거나 완료된 노드는 스킵
-                                if (target_node_id in active_tasks or 
+
+                                # Skip if already running or completed
+                                if (target_node_id in active_tasks or
                                     target_node_id in self.completed_nodes):
                                     continue
-                                
-                                # 의존성 체크: 모든 pre-node가 완료되었는지 확인
+
+                                # Dependency check: verify all pre-nodes are completed
                                 pre_nodes = set(pre_nodes_map.get(target_node_id, []))
                                 if pre_nodes.issubset(self.completed_nodes):
                                     target_node = node_lookup[target_node_id]
-                                    
-                                    # 노드 실행 시작 알림을 먼저 발생시킴 (딜레이 최소화)
+
+                                    # Send node start notification first (minimize delay)
                                     yield {
                                         "type": "node_start",
                                         "node_id": target_node_id,
                                         "node_type": target_node.type,
-                                        "message": f"{target_node.type} 노드 실행 시작"
+                                        "message": f"{target_node.type} node execution started"
                                     }
-                                    
-                                    # 즉시 노드 실행 시작
+
+                                    # Start node execution immediately
                                     task = asyncio.create_task(
                                         self._execute_single_node_stream(
                                             target_node, workflow, global_stream_queue
@@ -374,38 +374,38 @@ class NodeExecutionEngine:
                                     active_tasks[target_node_id] = task
                     
                     elif chunk["type"] == "node_complete" and not chunk["success"]:
-                        # 실패한 노드도 active_tasks에서 제거
+                        # Remove failed node from active_tasks
                         failed_node_id = chunk.get("node_id")
                         if failed_node_id and failed_node_id in active_tasks:
                             del active_tasks[failed_node_id]
-                        
-                        # 실패한 노드가 있으면 전체 워크플로우 중단
+
+                        # Stop entire workflow if a node fails
                         yield {
                             "type": "error",
-                            "message": f"노드 실행 실패: {chunk['node_id']}"
+                            "message": f"Node execution failed: {chunk['node_id']}"
                         }
-                        # 모든 활성 태스크 취소
+                        # Cancel all active tasks
                         for task in active_tasks.values():
                             task.cancel()
                         return
                         
                 except asyncio.TimeoutError:
-                    # 타임아웃은 정상 - 계속 진행
+                    # Timeout is normal - continue
                     continue
- 
-            # 모든 활성 태스크 완료 대기
+
+            # Wait for all active tasks to complete
             if active_tasks:
                 await asyncio.gather(*active_tasks.values(), return_exceptions=True)
             
-            # 최종 결과
+            # Final result
             total_time = time.time() - start_time
             final_output = self._get_final_output(workflow)
-            
-            # 중단된 경우와 정상 완료 구분
+
+            # Distinguish between stopped and normal completion
             was_stopped = self.is_stopping
-            success_status = True  # 기본적으로 성공으로 처리 (중단도 성공적인 종료로 간주)
-            
-            # 스트리밍용 완료 이벤트
+            success_status = True  # Treat as success by default (stop is also considered successful termination)
+
+            # Completion event for streaming
             yield {
                 "type": "complete",
                 "success": success_status,
@@ -413,10 +413,10 @@ class NodeExecutionEngine:
                 "total_execution_time": total_time,
                 "execution_order": self.execution_order,
                 "results": [result.__dict__ for result in self.execution_results],
-                "was_stopped": was_stopped  # 중단 여부 정보 추가
+                "was_stopped": was_stopped  # Add stop status info
             }
-            
-            # 비스트리밍용 최종 결과 이벤트
+
+            # Final result event for non-streaming
             yield {
                 "type": "final_result",
                 "result": WorkflowExecutionResponse(
@@ -429,16 +429,16 @@ class NodeExecutionEngine:
             }
             
         except Exception as e:
-            logger.error(f"워크플로우 실행 중 오류 발생: {str(e)}")
+            logger.error(f"Error during workflow execution: {str(e)}")
             total_time = time.time() - start_time
-            
-            # 스트리밍용 에러 이벤트
+
+            # Error event for streaming
             yield {
                 "type": "error",
-                "message": f"워크플로우 실행 오류: {str(e)}"
+                "message": f"Workflow execution error: {str(e)}"
             }
-            
-            # 비스트리밍용 최종 결과 이벤트
+
+            # Final result event for non-streaming
             yield {
                 "type": "final_result",
                 "result": WorkflowExecutionResponse(
@@ -455,24 +455,24 @@ class NodeExecutionEngine:
         node: WorkflowNode,
         workflow: WorkflowDefinition
     ):
-        """개별 노드 스트리밍 실행"""
+        """Execute individual node with streaming"""
         
         start_time = time.time()
         
         try:
-            # 스트리밍 실행
+            # Streaming execution
             accumulated_output = ""
             parsed_result = None
-            
+
             final_result = None
-            
-            # pre-node들을 context-node와 일반 노드로 분리
+
+            # Separate pre-nodes into context-nodes and regular nodes
             context_node_ids = []
             regular_pre_node_ids = []
-            
+
             for edge in workflow.edges:
                 if edge.target == node.id and edge.source in self.node_outputs:
-                    # workflow nodes에서 source node 찾기
+                    # Find source node in workflow nodes
                     source_node = None
                     for wf_node in workflow.nodes:
                         if wf_node.id == edge.source:
@@ -484,13 +484,13 @@ class NodeExecutionEngine:
                     else:
                         regular_pre_node_ids.append(edge.source)
             
-            # 각각의 출력 수집
+            # Collect outputs from each
             context_outputs = [self.node_outputs[ctx_id] for ctx_id in context_node_ids]
             pre_outputs = [self.node_outputs[pre_id] for pre_id in regular_pre_node_ids]
 
-            # LLM 노드는 항상 context-aware 실행 (context가 없어도 분리 처리 필요)
+            # LLM nodes always use context-aware execution (needs separate processing even without context)
             if node.type in ["generation-node", "ensemble-node", "validation-node"]:
-                # context-aware 스트리밍 실행 (context가 비어있어도 OK)
+                # Context-aware streaming execution (OK even if context is empty)
                 async for chunk in self.node_executor.execute_node_stream_with_context(node, pre_outputs, context_outputs):
                     if chunk["type"] == "stream":
                         accumulated_output += chunk["content"] 
@@ -501,7 +501,7 @@ class NodeExecutionEngine:
                         final_result = chunk
                         parsed_result = chunk.get("output")
             else:
-                # 텍스트 노드는 기존 방식으로 실행 (모든 pre_outputs 합쳐서)
+                # Text nodes execute in legacy way (combine all pre_outputs)
                 all_pre_outputs = pre_outputs + context_outputs
                 async for chunk in self.node_executor.execute_node_stream(node, all_pre_outputs):
                     if chunk["type"] == "stream":
@@ -513,11 +513,11 @@ class NodeExecutionEngine:
                         final_result = chunk
                         parsed_result = chunk.get("output")
             
-            # 최종 결과 반환 (execute_node_stream에서 이미 받은 결과 사용)
+            # Return final result (use result already received from execute_node_stream)
             if final_result:
                 yield final_result
             else:
-                # 실행 시간 계산
+                # Calculate execution time
                 execution_time = time.time() - start_time
                 yield {
                     "type": "result",
@@ -536,20 +536,20 @@ class NodeExecutionEngine:
             }
     
     def stop_execution(self):
-        """워크플로우 실행 중단 요청"""
+        """Request workflow execution stop"""
         self.is_stopping = True
         logger.info("Workflow execution stop requested")
     
     def stop(self):
-        """워크플로우 실행 중단 요청 (API 호환용 alias)"""
+        """Request workflow execution stop (API compatibility alias)"""
         self.stop_execution()
     
     def reset_execution_state(self):
-        """실행 상태 초기화"""
+        """Reset execution state"""
         self.execution_queue.clear()
         self.completed_nodes.clear()
         self.node_outputs.clear()
         self.execution_results.clear()
         self.execution_order.clear()
         self.is_stopping = False
-        self.stop_logged = False  # 중단 로그 플래그도 초기화
+        self.stop_logged = False  # Reset stop log flag as well
